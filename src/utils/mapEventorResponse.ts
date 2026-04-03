@@ -1,0 +1,309 @@
+import { XMLParser } from 'fast-xml-parser';
+
+import { getClassificationLabel } from '@/src/features/calendar/calendarFilters';
+import { formatDisplayDate } from '@/src/services/dateService';
+import { EventDetail, EventDocument, EventItem } from '@/src/types/eventor';
+import { AuthenticatedUser } from '@/src/types/user';
+
+const parser = new XMLParser({
+  attributeNamePrefix: '',
+  ignoreAttributes: false,
+  parseTagValue: false,
+  trimValues: true,
+});
+
+export function mapEventListXml(xml: string): EventItem[] {
+  const parsed = parser.parse(xml) as {
+    EventList?: {
+      Event?: unknown;
+    };
+  };
+
+  const items = toArray<Record<string, unknown>>(parsed.EventList?.Event);
+
+  return items
+    .map((item) => mapEventItem(item))
+    .filter((item): item is EventItem => Boolean(item))
+    .sort((left, right) => `${left.startDate}${left.startClock ?? ''}`.localeCompare(`${right.startDate}${right.startClock ?? ''}`));
+}
+
+export function mapPersonXml(xml: string, username: string): AuthenticatedUser {
+  const parsed = parser.parse(xml) as {
+    Person?: Record<string, unknown>;
+  };
+
+  const person = parsed.Person ?? {};
+  const personName = getRecord(person.PersonName) ?? getRecord(person.Name);
+  const firstName = getNodeText(firstOf(personName?.Given)) ?? getString(person.GivenName) ?? null;
+  const lastName = getString(personName?.Family) ?? getString(person.FamilyName) ?? null;
+  const fallbackFullName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+  const organisationIds = extractOrganisationIds(person);
+
+  return {
+    accessLevel: 'free',
+    birthDate: extractDate(person.BirthDate),
+    email: extractEmail(person),
+    firstName,
+    fullName: fallbackFullName ?? getString(person.PersonName) ?? null,
+    lastName,
+    organisationIds,
+    organisationName: null,
+    personId: getString(person.PersonId) ?? getString(person.Id) ?? null,
+    username,
+  };
+}
+
+export function mapEventDetailXml(xml: string): EventDetail {
+  const parsed = parser.parse(xml) as {
+    Event?: Record<string, unknown>;
+  };
+
+  const event = mapEventItem(parsed.Event ?? {});
+
+  if (!event) {
+    throw new Error('Eventor returnerade en ofullständig tävlingsdetalj.');
+  }
+
+  const rawEvent = parsed.Event ?? {};
+  const hashEntries = toArray<Record<string, unknown>>(rawEvent.HashTableEntry);
+  const hashKeys = hashEntries.map((entry) => getString(entry.Key)).filter((key): key is string => Boolean(key));
+
+  return {
+    ...event,
+    comment: getString(rawEvent.Comment),
+    finishDate: extractDate(rawEvent.FinishDate),
+    hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult'),
+    hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
+    modifyDate: extractDate(rawEvent.ModifyDate),
+    organiserNames: extractOrganisationNames(rawEvent),
+    webUrl: getString(rawEvent.WebURL),
+  };
+}
+
+export function mapEventDocumentsXml(xml: string): EventDocument[] {
+  const parsed = parser.parse(xml) as {
+    DocumentList?: {
+      Document?: unknown;
+    };
+  };
+
+  const documents = toArray<Record<string, unknown>>(parsed.DocumentList?.Document);
+
+  return documents
+    .map((document) => {
+      const url = getString(document.url);
+      const id = getString(document.id);
+      const name = getString(document.name);
+
+      if (!url || !id || !name) {
+        return null;
+      }
+
+      return {
+        id,
+        modifyDate: normalizeModifyDate(getString(document.modifyDate)),
+        name,
+        referenceId: getString(document.referenceId),
+        type: getString(document.type),
+        url,
+      } satisfies EventDocument;
+    })
+    .filter((document): document is EventDocument => Boolean(document));
+}
+
+function mapEventItem(item: Record<string, unknown>): EventItem | null {
+  const id = getString(item.EventId);
+  const name = getString(item.Name);
+  const startDateNode = getRecord(item.StartDate);
+  const eventRace = getRecord(firstOf(item.EventRace));
+  const organiser = getRecord(item.Organiser);
+
+  if (!id || !name || !startDateNode) {
+    return null;
+  }
+
+  const classificationId = toNumber(item.EventClassificationId);
+  const disciplineId = toNumber(item.DisciplineId);
+  const hashEntries = toArray<Record<string, unknown>>(item.HashTableEntry);
+  const hashKeys = hashEntries.map((entry) => getString(entry.Key)).filter((key): key is string => Boolean(key));
+  const statusId = toNumber(item.EventStatusId);
+  const startDate = getString(startDateNode.Date) ?? '';
+  const startClock = getString(startDateNode.Clock);
+  const message = extractHashValue(item.HashTableEntry, 'Eventor_Message');
+  const distanceLabel =
+    getString(getRecord(eventRace?.WRSInfo)?.Distance) ??
+    getString(eventRace?.raceDistance) ??
+    'Ej angivet';
+
+  return {
+    classificationId,
+    classificationLabel: getClassificationLabel(classificationId),
+    dateLabel: formatDisplayDate(startDate),
+    disciplineId,
+    disciplineLabel: mapDisciplineLabel(disciplineId),
+    distanceLabel,
+    hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult'),
+    hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
+    id,
+    message,
+    name,
+    organiserIds: toArray<string | Record<string, unknown>>(organiser?.OrganisationId).map((value) => `${value}`),
+    startClock,
+    startDate,
+    statusId,
+    statusLabel: mapStatusLabel(statusId),
+  };
+}
+
+function extractDate(value: unknown) {
+  const record = getRecord(value);
+  return getString(record?.Date) ?? getString(value) ?? null;
+}
+
+function extractEmail(person: Record<string, unknown>) {
+  const directEmail = getString(person.Email) ?? getString(person.EMail);
+
+  if (directEmail) {
+    return directEmail;
+  }
+
+  const contact = getRecord(person.Contact);
+  return getString(contact?.Email) ?? getString(contact?.EMail) ?? null;
+}
+
+function extractHashValue(value: unknown, key: string) {
+  const entries = toArray<Record<string, unknown>>(value);
+  return entries.find((entry) => getString(entry.Key) === key)?.Value?.toString().trim() ?? null;
+}
+
+function extractOrganisationIds(person: Record<string, unknown>) {
+  const organisationIds = new Set<string>();
+  collectOrganisationIds(person, organisationIds);
+  return Array.from(organisationIds);
+}
+
+function extractOrganisationNames(event: Record<string, unknown>) {
+  const organiser = getRecord(event.Organiser);
+
+  if (!organiser) {
+    return [];
+  }
+
+  const nestedOrganisations = toArray<Record<string, unknown>>(organiser.Organisation);
+
+  if (nestedOrganisations.length > 0) {
+    return nestedOrganisations.map((organisation) => getString(organisation.Name)).filter((name): name is string => Boolean(name));
+  }
+
+  return toArray<string | Record<string, unknown>>(organiser.OrganisationId).map((value) => `${value}`);
+}
+
+function firstOf(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getRecord(value: unknown) {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function getString(value: unknown) {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function getNodeText(value: unknown) {
+  if (typeof value === 'string' && value.length > 0) {
+    return value;
+  }
+
+  const record = getRecord(value);
+  return getString(record?.['#text']);
+}
+
+function collectOrganisationIds(value: unknown, organisationIds: Set<string>) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectOrganisationIds(item, organisationIds));
+    return;
+  }
+
+  const record = getRecord(value);
+
+  if (!record) {
+    return;
+  }
+
+  Object.entries(record).forEach(([key, nestedValue]) => {
+    if (key === 'OrganisationId') {
+      toArray<unknown>(nestedValue).forEach((item) => {
+        const identifier = getNodeText(item) ?? `${item}`;
+
+        if (identifier) {
+          organisationIds.add(identifier);
+        }
+      });
+      return;
+    }
+
+    collectOrganisationIds(nestedValue, organisationIds);
+  });
+}
+
+function mapDisciplineLabel(id: number) {
+  if (id === 1) {
+    return 'Orientering';
+  }
+
+  if (id === 2) {
+    return 'SkidO';
+  }
+
+  if (id === 3) {
+    return 'MTBO';
+  }
+
+  if (id === 4) {
+    return 'PreO';
+  }
+
+  return `Gren ${id}`;
+}
+
+function mapStatusLabel(id: number) {
+  if (id === 5) {
+    return 'Aktiv';
+  }
+
+  if (id === 9) {
+    return 'Genomförd';
+  }
+
+  if (id === 10) {
+    return 'Ändrad';
+  }
+
+  return `Status ${id}`;
+}
+
+function normalizeModifyDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return value.split('T')[0] ?? value;
+}
+
+function hasHashKeyPrefix(keys: string[], prefix: string) {
+  return keys.some((key) => key.startsWith(prefix));
+}
+
+function toArray<T>(value: unknown): T[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  return Array.isArray(value) ? (value as T[]) : [value as T];
+}
+
+function toNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}

@@ -1,0 +1,21 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Build output
+
+# Others
+*.log
+*.pdb
