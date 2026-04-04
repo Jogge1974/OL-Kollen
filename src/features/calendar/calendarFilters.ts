@@ -13,6 +13,7 @@ export const CLASSIFICATION_OPTIONS = [
 export function createDefaultCalendarFilters(now = new Date()): EventFilterValues {
   return {
     classificationIds: [1, 2],
+    districtIds: [],
     fromDate: formatApiDate(getRelativeDate(now, -2)),
     toDate: formatApiDate(getRelativeDate(now, 10)),
   };

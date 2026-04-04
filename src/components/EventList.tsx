@@ -16,7 +16,7 @@ type EventListProps = {
   refreshing: boolean;
 };
 
-const CARD_HEIGHT = 67;
+const CARD_HEIGHT = 78;
 const CARD_GAP = 7;
 const ITEM_HEIGHT = CARD_HEIGHT + CARD_GAP;
 

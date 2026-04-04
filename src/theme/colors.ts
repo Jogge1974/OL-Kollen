@@ -3,7 +3,7 @@ export const colors = {
   accentGlow: 'rgba(243, 218, 62, 0.42)',
   accentLineToday: '#4E8751',
   accentLineWeekend: '#9ACB88',
-  accentLineWeekday: '#D9EFCB',
+  accentLineWeekday: '#BFDDAA',
   accentLinePastBorder: '#5A8E59',
   accentSoft: '#EEF4B8',
   background: '#F4F8EE',

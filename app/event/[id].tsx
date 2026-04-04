@@ -94,6 +94,7 @@ export default function EventDetailScreen() {
 
           <View style={styles.heroBody}>
             <Text style={styles.heroTitle}>{event.name}</Text>
+            {event.organiserNames.length > 0 ? <Text style={styles.heroOrganiser}>{event.organiserNames.join(', ')}</Text> : null}
             <View style={styles.heroMetaRow}>
               <Text style={styles.heroMeta}>{event.dateLabel}</Text>
               <View style={styles.heroBadge}>
@@ -119,7 +120,6 @@ export default function EventDetailScreen() {
                 <InfoMini label="Senast ändrad" value={event.modifyDate ?? 'Ej angivet'} />
               </View>
 
-              <InfoWide label="Arrangörer" value={event.organiserNames.length > 0 ? event.organiserNames.join(', ') : 'Ej angivet'} />
 
               {event.comment ? <InfoTextBlock label="Kommentar" value={event.comment} /> : null}
               {event.webUrl ? <AppButton label="Öppna arrangörens länk" onPress={() => void Linking.openURL(event.webUrl ?? '')} variant="secondary" /> : null}
@@ -208,17 +208,6 @@ function InfoMini({ label, value }: { label: string; value: string }) {
     <View style={styles.infoMini}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={styles.infoValueCompact}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function InfoWide({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoWide}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text numberOfLines={2} style={styles.infoValue}>
         {value}
       </Text>
     </View>
@@ -321,13 +310,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   heroBody: {
-    gap: spacing.md,
+    gap: 6,
   },
   heroTitle: {
     color: colors.heroText,
     fontFamily: typography.heroTitle.fontFamily,
     fontSize: 19,
     lineHeight: 23,
+  },
+  heroOrganiser: {
+    ...typography.body,
+    color: colors.heroTextMuted,
+    fontSize: 14,
+    lineHeight: 18,
   },
   heroMetaRow: {
     alignItems: 'flex-end',
@@ -404,13 +399,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
     minWidth: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  infoWide: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    gap: 3,
     paddingHorizontal: 10,
     paddingVertical: 9,
   },

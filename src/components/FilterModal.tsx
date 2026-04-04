@@ -6,11 +6,13 @@ import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from '
 
 import { AppButton } from '@/src/components/AppButton';
 import { CLASSIFICATION_OPTIONS } from '@/src/features/calendar/calendarFilters';
+import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { formatApiDate, formatDisplayDate, isValidIsoDate } from '@/src/services/dateService';
+import { useAuthStore } from '@/src/store/authStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { EventFilterValues } from '@/src/types/eventor';
+import { DistrictOption, EventFilterValues } from '@/src/types/eventor';
 
 type FilterModalProps = {
   onApply: (filters: EventFilterValues) => void;
@@ -25,6 +27,8 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   const [draft, setDraft] = React.useState<EventFilterValues>(value);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [activeDateField, setActiveDateField] = React.useState<DateField>(null);
+  const user = useAuthStore((state) => state.user);
+  const { districtOptions, error: districtError, organisationToDistrictId } = useEventorDistricts(visible);
 
   React.useEffect(() => {
     if (visible) {
@@ -33,6 +37,53 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
       setActiveDateField(null);
     }
   }, [value, visible]);
+
+  const myDistrictId = React.useMemo(() => {
+    const organisationId = user?.organisationIds[0];
+    return organisationId ? organisationToDistrictId[organisationId] ?? null : null;
+  }, [organisationToDistrictId, user?.organisationIds]);
+
+  const myDistrictOption = React.useMemo(() => {
+    if (!myDistrictId) {
+      return null;
+    }
+
+    const district = districtOptions.find((option) => option.id === myDistrictId);
+
+    if (!district) {
+      return null;
+    }
+
+    return {
+      id: district.id,
+      label: `Mitt distrikt (${district.label})`,
+    } satisfies DistrictOption;
+  }, [districtOptions, myDistrictId]);
+
+  const visibleDistrictOptions = React.useMemo(
+    () => (myDistrictId ? districtOptions.filter((option) => option.id !== myDistrictId) : districtOptions),
+    [districtOptions, myDistrictId],
+  );
+
+  const districtColumns = React.useMemo(
+    () => [
+      visibleDistrictOptions.filter((_, index) => index % 3 === 0),
+      visibleDistrictOptions.filter((_, index) => index % 3 === 1),
+      visibleDistrictOptions.filter((_, index) => index % 3 === 2),
+    ],
+    [visibleDistrictOptions],
+  );
+
+  const classificationRows = React.useMemo(
+    () => [
+      [CLASSIFICATION_OPTIONS[0], CLASSIFICATION_OPTIONS[3]],
+      [CLASSIFICATION_OPTIONS[1], CLASSIFICATION_OPTIONS[4]],
+      [CLASSIFICATION_OPTIONS[2], CLASSIFICATION_OPTIONS[5]],
+    ],
+    [],
+  );
+
+  const activeDateValue = activeDateField ? parseIsoDate(draft[activeDateField]) : new Date();
 
   const toggleClassification = (id: number) => {
     const nextIds = draft.classificationIds.includes(id)
@@ -45,14 +96,20 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
     });
   };
 
+  const toggleDistrict = (id: number) => {
+    const nextIds = draft.districtIds.includes(id)
+      ? draft.districtIds.filter((currentId) => currentId !== id)
+      : [...draft.districtIds, id].sort((a, b) => a - b);
+
+    setDraft({
+      ...draft,
+      districtIds: nextIds,
+    });
+  };
+
   const handleApply = () => {
     if (!isValidIsoDate(draft.fromDate) || !isValidIsoDate(draft.toDate)) {
       setValidationError('Datum måste vara giltiga.');
-      return;
-    }
-
-    if (draft.classificationIds.length === 0) {
-      setValidationError('Välj minst en tävlingstyp.');
       return;
     }
 
@@ -75,10 +132,6 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
     }));
   };
 
-  const leftColumnOptions = CLASSIFICATION_OPTIONS.slice(0, 3);
-  const rightColumnOptions = CLASSIFICATION_OPTIONS.slice(3, 6);
-  const activeDateValue = activeDateField ? parseIsoDate(draft[activeDateField]) : new Date();
-
   return (
     <Modal animationType="slide" transparent visible={visible}>
       <View style={styles.overlay}>
@@ -88,7 +141,7 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
             <View style={styles.headerRow}>
               <View>
                 <Text style={styles.title}>Filter</Text>
-                <Text style={styles.subtitle}>Ange datumintervall och tävlingstyper.</Text>
+                <Text style={styles.subtitle}>Ange datumintervall, distrikt och tävlingstyper.</Text>
               </View>
               <Pressable onPress={onClose}>
                 <Text style={styles.closeText}>Stäng</Text>
@@ -111,35 +164,61 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
                   value={activeDateValue}
                   onChange={handleDateChange}
                 />
-                {Platform.OS === 'ios' ? (
-                  <AppButton label="Klar" onPress={() => setActiveDateField(null)} variant="secondary" />
-                ) : null}
+                {Platform.OS === 'ios' ? <AppButton label="Klar" onPress={() => setActiveDateField(null)} variant="secondary" /> : null}
               </View>
             ) : null}
 
             <View style={styles.section}>
-              <View style={styles.classificationCard}>
-                <View style={styles.classificationColumn}>
-                  <Text style={styles.classificationHeading}>Tävlingar</Text>
-                  {leftColumnOptions.map((option) => (
-                    <ClassificationOption
-                      key={option.id}
-                      checked={draft.classificationIds.includes(option.id)}
-                      id={option.id}
-                      label={option.label}
-                      onPress={() => toggleClassification(option.id)}
-                    />
+              <View style={styles.filterCard}>
+                <Text style={styles.filterHeading}>Distrikt</Text>
+
+                {myDistrictOption ? (
+                  <DistrictOptionRow checked={draft.districtIds.includes(myDistrictOption.id)} label={myDistrictOption.label} onPress={() => toggleDistrict(myDistrictOption.id)} />
+                ) : null}
+
+                {districtError ? <Text style={styles.errorText}>{districtError}</Text> : null}
+                {!districtError && districtOptions.length === 0 ? <Text style={styles.helperText}>Laddar distrikt...</Text> : null}
+
+                <View style={styles.districtColumnsRow}>
+                  {districtColumns.map((column, index) => (
+                    <View key={`district-column-${index}`} style={styles.districtColumn}>
+                      {column.map((option) => (
+                        <DistrictOptionRow
+                          key={option.id}
+                          checked={draft.districtIds.includes(option.id)}
+                          label={option.label}
+                          onPress={() => toggleDistrict(option.id)}
+                        />
+                      ))}
+                    </View>
                   ))}
                 </View>
-                <View style={styles.classificationColumn}>
-                  {rightColumnOptions.map((option) => (
-                    <ClassificationOption
-                      key={option.id}
-                      checked={draft.classificationIds.includes(option.id)}
-                      id={option.id}
-                      label={option.label}
-                      onPress={() => toggleClassification(option.id)}
-                    />
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.filterCard}>
+                <Text style={styles.filterHeading}>Tävlingar</Text>
+                <View style={styles.classificationRows}>
+                  {classificationRows.map(([leftOption, rightOption]) => (
+                    <View key={leftOption.id} style={styles.classificationRow}>
+                      <View style={styles.classificationCell}>
+                        <ClassificationOption
+                          checked={draft.classificationIds.includes(leftOption.id)}
+                          id={leftOption.id}
+                          label={leftOption.label}
+                          onPress={() => toggleClassification(leftOption.id)}
+                        />
+                      </View>
+                      <View style={styles.classificationCell}>
+                        <ClassificationOption
+                          checked={draft.classificationIds.includes(rightOption.id)}
+                          id={rightOption.id}
+                          label={rightOption.label}
+                          onPress={() => toggleClassification(rightOption.id)}
+                        />
+                      </View>
+                    </View>
                   ))}
                 </View>
               </View>
@@ -184,6 +263,19 @@ function ClassificationOption({
         <Checkbox color={checked ? colors.primary : undefined} value={checked} onValueChange={onPress} />
         <Text style={styles.checkboxTitle}>{id}</Text>
         <Text numberOfLines={2} style={styles.checkboxDescription}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.districtItem}>
+      <View style={styles.districtRow}>
+        <Checkbox color={checked ? colors.primary : undefined} value={checked} onValueChange={onPress} />
+        <Text numberOfLines={2} style={styles.districtLabel}>
           {label}
         </Text>
       </View>
@@ -272,27 +364,59 @@ const styles = StyleSheet.create({
     ...typography.captionStrong,
     color: colors.heroText,
   },
-  classificationCard: {
+  filterCard: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
     borderRadius: 18,
     borderWidth: 1,
-    flexDirection: 'row',
     gap: spacing.sm,
     padding: spacing.md,
   },
-  classificationColumn: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  classificationHeading: {
+  filterHeading: {
     ...typography.captionStrong,
     color: colors.textPrimary,
-    marginBottom: 2,
+  },
+  helperText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  districtColumnsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  districtColumn: {
+    flex: 1,
+    gap: 2,
+  },
+  districtItem: {
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingVertical: 2,
+  },
+  districtRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  districtLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 16,
+  },
+  classificationRows: {
+    gap: spacing.xs,
+  },
+  classificationRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  classificationCell: {
+    flex: 1,
   },
   checkboxItem: {
-    minHeight: 42,
     justifyContent: 'center',
+    minHeight: 42,
     paddingVertical: 4,
   },
   checkboxRow: {

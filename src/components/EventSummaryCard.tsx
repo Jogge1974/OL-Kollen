@@ -24,6 +24,7 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
   const isFavorite = React.useMemo(() => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === item.id), [favoriteEvents, item.id]);
   const publicationIndicator = item.hasPublishedResults ? 'Resultatlista' : item.hasPublishedStarts ? 'Startlista' : null;
+  const organiserLabel = item.organiserNames.join(', ');
 
   const handleToggleFavorite = async () => {
     await toggleFavorite({
@@ -40,16 +41,7 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
 
   return (
     <View style={[styles.card, mode === 'list' ? styles.cardList : styles.cardOverlay, isFavorite ? styles.cardFavorite : null]}>
-      <View
-        style={[
-          styles.cardAccent,
-          {
-            backgroundColor: accentStyle.backgroundColor,
-            borderColor: accentStyle.borderColor,
-            borderWidth: accentStyle.borderWidth,
-          },
-        ]}
-      />
+      {accentStyle.visible ? <View style={[styles.cardAccent, { backgroundColor: accentStyle.backgroundColor }]} /> : null}
 
       <Pressable
         onPress={() => router.push({ params: { id: item.id }, pathname: '/event/[id]' })}
@@ -59,6 +51,11 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
           <Text numberOfLines={mode === 'list' ? 2 : 3} style={[styles.eventName, mode === 'overlay' ? styles.eventNameOverlay : null]}>
             {item.name}
           </Text>
+          {organiserLabel ? (
+            <Text numberOfLines={1} style={[styles.organiserName, mode === 'overlay' ? styles.organiserNameOverlay : null]}>
+              {organiserLabel}
+            </Text>
+          ) : null}
           <View style={styles.metaRow}>
             <Text style={styles.eventMeta}>{item.dateLabel}</Text>
             <View
@@ -117,32 +114,28 @@ function getAccentStyle(startDate: string) {
 
   if (isPast) {
     return {
-      backgroundColor: colors.surface,
-      borderColor: colors.accentLinePastBorder,
-      borderWidth: 1,
+      backgroundColor: 'transparent',
+      visible: false,
     };
   }
 
   if (isToday) {
     return {
-      backgroundColor: colors.accentLineToday,
-      borderColor: colors.accentLineToday,
-      borderWidth: 0,
+      backgroundColor: colors.accent,
+      visible: true,
     };
   }
 
   if (isWeekend) {
     return {
-      backgroundColor: colors.accentLineWeekend,
-      borderColor: colors.accentLineWeekend,
-      borderWidth: 0,
+      backgroundColor: colors.accentLineToday,
+      visible: true,
     };
   }
 
   return {
     backgroundColor: colors.accentLineWeekday,
-    borderColor: colors.accentLineWeekday,
-    borderWidth: 0,
+    visible: true,
   };
 }
 
@@ -216,16 +209,17 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   cardAccent: {
-    borderRadius: 999,
-    bottom: 8,
-    left: 12,
+    borderBottomLeftRadius: 18,
+    borderTopLeftRadius: 18,
+    bottom: 0,
+    left: 0,
     position: 'absolute',
-    top: 8,
-    width: 6,
+    top: 0,
+    width: 9,
   },
   cardMain: {
     gap: 2,
-    paddingLeft: 16,
+    paddingLeft: 13,
     paddingRight: 54,
   },
   cardMainOverlay: {
@@ -241,6 +235,16 @@ const styles = StyleSheet.create({
   eventNameOverlay: {
     fontSize: 14,
     lineHeight: 18,
+  },
+  organiserName: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  organiserNameOverlay: {
+    fontSize: 12,
+    lineHeight: 14,
   },
   eventMeta: {
     ...typography.captionStrong,

@@ -148,6 +148,7 @@ function mapEventItem(item: Record<string, unknown>): EventItem | null {
     id,
     message,
     name,
+    organiserNames: extractOrganisationNames(item),
     organiserIds: toArray<string | Record<string, unknown>>(organiser?.OrganisationId).map((value) => `${value}`),
     startClock,
     startDate,
@@ -215,9 +216,20 @@ function extractOrganisationNames(event: Record<string, unknown>) {
   }
 
   const nestedOrganisations = toArray<Record<string, unknown>>(organiser.Organisation);
+  const directOrganiserName = getString(organiser.Name) ?? getString(organiser.ShortName);
 
   if (nestedOrganisations.length > 0) {
-    return nestedOrganisations.map((organisation) => getString(organisation.Name)).filter((name): name is string => Boolean(name));
+    const names = nestedOrganisations
+      .map((organisation) => getString(organisation.Name) ?? getString(organisation.ShortName))
+      .filter((name): name is string => Boolean(name));
+
+    if (names.length > 0) {
+      return names;
+    }
+  }
+
+  if (directOrganiserName) {
+    return [directOrganiserName];
   }
 
   return toArray<string | Record<string, unknown>>(organiser.OrganisationId).map((value) => `${value}`);

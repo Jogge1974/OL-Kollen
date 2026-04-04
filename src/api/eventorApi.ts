@@ -1,8 +1,9 @@
 import { XMLParser } from 'fast-xml-parser';
 
 import { buildEventorUrl, getEventorApiKey } from '@/src/services/env';
+import { getStoredJson, setStoredJson } from '@/src/services/secureStorage';
 import { formatApiDateTime } from '@/src/services/dateService';
-import { EventCompetitorCount, EventDetail, EventDocument, EventFilterValues, EventItem, EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
+import { DistrictOption, EventCompetitorCount, EventDetail, EventDocument, EventFilterValues, EventItem, EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
 import { mapEventDetailXml, mapEventDocumentsXml, mapEventListXml } from '@/src/utils/mapEventorResponse';
 
 const parser = new XMLParser({
@@ -11,6 +12,22 @@ const parser = new XMLParser({
   parseTagValue: false,
   trimValues: true,
 });
+
+type OrganisationDirectory = {
+  districtOptions: DistrictOption[];
+  organisationNameById: Record<string, string>;
+  organisationToDistrictId: Record<string, number>;
+};
+
+type StoredOrganisationDirectory = OrganisationDirectory & {
+  fetchedAt: string;
+};
+
+const ORGANISATION_DIRECTORY_STORAGE_KEY = 'eventor-organisation-directory';
+const ORGANISATION_DIRECTORY_TTL_MS = 1000 * 60 * 60 * 24 * 61;
+
+let organisationDirectoryCache: OrganisationDirectory | null = null;
+let organisationDirectoryPromise: Promise<OrganisationDirectory> | null = null;
 
 export async function fetchEventorEvents(filters: EventFilterValues): Promise<EventItem[]> {
   const apiKey = getEventorApiKey();
@@ -38,21 +55,38 @@ export async function fetchEventorEvents(filters: EventFilterValues): Promise<Ev
     throw new Error(mapEventorError(response.status, xml));
   }
 
-  const mappedEvents = mapEventListXml(xml);
-  return filterEventsByClassification(mappedEvents, filters.classificationIds);
+  let mappedEvents = mapEventListXml(xml);
+  const needsOrganisationDirectory = filters.districtIds.length > 0 || mappedEvents.some(needsOrganiserNameHydration);
+
+  if (needsOrganisationDirectory) {
+    const directory = await fetchOrganisationDirectory();
+    mappedEvents = hydrateEventOrganisers(mappedEvents, directory.organisationNameById);
+  }
+
+  return filterEvents(mappedEvents, filters);
 }
 
-function filterEventsByClassification(events: EventItem[], selectedClassificationIds: number[]) {
+function filterEvents(events: EventItem[], filters: EventFilterValues) {
+  const { classificationIds, districtIds } = filters;
+
   return events.filter((event) => {
-    if (selectedClassificationIds.includes(event.classificationId)) {
+    const matchesClassification =
+      classificationIds.length === 0 ||
+      classificationIds.includes(event.classificationId) ||
+      (event.classificationId === 0 && classificationIds.includes(1));
+
+    if (!matchesClassification) {
+      return false;
+    }
+
+    if (districtIds.length === 0) {
       return true;
     }
 
-    if (event.classificationId === 0 && selectedClassificationIds.includes(1)) {
-      return true;
-    }
-
-    return false;
+    return event.organiserIds.some((organisationId) => {
+      const districtId = organisationDirectoryCache?.organisationToDistrictId[organisationId];
+      return districtId ? districtIds.includes(districtId) : false;
+    });
   });
 }
 
@@ -159,6 +193,24 @@ export async function fetchEventClassNameMap(eventId: string) {
   return mapEventClassNamesXml(xml);
 }
 
+export async function fetchOrganisationDirectory() {
+  if (organisationDirectoryCache) {
+    return organisationDirectoryCache;
+  }
+
+  if (organisationDirectoryPromise) {
+    return organisationDirectoryPromise;
+  }
+
+  organisationDirectoryPromise = loadOrganisationDirectory().then((directory) => {
+    organisationDirectoryCache = directory;
+    organisationDirectoryPromise = null;
+    return directory;
+  });
+
+  return organisationDirectoryPromise;
+}
+
 export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null): Promise<EventCompetitorCount> {
   const counts = await fetchSingleCompetitorCount(eventId, organisationId);
 
@@ -257,6 +309,80 @@ async function fetchSingleCompetitorCount(eventId: string, organisationId: strin
   return mapCompetitorCountXml(xml);
 }
 
+async function loadOrganisationDirectory(): Promise<OrganisationDirectory> {
+  const storedDirectory = await getStoredOrganisationDirectory();
+
+  if (storedDirectory) {
+    organisationDirectoryCache = storedDirectory;
+    return storedDirectory;
+  }
+
+  const requestUrl = buildEventorUrl('/organisations');
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  const parsed = parser.parse(xml) as {
+    OrganisationList?: {
+      Organisation?: unknown;
+    };
+  };
+  const organisations = toArray<Record<string, unknown>>(parsed.OrganisationList?.Organisation).map((organisation) => {
+    return {
+      id: getNodeText(organisation.OrganisationId) ?? '',
+      name: getString(organisation.Name) ?? '',
+      parentId: getNodeText(getRecord(organisation.ParentOrganisation)?.OrganisationId),
+      typeId: toNullableNumber(organisation.OrganisationTypeId) ?? 0,
+    };
+  });
+  const organisationById = new Map(organisations.map((organisation) => [organisation.id, organisation]));
+  const organisationNameById = organisations.reduce<Record<string, string>>((result, organisation) => {
+    if (organisation.id && organisation.name) {
+      result[organisation.id] = organisation.name;
+    }
+
+    return result;
+  }, {});
+  const districtOptions = organisations
+    .filter((organisation) => organisation.typeId === 2 && organisation.parentId === '1')
+    .sort((left, right) => left.name.localeCompare(right.name, 'sv'))
+    .map((district) => ({
+      id: Number(district.id),
+      label: district.name,
+    }));
+  const organisationToDistrictId = organisations.reduce<Record<string, number>>((result, organisation) => {
+    const districtId = resolveDistrictId(organisation.id, organisationById);
+
+    if (districtId) {
+      result[organisation.id] = districtId;
+    }
+
+    return result;
+  }, {});
+
+  const directory = {
+    districtOptions,
+    organisationNameById,
+    organisationToDistrictId,
+  };
+
+  await setStoredJson(ORGANISATION_DIRECTORY_STORAGE_KEY, {
+    ...directory,
+    fetchedAt: new Date().toISOString(),
+  } satisfies StoredOrganisationDirectory);
+
+  return directory;
+}
+
 function mapCompetitorCountXml(xml: string) {
   const parsed = parser.parse(xml) as {
     CompetitorCountList?: {
@@ -303,6 +429,10 @@ function getNodeText(value: unknown) {
   return getString(record['#text']);
 }
 
+function getRecord(value: unknown) {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
 function getString(value: unknown) {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
@@ -318,4 +448,95 @@ function toArray<T>(value: unknown): T[] {
 function toNullableNumber(value: unknown) {
   const parsedNumber = Number(value);
   return Number.isFinite(parsedNumber) ? parsedNumber : null;
+}
+
+function resolveDistrictId(
+  organisationId: string,
+  organisationById: Map<string, { id: string; name: string; parentId: string | null; typeId: number }>,
+) {
+  let current = organisationById.get(organisationId);
+  const visited = new Set<string>();
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+
+    if (current.typeId === 2 && current.parentId === '1') {
+      return Number(current.id);
+    }
+
+    if (!current.parentId) {
+      return null;
+    }
+
+    current = organisationById.get(current.parentId);
+  }
+
+  return null;
+}
+
+async function getStoredOrganisationDirectory(): Promise<OrganisationDirectory | null> {
+  const stored = await getStoredJson<StoredOrganisationDirectory>(ORGANISATION_DIRECTORY_STORAGE_KEY);
+
+  if (!stored || typeof stored !== 'object' || !stored.fetchedAt || isOrganisationDirectoryExpired(stored.fetchedAt)) {
+    return null;
+  }
+
+  if (
+    !Array.isArray(stored.districtOptions) ||
+    typeof stored.organisationToDistrictId !== 'object' ||
+    stored.organisationToDistrictId === null ||
+    typeof stored.organisationNameById !== 'object' ||
+    stored.organisationNameById === null
+  ) {
+    return null;
+  }
+
+  return {
+    districtOptions: stored.districtOptions,
+    organisationNameById: stored.organisationNameById,
+    organisationToDistrictId: stored.organisationToDistrictId,
+  };
+}
+
+function isOrganisationDirectoryExpired(fetchedAt: string) {
+  const fetchedAtMs = Date.parse(fetchedAt);
+
+  if (!Number.isFinite(fetchedAtMs)) {
+    return true;
+  }
+
+  return Date.now() - fetchedAtMs > ORGANISATION_DIRECTORY_TTL_MS;
+}
+
+function hydrateEventOrganisers(events: EventItem[], organisationNameById: Record<string, string>) {
+  if (!organisationNameById || typeof organisationNameById !== 'object') {
+    return events;
+  }
+
+  return events.map((event) => {
+    if (!needsOrganiserNameHydration(event)) {
+      return event;
+    }
+
+    const organiserNames = event.organiserIds
+      .map((organisationId) => organisationNameById[organisationId])
+      .filter((name): name is string => Boolean(name));
+
+    if (organiserNames.length === 0) {
+      return event;
+    }
+
+    return {
+      ...event,
+      organiserNames,
+    };
+  });
+}
+
+function needsOrganiserNameHydration(event: EventItem) {
+  if (event.organiserNames.length === 0) {
+    return true;
+  }
+
+  return event.organiserNames.every((name) => /^\d+$/.test(name.trim()));
 }

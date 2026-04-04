@@ -1,5 +1,6 @@
 export type EventFilterValues = {
   classificationIds: number[];
+  districtIds: number[];
   fromDate: string;
   toDate: string;
 };
@@ -20,6 +21,7 @@ export type EventItem = {
   id: string;
   message: string | null;
   name: string;
+  organiserNames: string[];
   organiserIds: string[];
   startClock: string | null;
   startDate: string;
@@ -56,3 +58,8 @@ export type EventCompetitorCount = {
 export type EventPublishedListKind = 'entries' | 'results' | 'starts';
 
 export type EventPublishedListScope = 'organisation' | 'public';
+
+export type DistrictOption = {
+  id: number;
+  label: string;
+};
