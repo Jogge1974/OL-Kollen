@@ -136,6 +136,7 @@ function mapEventItem(item: Record<string, unknown>): EventItem | null {
     'Ej angivet';
 
   return {
+    centerPosition: extractCenterPosition(eventRace?.EventCenterPosition),
     classificationId,
     classificationLabel: getClassificationLabel(classificationId),
     dateLabel: formatDisplayDate(startDate),
@@ -158,6 +159,30 @@ function mapEventItem(item: Record<string, unknown>): EventItem | null {
 function extractDate(value: unknown) {
   const record = getRecord(value);
   return getString(record?.Date) ?? getString(value) ?? null;
+}
+
+function extractCenterPosition(value: unknown) {
+  const record = getRecord(value);
+
+  if (!record) {
+    return null;
+  }
+
+  const longitude = Number(record.x);
+  const latitude = Number(record.y);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+  };
 }
 
 function extractEmail(person: Record<string, unknown>) {

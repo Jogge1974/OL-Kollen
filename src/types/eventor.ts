@@ -5,6 +5,10 @@ export type EventFilterValues = {
 };
 
 export type EventItem = {
+  centerPosition: {
+    latitude: number;
+    longitude: number;
+  } | null;
   classificationId: number;
   classificationLabel: string;
   dateLabel: string;

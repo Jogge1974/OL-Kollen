@@ -32,7 +32,13 @@
       "expo-secure-store",
       "expo-font",
       "@react-native-community/datetimepicker",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "OL-Kollen använder din plats för att centrera kartvyn kring dig."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/src/components/AppButton';
 import { EmptyState } from '@/src/components/EmptyState';
 import { EventList } from '@/src/components/EventList';
+import { EventMap } from '@/src/components/EventMap';
 import { FilterModal } from '@/src/components/FilterModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { useEventorEvents } from '@/src/hooks/useEventorEvents';
@@ -16,6 +17,7 @@ import { typography } from '@/src/theme/typography';
 
 export default function CalendarScreen() {
   const [filterVisible, setFilterVisible] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<'list' | 'map'>('list');
   const { applyFilters, error, events, filters, isLoading, isRefreshing, refresh } = useEventorEvents();
 
   return (
@@ -29,7 +31,7 @@ export default function CalendarScreen() {
           <View style={styles.headerTopRow}>
             <View style={styles.headerCopy}>
               <Text style={styles.title}>Tävlingskalendern</Text>
-              <Text style={styles.subtitle}>Kompakt överblick med sommarfärger och snabb filtrering.</Text>
+              <Text style={styles.subtitle}>Kompakt överblick med sommarfärger, snabb filtrering och kartläge.</Text>
             </View>
 
             <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
@@ -44,6 +46,15 @@ export default function CalendarScreen() {
             <Text style={styles.summaryText}>
               {filters.fromDate} till {filters.toDate}
             </Text>
+          </View>
+
+          <View style={styles.modeSwitch}>
+            <Pressable onPress={() => setViewMode('list')} style={[styles.modeButton, viewMode === 'list' ? styles.modeButtonActive : null]}>
+              <Text style={[styles.modeButtonText, viewMode === 'list' ? styles.modeButtonTextActive : null]}>Lista</Text>
+            </Pressable>
+            <Pressable onPress={() => setViewMode('map')} style={[styles.modeButton, viewMode === 'map' ? styles.modeButtonActive : null]}>
+              <Text style={[styles.modeButtonText, viewMode === 'map' ? styles.modeButtonTextActive : null]}>Karta</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -65,9 +76,11 @@ export default function CalendarScreen() {
           />
         ) : null}
 
-        {!isLoading && events.length > 0 ? (
+        {!isLoading && events.length > 0 && viewMode === 'list' ? (
           <EventList error={error} events={events} onRefresh={() => void refresh()} refreshing={isRefreshing} />
         ) : null}
+
+        {!isLoading && events.length > 0 && viewMode === 'map' ? <EventMap error={error} events={events} /> : null}
       </View>
 
       <FilterModal
@@ -172,5 +185,27 @@ const styles = StyleSheet.create({
   summaryText: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  modeSwitch: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 999,
+    flexDirection: 'row',
+    padding: 4,
+  },
+  modeButton: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.primaryDeep,
+  },
+  modeButtonText: {
+    ...typography.buttonSmall,
+    color: colors.textSecondary,
+  },
+  modeButtonTextActive: {
+    color: colors.heroText,
   },
 });
