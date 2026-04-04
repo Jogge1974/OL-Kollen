@@ -9,7 +9,13 @@ export function formatExclusiveFromDateTime(date: string) {
 }
 
 export function formatApiDateTime(date: string, boundary: 'start' | 'end') {
-  return `${date} ${boundary === 'start' ? '00:00:00' : '23:59:59'}`;
+  if (boundary === 'start') {
+    const previousDate = new Date(`${date}T12:00:00`);
+    previousDate.setDate(previousDate.getDate() - 1);
+    return `${formatApiDate(previousDate)} 23:50:00`;
+  }
+
+  return `${date} 23:59:59`;
 }
 
 export function formatDisplayDate(date: string) {

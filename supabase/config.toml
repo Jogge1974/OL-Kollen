@@ -1,0 +1,5 @@
+[functions.push-sync]
+verify_jwt = false
+
+[functions.poll-eventor-publication]
+verify_jwt = false

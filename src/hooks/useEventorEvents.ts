@@ -26,10 +26,6 @@ export function useEventorEvents() {
 
     try {
       const nextEvents = await fetchEventorEvents(nextFilters);
-      console.log('[Calendar] Mapped events from Eventor', {
-        count: nextEvents.length,
-        ids: nextEvents.map((event) => event.id),
-      });
       setEvents(nextEvents);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Okänt fel vid hämtning av tävlingar.';

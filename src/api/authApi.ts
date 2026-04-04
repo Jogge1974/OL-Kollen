@@ -13,16 +13,6 @@ const parser = new XMLParser({
 export async function authenticateEventorPerson(input: EventorLoginInput) {
   const requestUrl = buildEventorUrl('/authenticatePerson');
 
-  console.log('[Eventor] GET /authenticatePerson request', {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: '[masked]',
-      Password: '[masked]',
-      Username: input.username ? '[provided]' : '[missing]',
-    },
-    url: requestUrl,
-  });
-
   const response = await fetch(requestUrl, {
     headers: {
       Accept: 'application/xml',
@@ -42,11 +32,6 @@ export async function authenticateEventorPerson(input: EventorLoginInput) {
     });
     throw new Error(mapAuthError(response.status));
   }
-
-  console.log('[Eventor] GET /authenticatePerson success', {
-    status: response.status,
-    url: requestUrl,
-  });
 
   const mappedUser = mapPersonXml(xml, input.username);
   const primaryOrganisationId = mappedUser.organisationIds[0] ?? null;
@@ -71,15 +56,6 @@ export async function authenticateEventorPerson(input: EventorLoginInput) {
 
 async function fetchOrganisationName(organisationId: string) {
   const requestUrl = buildEventorUrl(`/organisation/${organisationId}`);
-
-  console.log('[Eventor] GET /organisation/{id} request', {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: '[masked]',
-    },
-    organisationId,
-    url: requestUrl,
-  });
 
   const response = await fetch(requestUrl, {
     headers: {

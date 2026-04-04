@@ -10,17 +10,20 @@ const parser = new XMLParser({
 });
 
 export type PublishedListFormatOptions = {
+  eventClassNameById?: Record<string, string>;
   organisationId?: string | null;
   scope: EventPublishedListScope;
 };
 
 export type PublishedListRow = {
+  bibNumber?: string;
   classLabel?: string;
   courseLengthLabel?: string;
   diff?: string;
   familyName?: string;
   givenName?: string;
   organisation?: string;
+  organisationId?: string;
   pace?: string;
   position?: string;
   primary: string;
@@ -65,25 +68,33 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
       const person = getRecord(competitor?.Person);
       const personName = getPersonNameParts(person);
       const entryClass = getRecord(entry.EntryClass);
+      const eventClass = getRecord(entryClass?.EventClass) ?? getRecord(entry.EventClass);
+      const eventClassId =
+        getNodeText(entryClass?.EventClassId) ??
+        getNodeText(eventClass?.EventClassId) ??
+        getNodeText(entry.EventClassId) ??
+        getNodeText(eventClass?.ClassId);
 
       return {
         classLabel:
+          (eventClassId ? options.eventClassNameById?.[eventClassId] ?? null : null) ??
+          getString(eventClass?.Name) ??
+          getString(eventClass?.ClassShortName) ??
           getString(entryClass?.Name) ??
           getString(entryClass?.ClassShortName) ??
-          (getNodeText(entryClass?.EventClassId) ? `Klass ${getNodeText(entryClass?.EventClassId)}` : 'Okänd klass'),
-        entryTime: formatDateAndClock(getRecord(entry.EntryDate)) ?? '—',
+          (eventClassId ? `Klass ${eventClassId}` : 'Okand klass'),
         familyName: personName.family ?? undefined,
         givenName: personName.given ?? undefined,
-        organisation: getString(organisation?.Name) ?? `Organisation ${organisationId ?? 'okänd'}`,
-        organisationId,
-        primary: personName.fullName || `Person ${getNodeText(competitor?.PersonId) ?? 'okänd'}`,
+        organisation: getString(organisation?.Name) ?? `Klubb ${organisationId ?? 'okand'}`,
+        organisationId: organisationId ?? undefined,
+        primary: personName.fullName || `Person ${getNodeText(competitor?.PersonId) ?? 'okand'}`,
       };
     })
     .filter((row) => (options.scope === 'organisation' ? row.organisationId === options.organisationId : true));
 
   if (options.scope === 'organisation') {
     return {
-      emptyMessage: 'Inga anmälningar hittades.',
+      emptyMessage: 'Inga anmalningar hittades.',
       sections: [
         {
           meta: `Ant. anm: ${entries.length}`,
@@ -94,7 +105,6 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
               familyName: row.familyName,
               givenName: row.givenName,
               primary: row.primary,
-              time: row.entryTime,
             })),
           title: 'Min klubb',
         },
@@ -111,14 +121,14 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
         familyName: row.familyName,
         givenName: row.givenName,
         organisation: row.organisation,
+        organisationId: row.organisationId,
         primary: row.primary,
-        time: row.entryTime,
       },
     ]);
   });
 
   return {
-    emptyMessage: 'Inga anmälningar hittades.',
+    emptyMessage: 'Inga anmalningar hittades.',
     sections: Array.from(groupedSections.entries())
       .map(([title, rows]) => ({
         meta: `Ant. anm: ${rows.length}`,
@@ -147,18 +157,21 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
       const personName = getPersonNameParts(person);
       const organisation = getRecord(personStart.Organisation);
       const start = getRecord(personStart.Start);
+      const bibNumber = getNodeText(personStart.BibNumber) ?? getNodeText(start?.BibNumber) ?? undefined;
       const organisationId = getIdValue(organisation?.Id);
+      const startTime = getEventorClockValue(start?.StartTime) ?? '-';
 
       return {
+        bibNumber,
         classLabel,
         courseLengthLabel,
         familyName: personName.family ?? undefined,
         givenName: personName.given ?? undefined,
-        organisation: getString(organisation?.Name) ?? '—',
-        organisationId,
+        organisation: getString(organisation?.Name) ?? '-',
+        organisationId: organisationId ?? undefined,
         primary: personName.fullName || 'Namn saknas',
-        sortStartSeconds: getSecondsFromIso(getString(start?.StartTime)),
-        time: getTimeFromIso(getString(start?.StartTime)) ?? '—',
+        sortStartSeconds: getSecondsFromClockValue(startTime),
+        time: startTime,
       };
     });
 
@@ -182,6 +195,7 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
         {
           meta: `Ant. start: ${rows.length}`,
           rows: rows.map((row) => ({
+            bibNumber: row.bibNumber,
             classLabel: row.classLabel,
             courseLengthLabel: row.courseLengthLabel ?? undefined,
             familyName: row.familyName,
@@ -205,9 +219,11 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
         rows: section.rows
           .sort((left, right) => compareNullableNumbers(left.sortStartSeconds, right.sortStartSeconds))
           .map((row) => ({
+            bibNumber: row.bibNumber,
             familyName: row.familyName,
             givenName: row.givenName,
             organisation: row.organisation,
+            organisationId: row.organisationId,
             primary: row.primary,
             time: row.time,
           })),
@@ -238,23 +254,23 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
       const organisationId = getIdValue(organisation?.Id);
       const timeSeconds = toNumber(result?.Time);
       const timeBehindSeconds = toNumber(result?.TimeBehind);
-      const position = getNodeText(result?.Position);
+      const position = getNodeText(result?.Position) ?? getNodeText(result?.ResultPosition);
       const status = getString(result?.Status);
 
       return {
         classLabel,
         courseLengthLabel,
-        diff: position ? `+${formatSeconds(timeBehindSeconds)}` : status ?? '—',
+        diff: position ? `+${formatSeconds(timeBehindSeconds)}` : formatResultStatus(status),
         familyName: personName.family ?? undefined,
         givenName: personName.given ?? undefined,
-        organisation: getString(organisation?.Name) ?? '—',
-        organisationId,
+        organisation: getString(organisation?.Name) ?? '-',
+        organisationId: organisationId ?? undefined,
         pace: calculatePace(timeSeconds, courseLengthMeters),
-        position: position ?? '—',
+        position: position ?? '-',
         positionSort: position ? Number(position) : Number.MAX_SAFE_INTEGER,
         primary: personName.fullName || 'Namn saknas',
         status,
-        time: timeSeconds > 0 ? formatSeconds(timeSeconds) : '—',
+        time: timeSeconds > 0 ? formatSeconds(timeSeconds) : '-',
       };
     });
 
@@ -283,7 +299,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
       emptyMessage: 'Ingen resultatlista hittades.',
       sections: [
         {
-          meta: `Ant. resultat: ${rows.length}`,
+          meta: `Ant. start: ${rows.length}`,
           rows: rows.map((row) => ({
             classLabel: row.classLabel,
             courseLengthLabel: row.courseLengthLabel ?? undefined,
@@ -315,6 +331,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             familyName: row.familyName,
             givenName: row.givenName,
             organisation: row.organisation,
+            organisationId: row.organisationId,
             pace: row.pace,
             position: row.position,
             primary: row.primary,
@@ -328,7 +345,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
 
 function calculatePace(timeSeconds: number, courseLengthMeters: number) {
   if (timeSeconds <= 0 || courseLengthMeters <= 0) {
-    return '—';
+    return '-';
   }
 
   const minutesPerKm = timeSeconds / 60 / (courseLengthMeters / 1000);
@@ -359,24 +376,9 @@ function formatCourseLength(lengthMeters: number) {
   return `${lengthMeters} m`;
 }
 
-function formatDateAndClock(value: Record<string, unknown> | null) {
-  const date = getString(value?.Date);
-  const clock = getString(value?.Clock);
-
-  if (!date) {
-    return null;
-  }
-
-  if (!clock) {
-    return date;
-  }
-
-  return `${date} ${clock.slice(0, 5)}`;
-}
-
 function formatSeconds(totalSeconds: number) {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
-    return '—';
+    return '-';
   }
 
   const hours = Math.floor(totalSeconds / 3600);
@@ -388,6 +390,34 @@ function formatSeconds(totalSeconds: number) {
   }
 
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function formatResultStatus(status: string | null) {
+  if (!status) {
+    return '-';
+  }
+
+  if (status === 'Missing punch') {
+    return 'Felst.';
+  }
+
+  if (status === 'DidNotStart') {
+    return 'Ej start';
+  }
+
+  if (status === 'DidNotFinish') {
+    return 'Utgatt';
+  }
+
+  if (status === 'Cancelled') {
+    return 'Aterb.';
+  }
+
+  if (status === 'Disqualified') {
+    return 'Disk.';
+  }
+
+  return status;
 }
 
 function getIdValue(value: unknown) {
@@ -406,22 +436,69 @@ function getPersonNameParts(person: Record<string, unknown> | null) {
   };
 }
 
-function getSecondsFromIso(value: string | null) {
-  if (!value) {
+function getEventorClockValue(value: unknown) {
+  const record = getRecord(value);
+
+  if (record) {
+    const clock = normalizeClockString(getString(record.Clock));
+
+    if (clock) {
+      return clock;
+    }
+  }
+
+  const rawValue = getString(value);
+
+  if (!rawValue) {
     return null;
   }
 
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.getTime();
+  if (rawValue.includes('T') && /(Z|[+-]\d{2}:\d{2})$/.test(rawValue)) {
+    return formatIsoDateTimeToLocalClock(rawValue);
+  }
+
+  return normalizeClockString(rawValue);
 }
 
-function getTimeFromIso(value: string | null) {
+function getSecondsFromClockValue(value: string | null) {
   if (!value) {
     return null;
   }
 
-  const match = value.match(/T(\d{2}:\d{2})/);
+  const match = value.match(/(\d{2}):(\d{2})(?::(\d{2}))?/);
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1] ?? '0');
+  const minutes = Number(match[2] ?? '0');
+  const seconds = Number(match[3] ?? '0');
+
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function normalizeClockString(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/(\d{2}:\d{2}:\d{2}|\d{2}:\d{2})/);
   return match?.[1] ?? null;
+}
+
+function formatIsoDateTimeToLocalClock(value: string) {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return normalizeClockString(value);
+  }
+
+  return [
+    `${parsed.getHours()}`.padStart(2, '0'),
+    `${parsed.getMinutes()}`.padStart(2, '0'),
+    `${parsed.getSeconds()}`.padStart(2, '0'),
+  ].join(':');
 }
 
 function firstOf(value: unknown) {

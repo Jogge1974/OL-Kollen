@@ -42,6 +42,13 @@ export type EventDocument = {
   url: string;
 };
 
+export type EventCompetitorCount = {
+  organisationEntries: number | null;
+  organisationStarts: number | null;
+  totalEntries: number | null;
+  totalStarts: number | null;
+};
+
 export type EventPublishedListKind = 'entries' | 'results' | 'starts';
 
 export type EventPublishedListScope = 'organisation' | 'public';

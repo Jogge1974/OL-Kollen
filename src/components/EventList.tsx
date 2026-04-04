@@ -1,8 +1,11 @@
 import * as React from 'react';
 
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { FlatList, ListRenderItemInfo, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
+import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors, getClassificationTone } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -22,17 +25,12 @@ const ITEM_HEIGHT = CARD_HEIGHT + CARD_GAP;
 export function EventList({ error, events, onRefresh, refreshing }: EventListProps) {
   const listRef = React.useRef<FlatList<EventItem>>(null);
   const targetIndex = React.useMemo(() => findFirstCurrentOrUpcomingIndex(events), [events]);
+  const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
 
   React.useEffect(() => {
     if (targetIndex <= 0 || !listRef.current) {
       return;
     }
-
-    console.log('[Calendar] Auto-scroll to first current/upcoming event', {
-      eventId: events[targetIndex]?.id,
-      index: targetIndex,
-      startDate: events[targetIndex]?.startDate,
-    });
 
     const timeoutId = setTimeout(() => {
       listRef.current?.scrollToIndex({
@@ -46,41 +44,64 @@ export function EventList({ error, events, onRefresh, refreshing }: EventListPro
   }, [events, targetIndex]);
 
   return (
-    <FlatList
-      ref={listRef}
-      contentContainerStyle={styles.content}
-      data={events}
-      getItemLayout={(_, index) => ({
-        index,
-        length: ITEM_HEIGHT,
-        offset: ITEM_HEIGHT * index,
-      })}
-      keyExtractor={(item) => item.id}
-      onScrollToIndexFailed={({ index }) => {
-        const fallbackOffset = Math.max(index - 1, 0) * ITEM_HEIGHT;
-        listRef.current?.scrollToOffset({
-          animated: false,
-          offset: fallbackOffset,
-        });
-      }}
-      refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary} onRefresh={onRefresh} />}
-      renderItem={({ item }: ListRenderItemInfo<EventItem>) => <EventCard item={item} />}
-      ListFooterComponent={error ? <Text style={styles.footerError}>{error}</Text> : null}
-      showsVerticalScrollIndicator={false}
-    />
+    <>
+      <FlatList
+        ref={listRef}
+        contentContainerStyle={styles.content}
+        data={events}
+        getItemLayout={(_, index) => ({
+          index,
+          length: ITEM_HEIGHT,
+          offset: ITEM_HEIGHT * index,
+        })}
+        keyExtractor={(item) => item.id}
+        onScrollToIndexFailed={({ index }) => {
+          const fallbackOffset = Math.max(index - 1, 0) * ITEM_HEIGHT;
+          listRef.current?.scrollToOffset({
+            animated: false,
+            offset: fallbackOffset,
+          });
+        }}
+        refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary} onRefresh={onRefresh} />}
+        renderItem={({ item }: ListRenderItemInfo<EventItem>) => <EventCard item={item} onOpenList={setActiveListModal} />}
+        ListFooterComponent={error ? <Text style={styles.footerError}>{error}</Text> : null}
+        showsVerticalScrollIndicator={false}
+      />
+
+      <PublishedListModal onClose={() => setActiveListModal(null)} state={activeListModal} />
+    </>
   );
 }
 
-function EventCard({ item }: { item: EventItem }) {
+function EventCard({
+  item,
+  onOpenList,
+}: {
+  item: EventItem;
+  onOpenList: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
+}) {
   const tone = getClassificationTone(item.classificationId);
   const accentStyle = getAccentStyle(item.startDate);
-  const hasIndicators = item.hasPublishedResults || item.hasPublishedStarts;
+  const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
+  const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
+  const isFavorite = React.useMemo(() => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === item.id), [favoriteEvents, item.id]);
+  const publicationIndicator = item.hasPublishedResults ? 'Resultatlista' : item.hasPublishedStarts ? 'Startlista' : null;
+
+  const handleToggleFavorite = async () => {
+    await toggleFavorite({
+      classificationId: item.classificationId,
+      classificationLabel: item.classificationLabel,
+      dateLabel: item.dateLabel,
+      hasPublishedResults: item.hasPublishedResults,
+      hasPublishedStarts: item.hasPublishedStarts,
+      id: item.id,
+      name: item.name,
+      startDate: item.startDate,
+    });
+  };
 
   return (
-    <Pressable
-      onPress={() => router.push({ params: { id: item.id }, pathname: '/event/[id]' })}
-      style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
-    >
+    <View style={[styles.card, isFavorite ? styles.cardFavorite : null]}>
       <View
         style={[
           styles.cardAccent,
@@ -92,43 +113,55 @@ function EventCard({ item }: { item: EventItem }) {
         ]}
       />
 
-      <View style={styles.cardMain}>
-        <Text numberOfLines={2} style={styles.eventName}>
-          {item.name}
-        </Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.eventMeta}>{item.dateLabel}</Text>
-          <View
-            style={[
-              styles.classificationBadge,
-              {
-                backgroundColor: tone.badgeBackground,
-                borderColor: tone.accent,
-              },
-            ]}
-          >
-            <Text numberOfLines={1} style={[styles.classificationText, { color: tone.badgeText }]}>
-              {getShortClassificationLabel(item.classificationId)}
-            </Text>
+      <Pressable onPress={() => router.push({ params: { id: item.id }, pathname: '/event/[id]' })} style={({ pressed }) => [styles.cardPressable, pressed ? styles.cardPressed : null]}>
+        <View style={styles.cardMain}>
+          <Text numberOfLines={2} style={styles.eventName}>
+            {item.name}
+          </Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.eventMeta}>{item.dateLabel}</Text>
+            <View
+              style={[
+                styles.classificationBadge,
+                {
+                  backgroundColor: tone.badgeBackground,
+                  borderColor: tone.accent,
+                },
+              ]}
+            >
+              <Text numberOfLines={1} style={[styles.classificationText, { color: tone.badgeText }]}>
+                {getShortClassificationLabel(item.classificationId)}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
+      </Pressable>
 
-      {hasIndicators ? (
-        <View style={styles.publicationIndicators}>
-          {item.hasPublishedStarts ? (
-            <View style={[styles.publicationBadge, styles.publicationBadgeStart]}>
-              <Text style={styles.publicationBadgeText}>S</Text>
-            </View>
-          ) : null}
-          {item.hasPublishedResults ? (
-            <View style={[styles.publicationBadge, styles.publicationBadgeResult]}>
-              <Text style={styles.publicationBadgeText}>R</Text>
-            </View>
-          ) : null}
-        </View>
+      {publicationIndicator ? (
+        <Pressable
+          hitSlop={6}
+          onPress={() => void openPublishedListModal(publicationIndicator === 'Resultatlista' ? 'results' : 'starts', 'public', item.id, null, null, onOpenList)}
+          style={[
+            styles.publicationBadge,
+            styles.publicationIndicator,
+            publicationIndicator === 'Resultatlista' ? styles.publicationBadgeResult : styles.publicationBadgeStart,
+          ]}
+        >
+          <Text style={styles.publicationBadgeText}>{publicationIndicator}</Text>
+        </Pressable>
       ) : null}
-    </Pressable>
+
+      <Pressable
+        hitSlop={8}
+        onPress={(event) => {
+          event.stopPropagation();
+          void handleToggleFavorite();
+        }}
+        style={[styles.favoriteBadge, isFavorite ? styles.favoriteBadgeActive : null]}
+      >
+        <Ionicons color={isFavorite ? colors.primaryDeep : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={13} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -232,6 +265,14 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     position: 'relative',
   },
+  cardFavorite: {
+    backgroundColor: '#FFF6CF',
+    borderColor: '#E7D98B',
+  },
+  cardPressable: {
+    flex: 1,
+    justifyContent: 'center',
+  },
   cardPressed: {
     opacity: 0.9,
   },
@@ -246,7 +287,7 @@ const styles = StyleSheet.create({
   cardMain: {
     gap: 2,
     paddingLeft: 16,
-    paddingRight: 44,
+    paddingRight: 54,
   },
   eventName: {
     ...typography.bodyStrong,
@@ -272,18 +313,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
-  publicationIndicators: {
-    alignItems: 'flex-end',
-    gap: 4,
-    position: 'absolute',
-    right: 12,
-    top: 8,
-  },
   publicationBadge: {
     borderRadius: 999,
-    minWidth: 18,
+    minWidth: 74,
     paddingHorizontal: 5,
     paddingVertical: 2,
+  },
+  publicationIndicator: {
+    position: 'absolute',
+    right: 10,
+    top: 35,
   },
   publicationBadgeStart: {
     backgroundColor: '#E4F4D5',
@@ -301,6 +340,23 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 11,
     textAlign: 'center',
+  },
+  favoriteBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 24,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 10,
+    top: 8,
+    width: 24,
+  },
+  favoriteBadgeActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.primary,
   },
   classificationText: {
     fontFamily: 'Manrope_600SemiBold',

@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextStyle, ViewStyle } from 'react-native';
 
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
@@ -10,10 +10,11 @@ type AppButtonProps = {
   loading?: boolean;
   onPress: () => void;
   style?: ViewStyle;
+  textStyle?: TextStyle;
   variant?: 'primary' | 'secondary' | 'ghost';
 };
 
-export function AppButton({ disabled = false, label, loading = false, onPress, style, variant = 'primary' }: AppButtonProps) {
+export function AppButton({ disabled = false, label, loading = false, onPress, style, textStyle, variant = 'primary' }: AppButtonProps) {
   const isDisabled = disabled || loading;
 
   return (
@@ -31,7 +32,7 @@ export function AppButton({ disabled = false, label, loading = false, onPress, s
       ]}
     >
       {loading ? <ActivityIndicator color={variant === 'secondary' ? colors.primaryDeep : colors.buttonText} size="small" /> : null}
-      <Text style={[styles.label, variant === 'secondary' || variant === 'ghost' ? styles.secondaryLabel : null]}>{label}</Text>
+      <Text style={[styles.label, variant === 'secondary' || variant === 'ghost' ? styles.secondaryLabel : null, textStyle]}>{label}</Text>
     </Pressable>
   );
 }

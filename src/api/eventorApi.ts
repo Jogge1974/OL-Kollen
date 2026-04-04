@@ -1,7 +1,16 @@
+import { XMLParser } from 'fast-xml-parser';
+
 import { buildEventorUrl, getEventorApiKey } from '@/src/services/env';
 import { formatApiDateTime } from '@/src/services/dateService';
-import { EventDetail, EventDocument, EventFilterValues, EventItem, EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
+import { EventCompetitorCount, EventDetail, EventDocument, EventFilterValues, EventItem, EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
 import { mapEventDetailXml, mapEventDocumentsXml, mapEventListXml } from '@/src/utils/mapEventorResponse';
+
+const parser = new XMLParser({
+  attributeNamePrefix: '',
+  ignoreAttributes: false,
+  parseTagValue: false,
+  trimValues: true,
+});
 
 export async function fetchEventorEvents(filters: EventFilterValues): Promise<EventItem[]> {
   const apiKey = getEventorApiKey();
@@ -10,19 +19,6 @@ export async function fetchEventorEvents(filters: EventFilterValues): Promise<Ev
     toDate: formatApiDateTime(filters.toDate, 'end'),
   });
   const requestUrl = buildEventorUrl(`/events?${searchParams.toString()}`);
-
-  console.log('[Eventor] GET /events request', {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: '[masked]',
-    },
-    query: {
-      fromDate: formatApiDateTime(filters.fromDate, 'start'),
-      toDate: formatApiDateTime(filters.toDate, 'end'),
-    },
-    localClassificationFilter: filters.classificationIds,
-    url: requestUrl,
-  });
 
   const response = await fetch(requestUrl, {
     headers: {
@@ -42,21 +38,8 @@ export async function fetchEventorEvents(filters: EventFilterValues): Promise<Ev
     throw new Error(mapEventorError(response.status, xml));
   }
 
-  console.log('[Eventor] GET /events success', {
-    status: response.status,
-    url: requestUrl,
-  });
-
   const mappedEvents = mapEventListXml(xml);
-  const filteredEvents = filterEventsByClassification(mappedEvents, filters.classificationIds);
-
-  console.log('[Eventor] Local classification filter applied', {
-    after: filteredEvents.length,
-    before: mappedEvents.length,
-    selectedClassificationIds: filters.classificationIds,
-  });
-
-  return filteredEvents;
+  return filterEventsByClassification(mappedEvents, filters.classificationIds);
 }
 
 function filterEventsByClassification(events: EventItem[], selectedClassificationIds: number[]) {
@@ -75,15 +58,6 @@ function filterEventsByClassification(events: EventItem[], selectedClassificatio
 
 export async function fetchEventorEventById(eventId: string): Promise<EventDetail> {
   const requestUrl = buildEventorUrl(`/event/${eventId}`);
-
-  console.log('[Eventor] GET /event/{id} request', {
-    eventId,
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: '[masked]',
-    },
-    url: requestUrl,
-  });
 
   const response = await fetch(requestUrl, {
     headers: {
@@ -104,12 +78,6 @@ export async function fetchEventorEventById(eventId: string): Promise<EventDetai
     throw new Error(mapEventorError(response.status, xml));
   }
 
-  console.log('[Eventor] GET /event/{id} success', {
-    eventId,
-    status: response.status,
-    url: requestUrl,
-  });
-
   return mapEventDetailXml(xml);
 }
 
@@ -118,18 +86,6 @@ export async function fetchEventDocumentsForEvent(eventId: string): Promise<Even
     eventIds: eventId,
   });
   const requestUrl = buildEventorUrl(`/events/documents?${searchParams.toString()}`);
-
-  console.log('[Eventor] GET /events/documents request', {
-    eventId,
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: '[masked]',
-    },
-    query: {
-      eventIds: eventId,
-    },
-    url: requestUrl,
-  });
 
   const response = await fetch(requestUrl, {
     headers: {
@@ -150,15 +106,7 @@ export async function fetchEventDocumentsForEvent(eventId: string): Promise<Even
     throw new Error(mapEventorError(response.status, xml));
   }
 
-  const documents = mapEventDocumentsXml(xml);
-
-  console.log('[Eventor] GET /events/documents success', {
-    count: documents.length,
-    eventId,
-    status: response.status,
-  });
-
-  return documents;
+  return mapEventDocumentsXml(xml);
 }
 
 export async function fetchEventPublishedListXml(
@@ -168,15 +116,6 @@ export async function fetchEventPublishedListXml(
   organisationId?: string,
 ) {
   const request = buildPublishedListRequest(kind, scope, eventId, organisationId);
-
-  console.log('[Eventor] Published list request', {
-    endpoint: request.endpoint,
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: '[masked]',
-    },
-    query: request.params,
-  });
 
   const response = await fetch(request.endpoint, {
     headers: {
@@ -199,6 +138,36 @@ export async function fetchEventPublishedListXml(
   }
 
   return xml;
+}
+
+export async function fetchEventClassNameMap(eventId: string) {
+  const params = new URLSearchParams({ eventId });
+  const requestUrl = buildEventorUrl(`/eventclasses?${params.toString()}`);
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return mapEventClassNamesXml(xml);
+}
+
+export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null): Promise<EventCompetitorCount> {
+  const counts = await fetchSingleCompetitorCount(eventId, organisationId);
+
+  return {
+    organisationEntries: counts.organisationNumberOfEntries,
+    organisationStarts: counts.organisationNumberOfStarts,
+    totalEntries: counts.numberOfEntries,
+    totalStarts: counts.numberOfStarts,
+  };
 }
 
 function buildPublishedListRequest(
@@ -241,6 +210,70 @@ function buildPublishedListRequest(
   };
 }
 
+function mapEventClassNamesXml(xml: string) {
+  const parsed = parser.parse(xml) as {
+    EventClassList?: {
+      Class?: unknown;
+      EventClass?: unknown;
+    };
+  };
+  const classes = toArray<Record<string, unknown>>(parsed.EventClassList?.Class).concat(
+    toArray<Record<string, unknown>>(parsed.EventClassList?.EventClass),
+  );
+
+  return classes.reduce<Record<string, string>>((result, item) => {
+    const classId = getNodeText(item.EventClassId) ?? getNodeText(item.ClassId) ?? getNodeText(item.Id);
+    const className = getString(item.Name) ?? getString(item.ClassShortName) ?? null;
+
+    if (classId && className) {
+      result[classId] = className;
+    }
+
+    return result;
+  }, {});
+}
+
+async function fetchSingleCompetitorCount(eventId: string, organisationId: string | null) {
+  const params = new URLSearchParams({ eventIds: eventId });
+
+  if (organisationId) {
+    params.set('organisationIds', organisationId);
+  }
+
+  const requestUrl = buildEventorUrl(`/competitorcount?${params.toString()}`);
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return mapCompetitorCountXml(xml);
+}
+
+function mapCompetitorCountXml(xml: string) {
+  const parsed = parser.parse(xml) as {
+    CompetitorCountList?: {
+      CompetitorCount?: unknown;
+    };
+  };
+  const countNode = toArray<Record<string, unknown>>(parsed.CompetitorCountList?.CompetitorCount)[0] ?? {};
+  const organisationNode = toArray<Record<string, unknown>>(countNode.OrganisationCompetitorCount)[0] ?? {};
+
+  return {
+    numberOfEntries: toNullableNumber(countNode.numberOfEntries),
+    numberOfStarts: toNullableNumber(countNode.numberOfStarts),
+    organisationNumberOfEntries: toNullableNumber(organisationNode.numberOfEntries),
+    organisationNumberOfStarts: toNullableNumber(organisationNode.numberOfStarts),
+  };
+}
+
 function mapEventorError(status: number, body: string) {
   if (status === 401 || status === 403) {
     return 'Eventor-anropet nekades. Kontrollera lokal API-konfiguration.';
@@ -255,4 +288,34 @@ function mapEventorError(status: number, body: string) {
   }
 
   return `Eventor svarade med felkod ${status}.`;
+}
+
+function getNodeText(value: unknown) {
+  if (typeof value === 'string' && value.length > 0) {
+    return value;
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  return getString(record['#text']);
+}
+
+function getString(value: unknown) {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function toArray<T>(value: unknown): T[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  return Array.isArray(value) ? (value as T[]) : [value as T];
+}
+
+function toNullableNumber(value: unknown) {
+  const parsedNumber = Number(value);
+  return Number.isFinite(parsedNumber) ? parsedNumber : null;
 }

@@ -33,11 +33,13 @@ export type FriendRecord = {
 };
 
 export type NotificationPreferenceRecord = {
-  pushEnabled: boolean;
+  pushOnResultList: boolean;
+  pushOnStartList: boolean;
   userId: string;
 };
 
 export type DevicePushTokenRecord = {
+  deviceId: string;
   pushToken: string;
   userId: string;
 };
