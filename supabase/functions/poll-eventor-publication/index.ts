@@ -1,10 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { extractPublicationFlags, fetchEventDetailXml } from '../_shared/eventor.ts';
+import { extractPublicationFlags, fetchEventDetailXml, isPublicationAfterFavorite } from '../_shared/eventor.ts';
 import { sendExpoPushMessages } from '../_shared/expoPush.ts';
 
 type WatchRow = {
+  created_at: string;
   event_id: string;
   event_name: string;
   has_published_results: boolean;
@@ -53,7 +54,7 @@ Deno.serve(async (request) => {
       await Promise.all([
         supabase
           .from('favorite_event_watches')
-          .select('event_id, event_name, has_published_results, has_published_starts, person_id'),
+          .select('created_at, event_id, event_name, has_published_results, has_published_starts, person_id'),
         supabase
           .from('notification_preferences')
           .select('person_id, push_on_result_list, push_on_start_list')
@@ -100,8 +101,10 @@ Deno.serve(async (request) => {
       const flags = extractPublicationFlags(eventXml);
       const messages: Array<{ body: string; title: string; to: string }> = [];
       const pushTokens = tokensByPersonId.get(watch.person_id) ?? [];
+      const shouldNotifyStartPublication = isPublicationAfterFavorite(flags.startPublishedAt, watch.created_at);
+      const shouldNotifyResultPublication = isPublicationAfterFavorite(flags.resultPublishedAt, watch.created_at);
 
-      if (!watch.has_published_starts && flags.hasPublishedStarts && preferencesForUser.push_on_start_list) {
+      if (!watch.has_published_starts && flags.hasPublishedStarts && shouldNotifyStartPublication && preferencesForUser.push_on_start_list) {
         pushTokens.forEach((pushToken) => {
           messages.push({
             body: `${watch.event_name} har nu publicerat startlista.`,
@@ -115,7 +118,7 @@ Deno.serve(async (request) => {
         });
       }
 
-      if (!watch.has_published_results && flags.hasPublishedResults && preferencesForUser.push_on_result_list) {
+      if (!watch.has_published_results && flags.hasPublishedResults && shouldNotifyResultPublication && preferencesForUser.push_on_result_list) {
         pushTokens.forEach((pushToken) => {
           messages.push({
             body: `${watch.event_name} har nu publicerat resultatlista.`,
