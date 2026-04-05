@@ -5,6 +5,7 @@ import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { fetchEventClassNameMap, fetchEventPublishedListXml } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { PublishedListSection, formatPublishedListXml } from '@/src/services/publishedListFormatter';
+import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -32,10 +33,11 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
   const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedAnchorKey, setSelectedAnchorKey] = React.useState<string | null>(null);
   const currentState = state;
+  const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
 
   const pickerAnchors = React.useMemo(
-    () => buildPickerAnchors(currentState?.sections ?? [], currentState?.scope ?? 'public'),
-    [currentState?.scope, currentState?.sections],
+    () => buildPickerAnchors(currentState?.sections ?? [], currentState?.scope ?? 'public', favoriteClasses),
+    [currentState?.scope, currentState?.sections, favoriteClasses],
   );
   const shouldShowPicker = !currentState?.isLoading && !currentState?.error && currentState?.scope === 'public' && pickerAnchors.length > 1;
 
@@ -163,7 +165,10 @@ function PublishedTableSection({
   const columnWidths = React.useMemo(() => {
     return {
       bib: hasBibColumn ? estimateColumnWidth(['Bib', ...section.rows.map((row) => row.bibNumber ?? '-')], 42, 54) : undefined,
-      class: scope === 'organisation' ? estimateColumnWidth(['Klass', ...section.rows.map((row) => row.classLabel ?? '-')], 72, 96) : undefined,
+      class:
+        scope === 'organisation'
+          ? estimateColumnWidth(['Klass', ...section.rows.map((row) => row.classLabel ?? '-')], 72, isEntries ? 132 : 96)
+          : undefined,
       course: scope === 'organisation' && !isEntries ? estimateColumnWidth(['Langd', ...section.rows.map((row) => row.courseLengthLabel ?? '-')], 68, 84) : undefined,
       diff: kind === 'results' ? estimateColumnWidth(['Diff', ...section.rows.map((row) => row.diff ?? '-')], 46, 74) : undefined,
       pace: kind === 'results' ? estimateColumnWidth(['Km-tid', ...section.rows.map((row) => row.pace ?? '-')], 54, 78) : undefined,
@@ -467,12 +472,14 @@ export async function openPublishedListModal(
   }
 }
 
-function buildPickerAnchors(sections: PublishedListSection[], scope: EventPublishedListScope): PickerAnchor[] {
+function buildPickerAnchors(sections: PublishedListSection[], scope: EventPublishedListScope, favoriteClasses: string[]): PickerAnchor[] {
   if (scope === 'public') {
-    return sections.map((section) => ({
+    const anchors = sections.map((section) => ({
       key: `section:${section.title}`,
       label: section.title,
     }));
+
+    return sortPickerAnchors(anchors, favoriteClasses);
   }
 
   const classLabels = new Set<string>();
@@ -485,10 +492,12 @@ function buildPickerAnchors(sections: PublishedListSection[], scope: EventPublis
     });
   });
 
-  return Array.from(classLabels).map((label) => ({
+  const anchors = Array.from(classLabels).map((label) => ({
     key: `class:${label}`,
     label,
   }));
+
+  return sortPickerAnchors(anchors, favoriteClasses);
 }
 
 function formatSectionMeta(meta: string) {
@@ -524,6 +533,37 @@ function getListTitle(kind: EventPublishedListKind, scope: EventPublishedListSco
   }
 
   return `${prefix}anmalningslista`;
+}
+
+function sortPickerAnchors(anchors: PickerAnchor[], favoriteClasses: string[]) {
+  if (favoriteClasses.length === 0) {
+    return anchors;
+  }
+
+  const favoriteIndexByLabel = new Map(favoriteClasses.map((favoriteClass, index) => [normalizeClassLabel(favoriteClass), index]));
+
+  return [...anchors].sort((left, right) => {
+    const leftFavoriteIndex = favoriteIndexByLabel.get(normalizeClassLabel(left.label));
+    const rightFavoriteIndex = favoriteIndexByLabel.get(normalizeClassLabel(right.label));
+
+    if (leftFavoriteIndex !== undefined && rightFavoriteIndex !== undefined) {
+      return leftFavoriteIndex - rightFavoriteIndex;
+    }
+
+    if (leftFavoriteIndex !== undefined) {
+      return -1;
+    }
+
+    if (rightFavoriteIndex !== undefined) {
+      return 1;
+    }
+
+    return 0;
+  });
+}
+
+function normalizeClassLabel(label: string) {
+  return label.replace(/\s+/g, ' ').trim().toLocaleLowerCase('sv');
 }
 
 const styles = StyleSheet.create({

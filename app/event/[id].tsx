@@ -3,7 +3,8 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -74,6 +75,37 @@ export default function EventDetailScreen() {
 
   const openList = async (kind: EventPublishedListKind, scope: 'public' | 'organisation') => {
     await openPublishedListModal(kind, scope, event.id, organisationId, clubName, setActiveListModal);
+  };
+
+  const handleOpenAppleMaps = async () => {
+    if (!event.centerPosition) {
+      return;
+    }
+
+    const { latitude, longitude } = event.centerPosition;
+    await Linking.openURL(`http://maps.apple.com/?daddr=${latitude},${longitude}&dirflg=d`);
+  };
+
+  const handleOpenGoogleMaps = async () => {
+    if (!event.centerPosition) {
+      return;
+    }
+
+    const { latitude, longitude } = event.centerPosition;
+    const appUrl = `comgooglemaps://?daddr=${latitude},${longitude}&directionsmode=driving`;
+    const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=driving`;
+
+    if (Platform.OS === 'ios') {
+      try {
+        await Linking.openURL(appUrl);
+        return;
+      } catch {
+        await Linking.openURL(webUrl);
+        return;
+      }
+    }
+
+    await Linking.openURL(webUrl);
   };
 
   return (
@@ -164,6 +196,42 @@ export default function EventDetailScreen() {
           </View>
         </View>
 
+        <View style={[styles.panel, styles.navigationPanel]}>
+          {event.centerPosition ? (
+            <View style={styles.navigationContent}>
+              <MapView
+                initialRegion={{
+                  latitude: event.centerPosition.latitude,
+                  latitudeDelta: 0.09,
+                  longitude: event.centerPosition.longitude,
+                  longitudeDelta: 0.09,
+                }}
+                rotateEnabled={false}
+                scrollEnabled
+                style={styles.navigationMap}
+                zoomEnabled
+              >
+                <Marker coordinate={event.centerPosition} pinColor={colors.accent} title={event.name} />
+              </MapView>
+
+              {Platform.OS === 'ios' ? (
+                <View style={styles.navigationButtonOverlayRow}>
+                  <MapShortcutButton icon="logo-google" label="Google Maps" onPress={() => void handleOpenGoogleMaps()} />
+                  <MapShortcutButton icon="map-outline" label="Apple Kartor" onPress={() => void handleOpenAppleMaps()} />
+                </View>
+              ) : (
+                <View style={styles.navigationButtonOverlaySingle}>
+                  <MapShortcutButton icon="navigate-outline" label="Google Maps" onPress={() => void handleOpenGoogleMaps()} />
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.navigationEmptyState}>
+              <Text style={styles.sectionText}>Den här tävlingen saknar kartkoordinat i Eventor, så någon vägbeskrivning kan inte öppnas härifrån.</Text>
+            </View>
+          )}
+        </View>
+
         <View style={styles.panel}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Dokument</Text>
@@ -243,6 +311,15 @@ function ActionButton({
       textStyle={styles.actionButtonLabel}
       variant={tone === 'result' ? 'primary' : 'secondary'}
     />
+  );
+}
+
+function MapShortcutButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.mapShortcutButton, pressed ? styles.mapShortcutButtonPressed : null]}>
+      <Ionicons color={colors.primaryDeep} name={icon} size={18} />
+      <Text style={styles.mapShortcutButtonText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -477,6 +554,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#E3F0D7',
     borderColor: '#8CAF7C',
     minHeight: 52,
+  },
+  navigationButtonRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  navigationContent: {
+    minHeight: 200,
+  },
+  navigationMap: {
+    height: 200,
+    width: '100%',
+  },
+  navigationPanel: {
+    overflow: 'hidden',
+    padding: 0,
+  },
+  navigationEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  mapShortcutButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(252, 253, 249, 0.94)',
+    borderColor: '#BED2B6',
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  mapShortcutButtonPressed: {
+    opacity: 0.86,
+  },
+  mapShortcutButtonText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  navigationButtonOverlayRow: {
+    bottom: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    left: spacing.md,
+    position: 'absolute',
+    right: spacing.md,
+  },
+  navigationButtonOverlaySingle: {
+    bottom: spacing.md,
+    left: spacing.md,
+    position: 'absolute',
+    right: spacing.md,
   },
   sectionHeader: {
     alignItems: 'center',

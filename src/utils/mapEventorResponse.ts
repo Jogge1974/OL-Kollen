@@ -45,6 +45,7 @@ export function mapPersonXml(xml: string, username: string): AuthenticatedUser {
     email: extractEmail(person),
     firstName,
     fullName: fallbackFullName ?? getString(person.PersonName) ?? null,
+    gender: mapPersonGender(getString(person.sex)),
     lastName,
     organisationIds,
     organisationName: null,
@@ -330,6 +331,22 @@ function normalizeModifyDate(value: string | null) {
 
 function hasHashKeyPrefix(keys: string[], prefix: string) {
   return keys.some((key) => key.startsWith(prefix));
+}
+
+function mapPersonGender(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value === 'M' || value === 'H') {
+    return 'H';
+  }
+
+  if (value === 'F' || value === 'D') {
+    return 'D';
+  }
+
+  return null;
 }
 
 function toArray<T>(value: unknown): T[] {

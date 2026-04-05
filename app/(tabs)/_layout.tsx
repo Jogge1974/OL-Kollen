@@ -8,6 +8,7 @@ const iconByRoute = {
   calendar: 'calendar-outline',
   index: 'home-outline',
   profile: 'person-outline',
+  settings: 'settings-outline',
 } as const;
 
 type TabRoute = keyof typeof iconByRoute;
@@ -64,6 +65,13 @@ export default function TabsLayout() {
         options={{
           title: 'Min sida',
           tabBarLabel: 'Min sida',
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Inställningar',
+          tabBarLabel: 'Inställningar',
         }}
       />
     </Tabs>

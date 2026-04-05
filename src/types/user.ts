@@ -6,6 +6,7 @@ export type AuthenticatedUser = {
   email: string | null;
   firstName: string | null;
   fullName: string | null;
+  gender: 'D' | 'H' | null;
   lastName: string | null;
   organisationIds: string[];
   organisationName: string | null;
@@ -19,6 +20,7 @@ export type EventorLoginInput = {
 };
 
 export type PersistedAuthSession = {
+  rememberedUsername?: string | null;
   user: AuthenticatedUser;
 };
 

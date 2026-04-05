@@ -12,6 +12,7 @@ type AuthState = {
   hydrateSession: () => Promise<void>;
   isHydrated: boolean;
   isSubmitting: boolean;
+  rememberedUsername: string;
   signInWithEventor: (input: EventorLoginInput & { rememberMe: boolean }) => Promise<void>;
   signOut: () => Promise<void>;
   user: AuthenticatedUser | null;
@@ -26,18 +27,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({
         error: null,
         isHydrated: true,
+        rememberedUsername: storedSession?.rememberedUsername ?? storedSession?.user?.username ?? '',
         user: storedSession?.user ?? null,
       });
     } catch {
       set({
         error: 'Det gick inte att läsa sparad session.',
         isHydrated: true,
+        rememberedUsername: '',
         user: null,
       });
     }
   },
   isHydrated: false,
   isSubmitting: false,
+  rememberedUsername: '',
   signInWithEventor: async ({ password, rememberMe, username }) => {
     set({ error: null, isSubmitting: true });
 
@@ -51,11 +55,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({
         error: null,
         isSubmitting: false,
+        rememberedUsername: rememberMe ? username : '',
         user: enrichedUser,
       });
 
       if (rememberMe) {
-        await setStoredJson(AUTH_SESSION_KEY, { user: enrichedUser });
+        await setStoredJson(AUTH_SESSION_KEY, {
+          rememberedUsername: username,
+          user: enrichedUser,
+        } satisfies PersistedAuthSession);
       } else {
         await removeStoredValue(AUTH_SESSION_KEY);
       }
@@ -73,6 +81,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     await removeStoredValue(AUTH_SESSION_KEY);
     set({
       error: null,
+      rememberedUsername: '',
       user: null,
     });
   },

@@ -16,5 +16,6 @@ export type NotificationSettings = {
 
 export type PersistedPreferences = {
   favoriteEvents: FavoriteEventSummary[];
+  favoriteClasses: string[];
   notificationSettings: NotificationSettings;
 };
