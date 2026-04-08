@@ -1,14 +1,15 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Checkbox from 'expo-checkbox';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
-import { CLASSIFICATION_OPTIONS, createDefaultCalendarFilters } from '@/src/features/calendar/calendarFilters';
+import { CLASSIFICATION_OPTIONS, createDefaultCalendarFilters, resolveCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { formatApiDate, formatDisplayDate, isValidIsoDate } from '@/src/services/dateService';
 import { useAuthStore } from '@/src/store/authStore';
+import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -28,6 +29,8 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [activeDateField, setActiveDateField] = React.useState<DateField>(null);
   const user = useAuthStore((state) => state.user);
+  const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
+  const calendarFilterPresets = usePreferencesStore((state) => state.calendarFilterPresets);
   const { districtOptions, error: districtError, organisationToDistrictId } = useEventorDistricts(visible);
 
   React.useEffect(() => {
@@ -118,7 +121,13 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   };
 
   const handleReset = () => {
-    setDraft(createDefaultCalendarFilters());
+    setDraft(createDefaultCalendarFilters(undefined, calendarDefaultFilterTemplate));
+    setValidationError(null);
+    setActiveDateField(null);
+  };
+
+  const applyTemplate = (template: typeof calendarDefaultFilterTemplate) => {
+    setDraft(resolveCalendarFilterTemplate(template));
     setValidationError(null);
     setActiveDateField(null);
   };
@@ -138,6 +147,23 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
     }));
   };
 
+  const activePresetKey = React.useMemo(() => {
+    const signature = JSON.stringify({
+      classificationIds: [...draft.classificationIds].sort((a, b) => a - b),
+      districtIds: [...draft.districtIds].sort((a, b) => a - b),
+      fromDate: draft.fromDate,
+      toDate: draft.toDate,
+    });
+
+    const defaultSignature = JSON.stringify(resolveCalendarFilterTemplate(calendarDefaultFilterTemplate));
+    if (signature === defaultSignature) {
+      return 'standard';
+    }
+
+    const foundPreset = calendarFilterPresets.find((preset) => JSON.stringify(resolveCalendarFilterTemplate(preset.template)) === signature);
+    return foundPreset?.id ?? null;
+  }, [calendarDefaultFilterTemplate, calendarFilterPresets, draft.classificationIds, draft.districtIds, draft.fromDate, draft.toDate]);
+
   return (
     <Modal animationType="slide" transparent visible={visible}>
       <View style={styles.overlay}>
@@ -145,13 +171,36 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
         <View style={styles.sheet}>
           <ScrollView contentContainerStyle={styles.sheetContent}>
             <View style={styles.headerRow}>
-              <View>
+              <View style={styles.headerCopy}>
                 <Text style={styles.title}>Filter</Text>
                 <Text style={styles.subtitle}>Ange datumintervall, distrikt och tävlingstyper.</Text>
               </View>
-              <Pressable onPress={onClose}>
-                <Text style={styles.closeText}>Stäng</Text>
-              </Pressable>
+              <View style={styles.headerActions}>
+                <Pressable onPress={handleReset} style={styles.resetChip}>
+                  <Text style={styles.resetChipText}>Återställ</Text>
+                </Pressable>
+                <Pressable onPress={onClose}>
+                  <Text style={styles.closeText}>Stäng</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.presetHeaderRow}>
+                <Text style={styles.filterHeading}>Förvalda:</Text>
+              {calendarFilterPresets.length === 0 ? (
+                <Text style={styles.helperText}>Du har inga sparade filter ännu.</Text>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetScroll}>
+                  {calendarFilterPresets.map((preset) => (
+                    <PresetOptionRow
+                      active={activePresetKey === preset.id}
+                      key={preset.id}
+                      label={preset.name}
+                      onPress={() => applyTemplate(preset.template)}
+                    />
+                  ))}
+                </ScrollView>
+              )}
             </View>
 
             <View style={styles.dateRow}>
@@ -234,7 +283,6 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
 
             <View style={styles.footer}>
               <AppButton label="Uppdatera" onPress={handleApply} />
-              <AppButton label="Återställ standard" onPress={handleReset} variant="secondary" />
               <AppButton label="Avbryt" onPress={onClose} variant="secondary" />
             </View>
           </ScrollView>
@@ -290,6 +338,18 @@ function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; labe
   );
 }
 
+function PresetOptionRow({ active, label, onPress }: { active?: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.presetItem, active ? styles.presetItemActive : null]}>
+      <View style={styles.presetRow}>
+        <Text numberOfLines={1} style={[styles.presetLabel, active ? styles.presetLabelActive : null]}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 function parseIsoDate(value: string) {
   const parsed = new Date(`${value}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
@@ -321,6 +381,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: spacing.sm,
+    marginLeft: spacing.sm,
+  },
+  resetChip: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+  },
+  resetChipText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
   },
   title: {
     ...typography.sectionTitle,
@@ -383,13 +464,49 @@ const styles = StyleSheet.create({
     ...typography.captionStrong,
     color: colors.textPrimary,
   },
+  presetHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  presetScroll: {
+    flexGrow: 1,
+    gap: spacing.sm,
+    paddingRight: spacing.xs,
+  },
+  presetItem: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  presetItemActive: {
+    backgroundColor: colors.primaryDeep,
+    borderColor: colors.primaryDeep,
+  },
+  presetRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 0,
+  },
+  presetLabel: {
+    fontFamily: typography.bodyStrong.fontFamily,
+    fontSize: 14,
+    lineHeight: 17,
+    color: colors.textPrimary,
+  },
+  presetLabelActive: {
+    color: colors.heroText,
+  },
   helperText: {
     ...typography.caption,
     color: colors.textSecondary,
   },
   districtColumnsRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   districtColumn: {
     flex: 1,
@@ -450,3 +567,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 });
+
+
+
+

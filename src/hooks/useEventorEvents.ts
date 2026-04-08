@@ -3,10 +3,12 @@ import * as React from 'react';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
 import { createDefaultCalendarFilters } from '@/src/features/calendar/calendarFilters';
 import { EventFilterValues, EventItem } from '@/src/types/eventor';
+import { usePreferencesStore } from '@/src/store/preferencesStore';
 
 export function useEventorEvents() {
+  const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
   const [events, setEvents] = React.useState<EventItem[]>([]);
-  const [filters, setFilters] = React.useState<EventFilterValues>(() => createDefaultCalendarFilters());
+  const [filters, setFilters] = React.useState<EventFilterValues>(() => createDefaultCalendarFilters(undefined, calendarDefaultFilterTemplate));
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
