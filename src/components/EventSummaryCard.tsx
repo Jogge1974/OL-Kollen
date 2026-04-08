@@ -48,7 +48,11 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
         style={({ pressed }) => [styles.cardPressable, pressed ? styles.cardPressed : null]}
       >
         <View style={[styles.cardMain, mode === 'overlay' ? styles.cardMainOverlay : null]}>
-          <Text numberOfLines={mode === 'list' ? 2 : 3} style={[styles.eventName, mode === 'overlay' ? styles.eventNameOverlay : null]}>
+          <Text
+            ellipsizeMode="tail"
+            numberOfLines={mode === 'list' ? 1 : 3}
+            style={[styles.eventName, mode === 'overlay' ? styles.eventNameOverlay : null]}
+          >
             {item.name}
           </Text>
           {organiserLabel ? (
@@ -220,7 +224,7 @@ const styles = StyleSheet.create({
   cardMain: {
     gap: 2,
     paddingLeft: 13,
-    paddingRight: 54,
+    paddingRight: 60,
   },
   cardMainOverlay: {
     gap: 4,

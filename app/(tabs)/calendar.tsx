@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,18 +28,9 @@ export default function CalendarScreen() {
         <View style={styles.backgroundOrbLarge} />
         <View style={styles.backgroundOrbSmall} />
 
+        <Text style={styles.pageTitle}>Tävlingskalendern</Text>
+
         <View style={styles.headerCard}>
-          <View style={styles.headerTopRow}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.title}>Tävlingskalendern</Text>
-              <Text style={styles.subtitle}>Kompakt överblick med sommarfärger, snabb filtrering och kartläge.</Text>
-            </View>
-
-            <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
-              <Text style={styles.filterButtonText}>Filter</Text>
-            </Pressable>
-          </View>
-
           <View style={styles.summaryRow}>
             <View style={styles.summaryPill}>
               <Text style={styles.summaryPillText}>{events.length} tävlingar</Text>
@@ -48,12 +40,21 @@ export default function CalendarScreen() {
             </Text>
           </View>
 
-          <View style={styles.modeSwitch}>
-            <Pressable onPress={() => setViewMode('list')} style={[styles.modeButton, viewMode === 'list' ? styles.modeButtonActive : null]}>
-              <Text style={[styles.modeButtonText, viewMode === 'list' ? styles.modeButtonTextActive : null]}>Lista</Text>
-            </Pressable>
-            <Pressable onPress={() => setViewMode('map')} style={[styles.modeButton, viewMode === 'map' ? styles.modeButtonActive : null]}>
-              <Text style={[styles.modeButtonText, viewMode === 'map' ? styles.modeButtonTextActive : null]}>Karta</Text>
+          <View style={styles.controlsRow}>
+            <View style={styles.modeSwitch}>
+              <Pressable onPress={() => setViewMode('list')} style={[styles.modeButton, viewMode === 'list' ? styles.modeButtonActive : null]}>
+                <Ionicons color={viewMode === 'list' ? colors.heroText : colors.textSecondary} name="list-outline" size={16} />
+                <Text style={[styles.modeButtonText, viewMode === 'list' ? styles.modeButtonTextActive : null]}>Lista</Text>
+              </Pressable>
+              <Pressable onPress={() => setViewMode('map')} style={[styles.modeButton, viewMode === 'map' ? styles.modeButtonActive : null]}>
+                <Ionicons color={viewMode === 'map' ? colors.heroText : colors.textSecondary} name="map-outline" size={16} />
+                <Text style={[styles.modeButtonText, viewMode === 'map' ? styles.modeButtonTextActive : null]}>Karta</Text>
+              </Pressable>
+            </View>
+
+            <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
+              <Ionicons color={colors.primaryDeep} name="funnel-outline" size={16} />
+              <Text style={styles.filterButtonText}>Filter</Text>
             </Pressable>
           </View>
         </View>
@@ -130,6 +131,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 160,
   },
+  pageTitle: {
+    ...typography.screenTitle,
+    color: colors.primaryDeep,
+    marginLeft: spacing.xs,
+  },
   headerCard: {
     backgroundColor: colors.surfaceOverlay,
     borderColor: colors.border,
@@ -137,34 +143,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.md,
     padding: spacing.lg,
-  },
-  headerTopRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
-  },
-  headerCopy: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  title: {
-    ...typography.screenTitle,
-    color: colors.textPrimary,
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  filterButton: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 16,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  filterButtonText: {
-    ...typography.buttonSmall,
-    color: colors.textPrimary,
   },
   summaryRow: {
     alignItems: 'center',
@@ -186,6 +164,11 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
+  controlsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   modeSwitch: {
     alignSelf: 'flex-start',
     backgroundColor: colors.surfaceMuted,
@@ -194,7 +177,10 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   modeButton: {
+    alignItems: 'center',
     borderRadius: 999,
+    flexDirection: 'row',
+    gap: 6,
     paddingHorizontal: spacing.md,
     paddingVertical: 7,
   },
@@ -207,5 +193,20 @@ const styles = StyleSheet.create({
   },
   modeButtonTextActive: {
     color: colors.heroText,
+  },
+  filterButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+  },
+  filterButtonText: {
+    ...typography.buttonSmall,
+    color: colors.textPrimary,
   },
 });

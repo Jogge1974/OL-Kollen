@@ -86,11 +86,6 @@ export default function ProfileScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
       >
-        <View style={styles.headerCard}>
-          <Text style={styles.title}>Min sida</Text>
-          <Text style={styles.subtitle}>Här hanterar du Eventor-inloggning och ser dina favoritmarkerade tävlingar.</Text>
-        </View>
-
         {!user ? (
           <View style={styles.panel}>
             {!showLoginForm ? (
@@ -145,23 +140,13 @@ export default function ProfileScreen() {
             )}
           </View>
         ) : (
-          <View style={styles.panel}>
-            <View style={styles.loggedInHeader}>
-              <View style={styles.loggedInCopy}>
-                <Text style={styles.loggedInName}>{user.fullName ?? 'Inloggad användare'}</Text>
-                <Text style={styles.loggedInMeta}>Accessnivå: {user.accessLevel}</Text>
-              </View>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusBadgeText}>Eventor</Text>
-              </View>
+          <View style={styles.profileHeader}>
+            <View style={styles.profileHeaderCopy}>
+              <Text style={styles.profileName}>{user.fullName ?? 'Inloggad användare'}</Text>
+              <Text style={styles.profileClub}>{user.organisationName ?? (user.organisationIds[0] ?? 'Ej tillgängligt')}</Text>
             </View>
-
-            <View style={styles.infoGrid}>
-              <ProfileRow label="PersonId" value={user.personId ?? 'Saknas i svaret'} />
-              <ProfileRow label="Födelsedatum" value={user.birthDate ?? 'Ej tillgängligt'} />
-              <ProfileRow label="E-post" value={user.email ?? 'Ej tillgängligt'} />
-              <ProfileRow label="Klubb" value={user.organisationName ?? (user.organisationIds[0] ?? 'Ej tillgängligt')} />
-              <ProfileRow label="Användarnamn" value={user.username} />
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusBadgeText}>Free</Text>
             </View>
           </View>
         )}
@@ -338,6 +323,28 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
   },
+  profileHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+    marginLeft: spacing.xs,
+    marginRight: spacing.xs,
+  },
+  profileHeaderCopy: {
+    flex: 1,
+    gap: 2,
+    paddingRight: spacing.md,
+  },
+  profileName: {
+    ...typography.screenTitle,
+    color: colors.primaryDeep,
+  },
+  profileClub: {
+    ...typography.caption,
+    color: colors.primaryDeep,
+    marginLeft: 1,
+  },
   panelTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
@@ -376,25 +383,6 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
-  },
-  loggedInHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
-  },
-  loggedInCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  loggedInName: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-  },
-  loggedInMeta: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textTransform: 'capitalize',
   },
   statusBadge: {
     backgroundColor: colors.accentSoft,
@@ -529,3 +517,5 @@ const styles = StyleSheet.create({
     width: 36,
   },
 });
+
+

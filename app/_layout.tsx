@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { Manrope_400Regular, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold, useFonts } from '@expo-google-fonts/manrope';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -44,14 +44,12 @@ export default function RootLayout() {
       <PushSyncController />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="event/[id]" />
       </Stack>
     </GestureHandlerRootView>
   );
 }
 
 function PushNotificationNavigator() {
-  const router = useRouter();
   const lastHandledEventIdRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -63,16 +61,24 @@ function PushNotificationNavigator() {
       }
 
       lastHandledEventIdRef.current = eventId;
-      router.replace('/calendar');
+      if (typeof router.replace !== 'function' || typeof router.push !== 'function') {
+        return;
+      }
+
       setTimeout(() => {
         if (!isMounted) {
           return;
         }
 
-        router.push({
-          params: { id: eventId },
-          pathname: '/event/[id]',
-        });
+        try {
+          router.replace('/calendar');
+          router.push({
+            params: { id: eventId },
+            pathname: '/event/[id]',
+          });
+        } catch {
+          // Ignore navigation errors on startup; the app must not crash here.
+        }
       }, 0);
     };
 

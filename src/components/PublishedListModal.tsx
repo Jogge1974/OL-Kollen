@@ -29,6 +29,7 @@ type PickerAnchor = {
 
 export function PublishedListModal({ onClose, state }: { onClose: () => void; state: PublishedListModalState | null }) {
   const scrollRef = React.useRef<ScrollView>(null);
+  const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorOffsets, setAnchorOffsets] = React.useState<Record<string, number>>({});
   const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedAnchorKey, setSelectedAnchorKey] = React.useState<string | null>(null);
@@ -39,6 +40,7 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
     () => buildPickerAnchors(currentState?.sections ?? [], currentState?.scope ?? 'public', favoriteClasses),
     [currentState?.scope, currentState?.sections, favoriteClasses],
   );
+
   const shouldShowPicker = !currentState?.isLoading && !currentState?.error && currentState?.scope === 'public' && pickerAnchors.length > 1;
 
   React.useEffect(() => {
@@ -47,24 +49,15 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
   }, [currentState?.title, pickerAnchors]);
 
   React.useEffect(() => {
-    if (!selectedAnchorKey) {
-      return;
-    }
+    return () => {
+      if (scrollRetryTimerRef.current) {
+        clearTimeout(scrollRetryTimerRef.current);
+      }
+    };
+  }, []);
 
-    const offset = anchorOffsets[selectedAnchorKey];
-
-    if (typeof offset === 'number') {
-      scrollRef.current?.scrollTo({
-        animated: true,
-        y: Math.max(offset - 56, 0),
-      });
-    }
-  }, [anchorOffsets, selectedAnchorKey]);
-
-  const handleAnchorPress = React.useCallback(
-    (anchorKey: string) => {
-      setSelectedAnchorKey(anchorKey);
-
+  const scrollToAnchorKey = React.useCallback(
+    (anchorKey: string, retries = 6) => {
       const offset = anchorOffsets[anchorKey];
 
       if (typeof offset === 'number') {
@@ -72,9 +65,38 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
           animated: true,
           y: Math.max(offset - 56, 0),
         });
+        return;
       }
+
+      if (retries <= 0) {
+        return;
+      }
+
+      if (scrollRetryTimerRef.current) {
+        clearTimeout(scrollRetryTimerRef.current);
+      }
+
+      scrollRetryTimerRef.current = setTimeout(() => {
+        scrollToAnchorKey(anchorKey, retries - 1);
+      }, 50);
     },
     [anchorOffsets],
+  );
+
+  React.useEffect(() => {
+    if (!selectedAnchorKey) {
+      return;
+    }
+
+    scrollToAnchorKey(selectedAnchorKey);
+  }, [scrollToAnchorKey, selectedAnchorKey]);
+
+  const handleAnchorPress = React.useCallback(
+    (anchorKey: string) => {
+      setSelectedAnchorKey(anchorKey);
+      scrollToAnchorKey(anchorKey);
+    },
+    [scrollToAnchorKey],
   );
 
   const handleAnchorLayout = React.useCallback((anchorKey: string, event: LayoutChangeEvent) => {
@@ -92,7 +114,7 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
               {currentState?.title}
             </Text>
             <Pressable onPress={onClose}>
-              <Text style={styles.modalClose}>Stang</Text>
+              <Text style={styles.modalClose}>Stäng</Text>
             </Pressable>
           </View>
 
@@ -113,7 +135,7 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
           ) : null}
 
           <ScrollView ref={scrollRef} contentContainerStyle={styles.listModalContent}>
-            {currentState?.isLoading ? <LoadingState label="Hamtar listan..." /> : null}
+            {currentState?.isLoading ? <LoadingState label="Hämtar listan..." /> : null}
             {currentState?.error ? <Text style={styles.documentsErrorText}>{currentState.error}</Text> : null}
             {!currentState?.isLoading && !currentState?.error && currentState?.sections.length === 0 ? (
               <Text style={styles.sectionText}>{currentState.emptyMessage}</Text>
@@ -125,8 +147,8 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
                     eventId={currentState.eventId}
                     key={section.title}
                     kind={currentState.kind}
-                    onOpenOrganisation={setNestedState}
                     onAnchorLayout={handleAnchorLayout}
+                    onOpenOrganisation={setNestedState}
                     scope={currentState.scope}
                     section={section}
                   />
@@ -135,6 +157,7 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
           </ScrollView>
         </View>
       </View>
+
       <PublishedListModal onClose={() => setNestedState(null)} state={nestedState} />
     </Modal>
   );
@@ -143,15 +166,15 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
 function PublishedTableSection({
   eventId,
   kind,
-  onOpenOrganisation,
   onAnchorLayout,
+  onOpenOrganisation,
   scope,
   section,
 }: {
   eventId: string;
   kind: EventPublishedListKind;
-  onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
   onAnchorLayout: (anchorKey: string, event: LayoutChangeEvent) => void;
+  onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
   scope: EventPublishedListScope;
   section: PublishedListSection;
 }) {
@@ -162,38 +185,31 @@ function PublishedTableSection({
   const isEntries = kind === 'entries';
   const isOrganisationResults = scope === 'organisation' && kind === 'results';
   const hasBibColumn = kind === 'starts' && section.rows.some((row) => Boolean(row.bibNumber));
-  const columnWidths = React.useMemo(() => {
-    return {
+
+  const columnWidths = React.useMemo(
+    () => ({
       bib: hasBibColumn ? estimateColumnWidth(['Bib', ...section.rows.map((row) => row.bibNumber ?? '-')], 42, 54) : undefined,
-      class:
-        scope === 'organisation'
-          ? estimateColumnWidth(['Klass', ...section.rows.map((row) => row.classLabel ?? '-')], 72, isEntries ? 132 : 96)
-          : undefined,
+      class: scope === 'organisation' ? estimateColumnWidth(['Klass', ...section.rows.map((row) => row.classLabel ?? '-')], 72, isEntries ? 132 : 96) : undefined,
       course: scope === 'organisation' && !isEntries ? estimateColumnWidth(['Langd', ...section.rows.map((row) => row.courseLengthLabel ?? '-')], 68, 84) : undefined,
       diff: kind === 'results' ? estimateColumnWidth(['Diff', ...section.rows.map((row) => row.diff ?? '-')], 46, 74) : undefined,
       pace: kind === 'results' ? estimateColumnWidth(['Km-tid', ...section.rows.map((row) => row.pace ?? '-')], 54, 78) : undefined,
       placement: kind === 'results' ? estimateColumnWidth(['#', ...section.rows.map((row) => row.position ?? '-')], 22, 42) : undefined,
       time: !isEntries
-        ? estimateColumnWidth(
-            [kind === 'starts' ? 'Starttid' : 'Tid', ...section.rows.map((row) => row.time ?? '-')],
-            kind === 'starts' ? 70 : 44,
-            kind === 'starts' ? 82 : 74,
-          )
+        ? estimateColumnWidth([kind === 'starts' ? 'Starttid' : 'Tid', ...section.rows.map((row) => row.time ?? '-')], kind === 'starts' ? 70 : 44, kind === 'starts' ? 82 : 74)
         : undefined,
-    };
-  }, [hasBibColumn, isEntries, kind, scope, section.rows]);
+    }),
+    [hasBibColumn, isEntries, kind, scope, section.rows],
+  );
+
   const publicEntryNameColumnWidth = React.useMemo(() => {
     if (!(scope === 'public' && isEntries)) {
       return null;
     }
 
-    const estimatedWidth = Math.max(
-      ...section.rows.map((row) => estimateNameWidth([row.givenName, row.familyName].filter(Boolean).join(' ') || row.primary)),
-      120,
-    );
-
+    const estimatedWidth = Math.max(...section.rows.map((row) => estimateNameWidth([row.givenName, row.familyName].filter(Boolean).join(' ') || row.primary)), 120);
     return Math.min(Math.floor(windowWidth * 0.6), estimatedWidth);
   }, [isEntries, scope, section.rows, windowWidth]);
+
   const handleOpenOrganisation = React.useCallback(
     (organisationId?: string, organisationLabel?: string) => {
       if (!organisationId) {
@@ -214,6 +230,7 @@ function PublishedTableSection({
           </Text>
           {section.meta ? <Text style={styles.tableClassHeaderMeta}>{formatSectionMeta(section.meta)}</Text> : null}
         </View>
+
         <View style={styles.tableColumnHeaderRow}>
           {kind === 'results' ? (
             <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tablePlacementColumn, { width: columnWidths.placement }]}>
@@ -304,11 +321,7 @@ function PublishedTableSection({
             ) : null}
 
             {scope === 'public' && !isEntries ? (
-              <Pressable
-                disabled={!row.organisationId}
-                onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)}
-                style={styles.tableNameClubColumn}
-              >
+              <Pressable disabled={!row.organisationId} onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)} style={styles.tableNameClubColumn}>
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
                 <Text numberOfLines={1} style={[styles.tableClubTextSmall, row.organisationId ? styles.tableClubLinkText : null]}>
                   {row.organisation ?? '-'}
@@ -430,9 +443,7 @@ export async function openPublishedListModal(
   try {
     const [rawXml, eventClassNameById] = await Promise.all([
       fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined),
-      kind === 'entries'
-        ? fetchEventClassNameMap(eventId).catch(() => ({}))
-        : Promise.resolve<Record<string, string>>({}),
+      kind === 'entries' ? fetchEventClassNameMap(eventId).catch(() => ({})) : Promise.resolve<Record<string, string>>({}),
     ]);
 
     const formatted = formatPublishedListXml(kind, rawXml, {
@@ -440,6 +451,7 @@ export async function openPublishedListModal(
       organisationId,
       scope,
     });
+
     const sections =
       scope === 'organisation'
         ? formatted.sections.map((section) => ({
@@ -474,12 +486,13 @@ export async function openPublishedListModal(
 
 function buildPickerAnchors(sections: PublishedListSection[], scope: EventPublishedListScope, favoriteClasses: string[]): PickerAnchor[] {
   if (scope === 'public') {
-    const anchors = sections.map((section) => ({
-      key: `section:${section.title}`,
-      label: section.title,
-    }));
-
-    return sortPickerAnchors(anchors, favoriteClasses);
+    return sortPickerAnchors(
+      sections.map((section) => ({
+        key: `section:${section.title}`,
+        label: section.title,
+      })),
+      favoriteClasses,
+    );
   }
 
   const classLabels = new Set<string>();
@@ -492,12 +505,13 @@ function buildPickerAnchors(sections: PublishedListSection[], scope: EventPublis
     });
   });
 
-  const anchors = Array.from(classLabels).map((label) => ({
-    key: `class:${label}`,
-    label,
-  }));
-
-  return sortPickerAnchors(anchors, favoriteClasses);
+  return sortPickerAnchors(
+    Array.from(classLabels).map((label) => ({
+      key: `class:${label}`,
+      label,
+    })),
+    favoriteClasses,
+  );
 }
 
 function formatSectionMeta(meta: string) {
@@ -518,7 +532,7 @@ function getEmptyListMessage(kind: EventPublishedListKind) {
     return 'Ingen startlista hittades.';
   }
 
-  return 'Inga anmalningar hittades.';
+  return 'Inga anmälningar hittades.';
 }
 
 function getListTitle(kind: EventPublishedListKind, scope: EventPublishedListScope, organisationLabel?: string | null) {
@@ -532,7 +546,7 @@ function getListTitle(kind: EventPublishedListKind, scope: EventPublishedListSco
     return `${prefix}startlista`;
   }
 
-  return `${prefix}anmalningslista`;
+  return `${prefix}anmälningslista`;
 }
 
 function sortPickerAnchors(anchors: PickerAnchor[], favoriteClasses: string[]) {
@@ -601,10 +615,6 @@ const styles = StyleSheet.create({
     ...typography.buttonSmall,
     color: colors.primary,
   },
-  listModalContent: {
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
   classPickerContainer: {
     backgroundColor: colors.surface,
     borderBottomColor: colors.border,
@@ -639,6 +649,10 @@ const styles = StyleSheet.create({
   classChipTextActive: {
     color: colors.heroText,
   },
+  listModalContent: {
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
   sectionText: {
     ...typography.body,
     color: colors.textSecondary,
@@ -656,8 +670,8 @@ const styles = StyleSheet.create({
   },
   tableClassHeader: {
     backgroundColor: colors.primaryDeep,
-    paddingHorizontal: spacing.md,
     paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
   tableClassHeaderTopRow: {
@@ -725,11 +739,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     paddingRight: 4,
-  },
-  tableClubColumn: {
-    flexShrink: 0,
-    paddingRight: 4,
-    width: 110,
   },
   tableEntryClubColumn: {
     flex: 1,

@@ -5,7 +5,7 @@ import Checkbox from 'expo-checkbox';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
-import { CLASSIFICATION_OPTIONS } from '@/src/features/calendar/calendarFilters';
+import { CLASSIFICATION_OPTIONS, createDefaultCalendarFilters } from '@/src/features/calendar/calendarFilters';
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { formatApiDate, formatDisplayDate, isValidIsoDate } from '@/src/services/dateService';
 import { useAuthStore } from '@/src/store/authStore';
@@ -115,6 +115,12 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
 
     setValidationError(null);
     onApply(draft);
+  };
+
+  const handleReset = () => {
+    setDraft(createDefaultCalendarFilters());
+    setValidationError(null);
+    setActiveDateField(null);
   };
 
   const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -228,6 +234,7 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
 
             <View style={styles.footer}>
               <AppButton label="Uppdatera" onPress={handleApply} />
+              <AppButton label="Återställ standard" onPress={handleReset} variant="secondary" />
               <AppButton label="Avbryt" onPress={onClose} variant="secondary" />
             </View>
           </ScrollView>

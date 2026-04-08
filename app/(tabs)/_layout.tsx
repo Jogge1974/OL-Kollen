@@ -6,12 +6,11 @@ import { typography } from '@/src/theme/typography';
 
 const iconByRoute = {
   calendar: 'calendar-outline',
+  'event/[id]': 'ellipse-outline',
   index: 'home-outline',
   profile: 'person-outline',
   settings: 'settings-outline',
 } as const;
-
-type TabRoute = keyof typeof iconByRoute;
 
 export default function TabsLayout() {
   return (
@@ -24,15 +23,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarIcon: ({ color, size, focused }) => (
-          <Ionicons
-            color={color}
-            name={
-              focused
-                ? (iconByRoute[route.name as TabRoute].replace('-outline', '') as keyof typeof Ionicons.glyphMap)
-                : iconByRoute[route.name as TabRoute]
-            }
-            size={size}
-          />
+          <Ionicons color={color} name={getTabIconName(route.name, focused)} size={size} />
         ),
         tabBarLabelStyle: {
           ...typography.tabLabel,
@@ -74,6 +65,23 @@ export default function TabsLayout() {
           tabBarLabel: 'Inställningar',
         }}
       />
+      <Tabs.Screen
+        name="event/[id]"
+        options={{
+          href: null,
+          title: 'Tävling',
+        }}
+      />
     </Tabs>
   );
+}
+
+function getTabIconName(routeName: string, focused: boolean) {
+  const icon = iconByRoute[routeName as keyof typeof iconByRoute] ?? 'ellipse-outline';
+
+  if (!focused) {
+    return icon as keyof typeof Ionicons.glyphMap;
+  }
+
+  return icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap;
 }
