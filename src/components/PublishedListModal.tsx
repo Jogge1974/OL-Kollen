@@ -4,6 +4,7 @@ import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
+import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListSection, formatPublishedListXml } from '@/src/services/publishedListFormatter';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
@@ -324,9 +325,13 @@ function PublishedTableSection({
             {scope === 'public' && !isEntries ? (
               <Pressable disabled={!row.organisationId} onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)} style={styles.tableNameClubColumn}>
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
-                <Text numberOfLines={1} style={[styles.tableClubTextSmall, row.organisationId ? styles.tableClubLinkText : null]}>
-                  {row.organisation ?? '-'}
-                </Text>
+                <OrganisationLabel
+                  label={row.organisation}
+                  logoSize={13}
+                  organisationId={row.organisationId}
+                  textStyle={[styles.tableClubTextSmall, row.organisationId ? styles.tableClubLinkText : null]}
+                  viewStyle={styles.clubLabelRow}
+                />
               </Pressable>
             ) : scope === 'public' && isEntries ? (
               <Pressable
@@ -354,9 +359,13 @@ function PublishedTableSection({
 
             {scope === 'public' && isEntries ? (
               <Pressable disabled={!row.organisationId} onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)} style={styles.tableEntryClubColumn}>
-                <Text numberOfLines={1} style={[styles.tableCellText, row.organisationId ? styles.tableClubLinkText : null]}>
-                  {row.organisation ?? '-'}
-                </Text>
+                <OrganisationLabel
+                  label={row.organisation}
+                  logoSize={13}
+                  organisationId={row.organisationId}
+                  textStyle={[styles.tableCellText, row.organisationId ? styles.tableClubLinkText : null]}
+                  viewStyle={styles.clubLabelRow}
+                />
               </Pressable>
             ) : null}
 
@@ -762,10 +771,15 @@ const styles = StyleSheet.create({
     fontFamily: typography.body.fontFamily,
     fontSize: 13,
     lineHeight: 15,
+    flexShrink: 1,
+    minWidth: 0,
   },
   tableClubLinkText: {
     color: colors.primary,
     textDecorationLine: 'underline',
+  },
+  clubLabelRow: {
+    marginTop: 1,
   },
   nameMetaRow: {
     flexDirection: 'row',

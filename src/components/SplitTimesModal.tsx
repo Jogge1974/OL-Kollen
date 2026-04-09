@@ -4,6 +4,7 @@ import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewSt
 
 import { fetchEventSplitTimesXml } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
+import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
@@ -268,9 +269,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                               <Text numberOfLines={1} style={[styles.cell, styles.primaryName]}>
                                 {row.primary}
                               </Text>
-                              <Text numberOfLines={1} style={[styles.cell, styles.clubName]}>
-                                {row.organisation}
-                              </Text>
+                              <OrganisationLabel label={row.organisation} organisationId={row.organisationId} logoSize={13} textStyle={[styles.cell, styles.clubName]} />
                             </View>
                           </View>
                         );
