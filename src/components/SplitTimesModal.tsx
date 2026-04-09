@@ -36,10 +36,14 @@ type RowMetrics = {
   leftPlacement: string;
   splitPrimary: string;
   splitSecondary: string;
+  splitTone: MetricTone;
   totalPrimary: string;
   totalSecondary: string;
+  totalTone: MetricTone;
   loss: string;
 };
+
+type MetricTone = 'default' | 'leader' | 'podium';
 
 type MetricsLayout = {
   loss: number;
@@ -303,13 +307,20 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                                       title={splitTitle}
                                       subtitle={splitSubtitle}
                                       style={[styles.metricColumn, { width: pageMetricsLayout.split }]}
+                                      tone={computed.splitTone}
                                     />
                                     <MetricCell
                                       title={computed.totalPrimary}
                                       subtitle={computed.totalSecondary}
                                       style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
+                                      tone={computed.totalTone}
                                     />
-                                    <MetricCell title={computed.loss} subtitle="" style={[styles.lossColumn, { width: pageMetricsLayout.loss }]} />
+                                    <MetricCell
+                                      title={computed.loss}
+                                      subtitle=""
+                                      style={[styles.lossColumn, { width: pageMetricsLayout.loss }]}
+                                      tone={computed.totalTone}
+                                    />
                                   </View>
                                 );
                               });
@@ -329,13 +340,25 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
   );
 }
 
-function MetricCell({ title, subtitle, style }: { title: string; subtitle: string; style: StyleProp<ViewStyle> }) {
+function MetricCell({
+  title,
+  subtitle,
+  style,
+  tone = 'default',
+}: {
+  title: string;
+  subtitle: string;
+  style: StyleProp<ViewStyle>;
+  tone?: MetricTone;
+}) {
+  const toneStyle = tone === 'leader' ? styles.metricTextLeader : tone === 'podium' ? styles.metricTextPodium : null;
+
   return (
     <View style={[styles.metricCell, style]}>
-      <Text numberOfLines={1} style={styles.metricHeadline}>
+      <Text numberOfLines={1} style={[styles.metricHeadline, toneStyle]}>
         {title}
       </Text>
-      <Text numberOfLines={1} style={styles.metricValue}>
+      <Text numberOfLines={1} style={[styles.metricValue, toneStyle]}>
         {subtitle}
       </Text>
     </View>
@@ -429,8 +452,10 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
       loss: statusLabel,
       splitPrimary: '',
       splitSecondary: '',
+      splitTone: 'default',
       totalPrimary: '',
       totalSecondary: '',
+      totalTone: 'default',
     };
   }
 
@@ -440,24 +465,31 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
       loss: '-',
       splitPrimary: '',
       splitSecondary: '',
+      splitTone: 'default',
       totalPrimary: '-',
       totalSecondary: '',
+      totalTone: 'default',
     };
   }
 
   const totalRank = getRankForValue(allRows, (candidate) => candidate.totalTimeSeconds, totalTime);
   const leaderTime = getLeaderValue(allRows, (candidate) => candidate.totalTimeSeconds);
+  const secondBestTime = getNthValue(allRows, (candidate) => candidate.totalTimeSeconds, 2);
   const behind = leaderTime !== null ? Math.max(0, totalTime - leaderTime) : null;
   const timeLabel = formatDuration(totalTime);
-  const behindLabel = behind !== null ? `+${formatDuration(behind)}` : '';
+  const totalRankNumber = Number(totalRank);
+  const totalTone = totalRankNumber === 1 ? 'leader' : totalRankNumber === 2 || totalRankNumber === 3 ? 'podium' : 'default';
+  const behindLabel = totalRankNumber === 1 && secondBestTime !== null ? formatTimeDelta(secondBestTime - totalTime) : behind !== null ? `+${formatDuration(behind)}` : '';
 
   return {
     leftPlacement: row.totalPosition ?? row.position ?? '-',
     loss: '00:00',
     splitPrimary: `${timeLabel} (${totalRank})`,
     splitSecondary: behindLabel,
+    splitTone: totalTone,
     totalPrimary: `${timeLabel} (${totalRank})`,
     totalSecondary: behindLabel,
+    totalTone,
   };
 }
 
@@ -474,27 +506,37 @@ function buildSplitMetrics(splitIndex: number, row: EventSplitTimesRow, allRows:
       loss: '-',
       splitPrimary: '-',
       splitSecondary: '',
+      splitTone: 'default',
       totalPrimary: '-',
       totalSecondary: '',
+      totalTone: 'default',
     };
   }
 
   const splitRank = getRankForValue(allRows, (candidate) => getSplitTime(candidate, splitIndex), currentSplit);
   const totalRank = getRankForValue(allRows, (candidate) => getSplitCumulative(candidate, splitIndex), currentTotal);
+  const splitRankNumber = Number(splitRank);
+  const totalRankNumber = Number(totalRank);
 
   const splitLeader = getLeaderValue(allRows, (candidate) => getSplitTime(candidate, splitIndex));
   const totalLeader = getLeaderValue(allRows, (candidate) => getSplitCumulative(candidate, splitIndex));
+  const splitSecondBest = getNthValue(allRows, (candidate) => getSplitTime(candidate, splitIndex), 2);
+  const totalSecondBest = getNthValue(allRows, (candidate) => getSplitCumulative(candidate, splitIndex), 2);
 
   const splitBehind = splitLeader !== null ? Math.max(0, currentSplit - splitLeader) : null;
   const totalBehind = totalLeader !== null ? Math.max(0, currentTotal - totalLeader) : null;
+  const splitTone = splitRankNumber === 1 ? 'leader' : splitRankNumber === 2 || splitRankNumber === 3 ? 'podium' : 'default';
+  const totalTone = totalRankNumber === 1 ? 'leader' : totalRankNumber === 2 || totalRankNumber === 3 ? 'podium' : 'default';
 
   return {
     leftPlacement: row.totalPosition ?? row.position ?? '-',
-    loss: splitBehind !== null ? `+${formatDuration(splitBehind)}` : '00:00',
+    loss: totalRankNumber === 1 && totalSecondBest !== null ? formatTimeDelta(totalSecondBest - currentTotal) : splitBehind !== null ? `+${formatDuration(splitBehind)}` : '00:00',
     splitPrimary: `${formatDuration(currentSplit)} (${splitRank})`,
-    splitSecondary: splitBehind !== null ? `+${formatDuration(splitBehind)}` : '',
+    splitSecondary: splitRankNumber === 1 && splitSecondBest !== null ? formatTimeDelta(splitSecondBest - currentSplit) : splitBehind !== null ? `+${formatDuration(splitBehind)}` : '',
+    splitTone,
     totalPrimary: totalsInvalidFromHere ? '-' : `${formatDuration(currentTotal)} (${totalRank})`,
-    totalSecondary: totalsInvalidFromHere ? '' : totalBehind !== null ? `+${formatDuration(totalBehind)}` : '',
+    totalSecondary: totalsInvalidFromHere ? '' : totalRankNumber === 1 && totalSecondBest !== null ? formatTimeDelta(totalSecondBest - currentTotal) : totalBehind !== null ? `+${formatDuration(totalBehind)}` : '',
+    totalTone,
   };
 }
 
@@ -535,6 +577,15 @@ function getLeaderValue(allRows: EventSplitTimesRow[], selector: (row: EventSpli
   return values[0] ?? null;
 }
 
+function getNthValue(allRows: EventSplitTimesRow[], selector: (row: EventSplitTimesRow) => number | null, nth: number) {
+  const values = allRows
+    .map(selector)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right);
+
+  return values[nth - 1] ?? null;
+}
+
 function getSplitCumulative(row: EventSplitTimesRow, splitIndex: number) {
   const value = row.splitCumulativeSeconds[splitIndex - 1];
   return Number.isFinite(value) && value > 0 ? value : null;
@@ -559,6 +610,18 @@ function formatDuration(totalSeconds: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function formatTimeDelta(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+    return '-';
+  }
+
+  if (totalSeconds === 0) {
+    return '-';
+  }
+
+  return `-${formatDuration(totalSeconds)}`;
 }
 
 function formatStatus(status?: string) {
@@ -766,6 +829,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 19,
     textAlign: 'left',
+  },
+  metricTextLeader: {
+    color: colors.error,
+  },
+  metricTextPodium: {
+    color: '#2F6FB8',
   },
   metricHeader: {
     flexShrink: 0,
