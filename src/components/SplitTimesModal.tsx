@@ -47,7 +47,6 @@ type RowMetrics = {
 type MetricTone = 'default' | 'leader' | 'podium';
 
 type MetricsLayout = {
-  loss: number;
   pageWidth: number;
   split: number;
   total: number;
@@ -58,6 +57,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedClassLabel, setSelectedClassLabel] = React.useState<string | null>(null);
   const [selectedPageIndex, setSelectedPageIndex] = React.useState(0);
+  const [expandedLossRows, setExpandedLossRows] = React.useState<Record<string, boolean>>({});
   const currentState = state;
   const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
   const { width: windowWidth } = useWindowDimensions();
@@ -79,10 +79,23 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
   const metricsLayout = React.useMemo(() => buildMetricsLayout(selectedSection, splitPages, tableWidth), [selectedSection, splitPages, tableWidth]);
   const leftPaneWidth = Math.max(126, tableWidth - metricsLayout.pageWidth);
   const rightPaneWidth = metricsLayout.pageWidth;
+  const leftRowMetrics = React.useMemo(
+    () => (selectedSection && selectedPage ? selectedSection.rows.map((row) => buildRowMetrics(selectedPage, row, selectedSection.rows)) : []),
+    [selectedPage, selectedSection],
+  );
+  const pagerRowMetrics = React.useMemo(
+    () =>
+      pagerPages.map((page, pageIndex) => {
+        const pageData = splitPages.length > 1 ? (pageIndex === 0 ? splitPages[splitPages.length - 1] : pageIndex === pagerPages.length - 1 ? splitPages[0] : page) : page;
+        return selectedSection?.rows.map((row) => buildRowMetrics(pageData, row, selectedSection.rows)) ?? [];
+      }),
+    [pagerPages, selectedSection, splitPages],
+  );
 
   React.useEffect(() => {
     setSelectedClassLabel(currentState?.initialClassLabel ?? pickerAnchors[0]?.label ?? null);
     setSelectedPageIndex(0);
+    setExpandedLossRows({});
   }, [currentState?.initialClassLabel, currentState?.title, pickerAnchors]);
 
   React.useEffect(() => {
@@ -114,6 +127,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
   const handleClassPress = React.useCallback((classLabel: string) => {
     setSelectedClassLabel(classLabel);
     setSelectedPageIndex(0);
+    setExpandedLossRows({});
     scrollToPagerIndex(0);
   }, [scrollToPagerIndex]);
 
@@ -188,6 +202,13 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
     },
     [pagerPages.length, rightPaneWidth, scrollToPagerIndex, splitPages.length],
   );
+
+  const toggleLossRow = React.useCallback((rowKey: string) => {
+    setExpandedLossRows((current) => ({
+      ...current,
+      [rowKey]: !current[rowKey],
+    }));
+  }, []);
 
   return (
     <Modal animationType="slide" transparent visible={Boolean(state)}>
@@ -265,9 +286,6 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                         <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.metricHeader, { width: metricsLayout.total }]}>
                           Totalt
                         </Text>
-                        <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.lossHeader, { width: metricsLayout.loss }]}>
-                          Tidsf..
-                        </Text>
                       </View>
                     </View>
                   </View>
@@ -281,7 +299,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                     <View style={[styles.bodyTable, { width: tableWidth, flexGrow: 1 }]}>
                       <View style={[styles.leftPane, { width: leftPaneWidth }]}>
                       {selectedSection.rows.map((row, rowIndex) => {
-                        const computed = buildRowMetrics(selectedPage, row, selectedSection.rows);
+                        const computed = leftRowMetrics[rowIndex];
 
                         return (
                           <View
@@ -317,36 +335,52 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                           <View key={`${page.key}-${pageIndex}`} style={[styles.metricsPage, { width: rightPaneWidth }]}>
                             {(() => {
                               const pageMetricsLayout = metricsLayout;
-                              const pageData = splitPages.length > 1 ? (pageIndex === 0 ? splitPages[splitPages.length - 1] : pageIndex === pagerPages.length - 1 ? splitPages[0] : page) : page;
 
                               return selectedSection.rows.map((row, rowIndex) => {
-                                const computed = buildRowMetrics(pageData, row, selectedSection.rows);
+                                const computed = pagerRowMetrics[pageIndex]?.[rowIndex];
                                 const splitTitle = page.key === 'total' ? '' : computed.splitPrimary;
                                 const splitSubtitle = page.key === 'total' ? '' : computed.splitSecondary;
+                                const rowKey = getSplitRowKey(page.key, row);
+                                const showLoss = Boolean(computed.loss && computed.loss !== '-');
+                                const isExpanded = expandedLossRows[rowKey] ?? false;
 
                                 return (
                                   <View
                                     key={`right-${page.key}-${rowIndex}-${row.primary}`}
                                     style={[styles.tableRow, rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}
                                   >
-                                    <MetricCell
-                                      title={splitTitle}
-                                      subtitle={splitSubtitle}
-                                      style={[styles.metricColumn, { width: pageMetricsLayout.split }]}
-                                      tone={computed.splitTone}
-                                    />
-                                    <MetricCell
-                                      title={computed.totalPrimary}
-                                      subtitle={computed.totalSecondary}
-                                      style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
-                                      tone={computed.totalTone}
-                                    />
-                                    <MetricCell
-                                      title={computed.loss}
-                                      subtitle=""
-                                      style={[styles.lossColumn, { width: pageMetricsLayout.loss }]}
-                                      tone={computed.totalTone}
-                                    />
+                                    {isExpanded ? (
+                                      <Pressable
+                                      onPress={showLoss ? () => toggleLossRow(rowKey) : undefined}
+                                      style={[styles.metricMergedCell, { width: pageMetricsLayout.split + pageMetricsLayout.total }]}
+                                    >
+                                        <Text numberOfLines={1} style={[styles.metricHeadlineStrong, styles.metricHeadlineCenter]}>
+                                          {showLoss ? computed.loss : ''}
+                                        </Text>
+                                        <Text numberOfLines={1} style={[styles.metricValue, styles.metricValueCenter]}>
+                                          Beräk. tidsförlust
+                                        </Text>
+                                      </Pressable>
+                                    ) : (
+                                      <>
+                                        <MetricCell
+                                          title={splitTitle}
+                                          subtitle={splitSubtitle}
+                                          style={[styles.metricColumn, { width: pageMetricsLayout.split }]}
+                                          tone={computed.splitTone}
+                                          emphasized={showLoss}
+                                          onPress={showLoss ? () => toggleLossRow(rowKey) : undefined}
+                                        />
+                                        <MetricCell
+                                          title={computed.totalPrimary}
+                                          subtitle={computed.totalSecondary}
+                                          style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
+                                          tone={computed.totalTone}
+                                          emphasized={showLoss}
+                                          onPress={showLoss ? () => toggleLossRow(rowKey) : undefined}
+                                        />
+                                      </>
+                                    )}
                                   </View>
                                 );
                               });
@@ -371,24 +405,39 @@ function MetricCell({
   subtitle,
   style,
   tone = 'default',
+  emphasized = false,
+  onPress,
 }: {
   title: string;
   subtitle: string;
   style: StyleProp<ViewStyle>;
   tone?: MetricTone;
+  emphasized?: boolean;
+  onPress?: () => void;
 }) {
   const toneStyle = tone === 'leader' ? styles.metricTextLeader : tone === 'podium' ? styles.metricTextPodium : null;
-
-  return (
-    <View style={[styles.metricCell, style]}>
-      <Text numberOfLines={1} style={[styles.metricHeadline, toneStyle]}>
+  const headlineStyle = emphasized ? styles.metricHeadlineStrong : styles.metricHeadline;
+  const valueStyle = emphasized ? styles.metricValueStrong : styles.metricValue;
+  const content = (
+    <>
+      <Text numberOfLines={1} style={[headlineStyle, toneStyle]}>
         {title}
       </Text>
-      <Text numberOfLines={1} style={[styles.metricValue, toneStyle]}>
+      <Text numberOfLines={1} style={[valueStyle, toneStyle]}>
         {subtitle}
       </Text>
-    </View>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} style={[styles.metricCell, style, styles.metricCellPressable]}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <View style={[styles.metricCell, style]}>{content}</View>;
 }
 
 function buildSplitPages(section: EventSplitTimesSection | null): SplitPage[] {
@@ -421,10 +470,9 @@ function buildPagerPages(pages: SplitPage[]): SplitPage[] {
 function buildMetricsLayout(section: EventSplitTimesSection | null, pages: SplitPage[], tableWidth: number): MetricsLayout {
   if (!section || pages.length === 0) {
     return {
-      loss: 62,
-      pageWidth: 228,
-      split: 84,
-      total: 84,
+      pageWidth: 186,
+      split: 93,
+      total: 93,
     };
   }
 
@@ -432,13 +480,11 @@ function buildMetricsLayout(section: EventSplitTimesSection | null, pages: Split
 
   const split = estimateMetricColumnWidth(['Sträcka', ...computedRows.flatMap((row) => [row.splitPrimary, row.splitSecondary])], 68, 108);
   const total = estimateMetricColumnWidth(['Totalt', ...computedRows.flatMap((row) => [row.totalPrimary, row.totalSecondary])], 68, 108);
-  const loss = estimateMetricColumnWidth(['Tidsf..', ...computedRows.map((row) => row.loss)], 44, 72);
   const maxPageWidth = Math.max(150, tableWidth - 126);
-  const rawPageWidth = split + total + loss;
+  const rawPageWidth = split + total;
 
   if (rawPageWidth <= maxPageWidth) {
     return {
-      loss,
       pageWidth: rawPageWidth,
       split,
       total,
@@ -448,11 +494,9 @@ function buildMetricsLayout(section: EventSplitTimesSection | null, pages: Split
   const scale = maxPageWidth / rawPageWidth;
   const scaledSplit = Math.max(60, Math.floor(split * scale));
   const scaledTotal = Math.max(60, Math.floor(total * scale));
-  const scaledLoss = Math.max(40, maxPageWidth - scaledSplit - scaledTotal);
 
   return {
-    loss: scaledLoss,
-    pageWidth: scaledSplit + scaledTotal + scaledLoss,
+    pageWidth: scaledSplit + scaledTotal,
     split: scaledSplit,
     total: scaledTotal,
   };
@@ -640,6 +684,16 @@ function formatLossSeconds(lossSeconds: number | null) {
   }
 
   return `+${formatDuration(lossSeconds)}`;
+}
+
+function getSplitRowKey(pageKey: string, row: EventSplitTimesRow) {
+  return [
+    pageKey,
+    row.totalPosition ?? row.position ?? '',
+    row.primary,
+    row.organisationId ?? row.organisation,
+    row.bibNumber ?? '',
+  ].join('|');
 }
 
 function formatDuration(totalSeconds: number) {
@@ -859,6 +913,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: 1,
   },
+  metricCellPressable: {
+    borderRadius: 8,
+  },
   metricColumn: {
     flexShrink: 0,
     minWidth: 0,
@@ -875,6 +932,17 @@ const styles = StyleSheet.create({
   },
   metricTextPodium: {
     color: '#2F6FB8',
+  },
+  metricHeadlineCenter: {
+    textAlign: 'center',
+  },
+  metricHeadlineStrong: {
+    ...typography.captionStrong,
+    fontFamily: 'Manrope_700Bold',
+    color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 19,
+    textAlign: 'left',
   },
   metricHeader: {
     flexShrink: 0,
@@ -911,6 +979,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 15,
     textAlign: 'left',
+  },
+  metricValueCenter: {
+    textAlign: 'center',
+  },
+  metricValueStrong: {
+    ...typography.captionStrong,
+    fontFamily: 'Manrope_700Bold',
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 15,
+    textAlign: 'left',
+  },
+  metricMergedCell: {
+    alignItems: 'center',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minWidth: 0,
   },
   metricsPager: {
     flexShrink: 0,
