@@ -4,6 +4,14 @@ import { Platform } from 'react-native';
 const logoCache = new Map<string, string | null>();
 const inflightDownloads = new Map<string, Promise<string | null>>();
 
+export function peekOrganisationLogoUri(organisationId?: string | null) {
+  if (!organisationId) {
+    return undefined;
+  }
+
+  return logoCache.get(organisationId);
+}
+
 function getCacheFileUri(organisationId: string) {
   const safeId = organisationId.replace(/[^0-9A-Za-z_-]/g, '_');
   const baseDirectory = FileSystem.cacheDirectory ?? '';

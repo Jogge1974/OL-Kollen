@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Image, ImageStyle, StyleProp, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { getOrganisationLogoUri } from '@/src/services/organisationLogoCache';
+import { getOrganisationLogoUri, peekOrganisationLogoUri } from '@/src/services/organisationLogoCache';
 import { colors } from '@/src/theme/colors';
 
 type OrganisationLogoProps = {
@@ -14,14 +14,22 @@ type OrganisationLogoProps = {
 };
 
 export function OrganisationLogo({ organisationId, label, size = 16, style }: OrganisationLogoProps) {
-  const [logoUri, setLogoUri] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(Boolean(organisationId));
+  const initialLogoUri = peekOrganisationLogoUri(organisationId);
+  const [logoUri, setLogoUri] = React.useState<string | null>(initialLogoUri ?? null);
+  const [loading, setLoading] = React.useState(Boolean(organisationId && initialLogoUri === undefined));
 
   React.useEffect(() => {
     let active = true;
 
     if (!organisationId) {
       setLogoUri(null);
+      setLoading(false);
+      return undefined;
+    }
+
+    const cached = peekOrganisationLogoUri(organisationId);
+    if (cached !== undefined) {
+      setLogoUri(cached);
       setLoading(false);
       return undefined;
     }

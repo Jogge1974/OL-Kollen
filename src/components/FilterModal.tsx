@@ -113,11 +113,18 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   const handleApply = () => {
     if (!isValidIsoDate(draft.fromDate) || !isValidIsoDate(draft.toDate)) {
       setValidationError('Datum måste vara giltiga.');
-      return;
+      return false;
     }
 
     setValidationError(null);
     onApply(draft);
+    return true;
+  };
+
+  const handleApplyAndClose = () => {
+    if (handleApply()) {
+      onClose();
+    }
   };
 
   const handleReset = () => {
@@ -179,7 +186,7 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
                 <Pressable onPress={handleReset} style={styles.resetChip}>
                   <Text style={styles.resetChipText}>Återställ</Text>
                 </Pressable>
-                <Pressable onPress={onClose}>
+                <Pressable onPress={handleApplyAndClose}>
                   <Text style={styles.closeText}>Stäng</Text>
                 </Pressable>
               </View>
