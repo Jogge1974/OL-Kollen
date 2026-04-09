@@ -15,6 +15,7 @@ type FavoritesAndResultsPanelProps = {
   availableYears: number[];
   favoriteEvents: FavoriteEventSummary[];
   onClearFavorites: () => Promise<void>;
+  onOpenAnalysis?: (eventId: string, classLabel: string, personId?: string | null) => void;
   onOpenResultList?: (eventId: string, classLabel: string) => void;
   onOpenSplitTimes?: (eventId: string, classLabel: string) => void;
   onRemoveFavorite: (eventId: string) => Promise<void>;
@@ -31,6 +32,7 @@ export function FavoritesAndResultsPanel({
   availableYears,
   favoriteEvents,
   onClearFavorites,
+  onOpenAnalysis,
   onOpenResultList,
   onOpenSplitTimes,
   onRemoveFavorite,
@@ -149,6 +151,7 @@ export function FavoritesAndResultsPanel({
             error={resultsError}
             isLoading={resultsLoading}
             kind="results"
+            onOpenAnalysis={onOpenAnalysis}
             onOpenResultList={onOpenResultList}
             onOpenSplitTimes={onOpenSplitTimes}
             onPressEvent={(eventId) => router.push({ params: { id: eventId }, pathname: '/event/[id]' })}

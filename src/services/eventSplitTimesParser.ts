@@ -18,6 +18,7 @@ export function parseEventSplitTimesXml(xml: string): EventSplitTimesSection[] {
     const classInfo = getRecord(classNode.Class) ?? getRecord(classNode);
     const classRaceInfo = getRecord(classNode.ClassRaceInfo);
     const course = getRecord(classNode.Course);
+    const courseLengthMeters = toNumber(course?.Length);
     const classLabel = getString(classInfo?.Name) ?? getString(classInfo?.ShortName) ?? getString(classNode.Name) ?? `Klass ${classIndex + 1}`;
     const classEntriesCount = toNullableNumber(classRaceInfo?.noOfStarts) ?? toNullableNumber(classRaceInfo?.numberOfStarts) ?? toNullableNumber(classInfo?.numberOfCompetitors);
     const classLengthLabel = formatCourseLength(toNumber(course?.Length));
@@ -35,6 +36,8 @@ export function parseEventSplitTimesXml(xml: string): EventSplitTimesSection[] {
       classEntriesCount,
       classLabel,
       classLengthLabel: classLengthLabel ?? undefined,
+      classLengthMeters: courseLengthMeters || undefined,
+      classificationId: toNullableNumber(classInfo?.EventClassificationId) ?? toNullableNumber(classInfo?.ClassificationId) ?? undefined,
       rows: rows.sort((left, right) => compareRows(left, right)),
     });
   });
@@ -53,6 +56,8 @@ function parsePersonResultNode(
   const person = getRecord(personNode.Person);
   const personName = getPersonNameParts(person);
   const organisation = getRecord(personNode.Organisation);
+  const personRecord = getRecord(personNode.Person);
+  const personId = getNodeText(personRecord?.PersonId) ?? getNodeText(personRecord?.Id) ?? getNodeText(personNode.PersonId) ?? getNodeText(getRecord(personNode.Person)?.PersonId);
   const result = getRecord(personNode.Result) ?? getRecord(personNode);
   const splitNodes = toArray<Record<string, unknown>>(result?.SplitTime);
   const splitCumulativeSeconds = splitNodes.map((splitNode) => parseSeconds(getTextValue(splitNode.Time)));
@@ -66,6 +71,7 @@ function parsePersonResultNode(
     classEntriesCount,
     classLabel,
     classLengthLabel: classLengthLabel ?? undefined,
+    personId: personId ?? undefined,
     familyName: personName.family ?? undefined,
     givenName: personName.given ?? undefined,
     organisation: getString(organisation?.Name) ?? '-',

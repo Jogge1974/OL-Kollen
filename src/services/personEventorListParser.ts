@@ -148,6 +148,7 @@ function extractRowsFromClassNode(
     const personName = getPersonNameParts(person);
     const organisation = getRecord(personNode.Organisation);
     const organisationId = getNodeText(organisation?.OrganisationId) ?? getNodeText(organisation?.Id) ?? undefined;
+    const personId = getNodeText(person?.PersonId) ?? getNodeText(person?.Id) ?? getNodeText(personNode.PersonId) ?? getNodeText(getRecord(personNode.Person)?.PersonId);
 
     if (kind === 'results') {
       const result = getRecord(personNode.Result) ?? getRecord(personNode);
@@ -168,6 +169,7 @@ function extractRowsFromClassNode(
         eventName: context.eventName,
         organisation: getString(organisation?.Name) ?? '-',
         organisationId,
+        personId: personId ?? undefined,
         pace: calculatePace(timeSeconds, courseLengthMeters),
         position: position ?? '-',
         sortKey: position ? Number(position) : Number.MAX_SAFE_INTEGER,
@@ -190,6 +192,7 @@ function extractRowsFromClassNode(
       favouriteId: context.eventId,
       organisation: getString(organisation?.Name) ?? '-',
       organisationId,
+      personId: personId ?? undefined,
       sortKey: getSecondsFromClockValue(startTime) ?? Number.MAX_SAFE_INTEGER,
       startTime,
       time: startTime,

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/src/components/AppButton';
 import { AppTextField } from '@/src/components/AppTextField';
 import { FavoritesAndResultsPanel } from '@/src/components/FavoritesAndResultsPanel';
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
@@ -28,6 +29,7 @@ export default function ProfileScreen() {
   const [showLoginForm, setShowLoginForm] = React.useState(false);
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
   const { rememberMe, setRememberMe } = useRememberMe(true);
+  const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
   const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
 
@@ -113,6 +115,10 @@ export default function ProfileScreen() {
 
   const handleOpenSplitTimes = React.useCallback((eventId: string, classLabel: string) => {
     void openEventSplitTimesModal(eventId, setActiveSplitTimesModal, classLabel);
+  }, []);
+
+  const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
+    void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
   }, []);
 
   return (
@@ -267,6 +273,7 @@ export default function ProfileScreen() {
             availableYears={availableYears}
             favoriteEvents={favoriteEvents}
             onClearFavorites={clearAllFavorites}
+            onOpenAnalysis={handleOpenAnalysis}
             onOpenResultList={handleOpenResultList}
             onOpenSplitTimes={handleOpenSplitTimes}
             onRemoveFavorite={removeFavorite}
@@ -281,6 +288,7 @@ export default function ProfileScreen() {
         ) : null}
 
         <PublishedListModal onClose={() => setActiveResultListModal(null)} state={activeResultListModal} />
+        <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
         <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} state={activeSplitTimesModal} />
       </ScrollView>
     </SafeAreaView>

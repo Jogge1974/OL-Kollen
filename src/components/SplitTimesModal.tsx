@@ -350,7 +350,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                         contentContainerStyle={{ width: rightPaneWidth * pagerPages.length }}
                         decelerationRate="fast"
                       >
-                        {pagerPages.map((page, pageIndex) => (
+        {pagerPages.map((page, pageIndex) => (
                           <View key={`${page.key}-${pageIndex}`} style={[styles.metricsPage, { width: rightPaneWidth }]}>
                             {selectedSection.rows.map((row, rowIndex) => {
                               const computed = pagerRowMetrics[pageIndex]?.[rowIndex];
@@ -359,7 +359,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                               const isExpanded = expandedLossRows[rowKey] ?? false;
 
                               return (
-                                  <SplitTimesMetricRow
+                                <SplitTimesMetricRow
                                   key={`right-${page.key}-${rowIndex}-${row.primary}`}
                                   computed={computed}
                                   isExpanded={isExpanded}
@@ -496,9 +496,6 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
         >
           <Text numberOfLines={1} style={[styles.metricLossHeadline, styles.metricHeadlineCenter]}>
             {lossHighlight ? computed.loss : ''}
-          </Text>
-          <Text numberOfLines={1} style={[styles.metricLossValue, styles.metricValueCenter]}>
-            Beräk. tidsförlust
           </Text>
         </Pressable>
       ) : (

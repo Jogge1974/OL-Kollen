@@ -14,6 +14,7 @@ type PersonActivitySectionListProps = {
   error: string | null;
   isLoading: boolean;
   kind: 'results' | 'starts';
+  onOpenAnalysis?: (eventId: string, classLabel: string, personId?: string | null) => void;
   onOpenSplitTimes?: (eventId: string, classLabel: string) => void;
   onOpenResultList?: (eventId: string, classLabel: string) => void;
   onPressEvent?: (eventId: string) => void;
@@ -25,6 +26,7 @@ export function PersonActivitySectionList({
   error,
   isLoading,
   kind,
+  onOpenAnalysis,
   onOpenResultList,
   onOpenSplitTimes,
   onPressEvent,
@@ -162,7 +164,11 @@ export function PersonActivitySectionList({
                       <Pressable onPress={() => onOpenSplitTimes?.(row.eventId, row.classLabel)} style={[styles.resultActionButton, styles.resultActionButtonMuted]}>
                         <Text style={styles.resultActionButtonText}>Sträcktider</Text>
                       </Pressable>
-                      <Pressable disabled style={[styles.resultActionButton, styles.resultActionButtonAnalysis]}>
+                      <Pressable
+                        onPress={() => onOpenAnalysis?.(row.eventId, row.classLabel, row.personId ?? null)}
+                        style={[styles.resultActionButton, styles.resultActionButtonAnalysis]}
+                      >
+                        <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
                         <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextAnalysis]}>Analys</Text>
                       </Pressable>
                     </View>
@@ -326,8 +332,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   resultActionButton: {
+    alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
   },

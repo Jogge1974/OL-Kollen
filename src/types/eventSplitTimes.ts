@@ -2,6 +2,8 @@ export type EventSplitTimesSection = {
   classEntriesCount?: number | null;
   classLabel: string;
   classLengthLabel?: string;
+  classLengthMeters?: number | null;
+  classificationId?: number;
   rows: EventSplitTimesRow[];
 };
 
@@ -14,6 +16,7 @@ export type EventSplitTimesRow = {
   givenName?: string;
   organisation: string;
   organisationId?: string;
+  personId?: string;
   position?: string;
   primary: string;
   referencePercent?: number;

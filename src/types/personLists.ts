@@ -19,6 +19,7 @@ export type PersonActivityRow = {
   favouriteId?: string;
   organisation: string;
   organisationId?: string;
+  personId?: string | null;
   pace?: string;
   position?: string;
   sortKey: number;
