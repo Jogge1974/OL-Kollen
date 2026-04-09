@@ -23,7 +23,9 @@ export function parseEventSplitTimesXml(xml: string): EventSplitTimesSection[] {
     const classLengthLabel = formatCourseLength(toNumber(course?.Length));
     const personNodes = toArray<Record<string, unknown>>(classNode.PersonResult);
 
-    const rows = personNodes.map((personNode) => parsePersonResultNode(personNode, classLabel, classEntriesCount, classLengthLabel));
+    const rows = enrichRowsWithLosses(
+      personNodes.map((personNode) => parsePersonResultNode(personNode, classLabel, classEntriesCount, classLengthLabel)),
+    );
 
     if (rows.length === 0) {
       return;
@@ -72,11 +74,123 @@ function parsePersonResultNode(
     primary: personName.fullName || getString(person?.Name) || getString(personNode.Name) || 'Okänd',
     splitCumulativeSeconds,
     splitCount: splitCumulativeSeconds.length,
+    splitLossSeconds: [],
     status: status ?? undefined,
     totalPosition: position ?? '-',
     totalTimeLabel: totalTimeText && totalTimeText !== '0' ? formatDuration(totalTimeSeconds) : '-',
     totalTimeSeconds: totalTimeSeconds > 0 ? totalTimeSeconds : null,
+    totalLossSeconds: null,
   } satisfies EventSplitTimesRow;
+}
+
+function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {
+  if (rows.length === 0) {
+    return rows;
+  }
+
+  const bestSplitTimes = getBestSplitTimes(rows);
+
+  return rows.map((row) => {
+    const referencePercent = calculateReferencePercent(row, bestSplitTimes);
+    const splitLossSeconds = bestSplitTimes.map((bestSplitTime, splitIndex) => calculateSplitLossSeconds(row, splitIndex + 1, bestSplitTime, referencePercent));
+    const totalLossSeconds =
+      row.status && row.status !== 'OK'
+        ? null
+        : splitLossSeconds.reduce((sum: number, value) => sum + (typeof value === 'number' && value > 0 ? value : 0), 0);
+
+    return {
+      ...row,
+      referencePercent,
+      splitLossSeconds,
+      totalLossSeconds,
+    } satisfies EventSplitTimesRow;
+  });
+}
+
+function getBestSplitTimes(rows: EventSplitTimesRow[]) {
+  const splitCount = rows.reduce((max, row) => Math.max(max, row.splitCount), 0);
+  const bestSplitTimes: Array<number | null> = Array.from({ length: splitCount }, () => null);
+
+  for (let splitIndex = 1; splitIndex <= splitCount; splitIndex += 1) {
+    let bestValue: number | null = null;
+
+    for (const row of rows) {
+      const splitTime = getSplitTime(row, splitIndex);
+      if (splitTime === null) {
+        continue;
+      }
+
+      if (bestValue === null || splitTime < bestValue) {
+        bestValue = splitTime;
+      }
+    }
+
+    bestSplitTimes[splitIndex - 1] = bestValue;
+  }
+
+  return bestSplitTimes;
+}
+
+function calculateReferencePercent(row: EventSplitTimesRow, bestSplitTimes: Array<number | null>) {
+  const percentages = bestSplitTimes
+    .map((bestSplitTime, splitIndex) => {
+      if (bestSplitTime === null || bestSplitTime < 60) {
+        return null;
+      }
+
+      const splitTime = getSplitTime(row, splitIndex + 1);
+      if (splitTime === null || splitTime <= 0) {
+        return null;
+      }
+
+      return splitTime / bestSplitTime - 1;
+    })
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    .sort((left, right) => left - right)
+    .slice(0, 5);
+
+  if (percentages.length === 0) {
+    return 0;
+  }
+
+  return percentages.reduce((sum, value) => sum + value, 0) / percentages.length;
+}
+
+function calculateSplitLossSeconds(row: EventSplitTimesRow, splitIndex: number, bestSplitTime: number | null, referencePercent: number) {
+  const currentSplit = getSplitTime(row, splitIndex);
+  if (currentSplit === null || bestSplitTime === null || bestSplitTime <= 0) {
+    return null;
+  }
+
+  const acceptedAlternative1 = Math.round(bestSplitTime * (Math.max(0.2, referencePercent) + 1));
+  const acceptedAlternative2 =
+    bestSplitTime +
+    30 +
+    Math.round(referencePercent * 100) +
+    Math.round(referencePercent * 100) * Math.max(1, Math.round(referencePercent * 10));
+  const acceptedTime = Math.min(acceptedAlternative1, acceptedAlternative2);
+
+  if (acceptedTime >= currentSplit) {
+    return 0;
+  }
+
+  return Math.max(0, currentSplit - Math.round(bestSplitTime + bestSplitTime * referencePercent));
+}
+
+function getSplitCumulative(row: EventSplitTimesRow, splitIndex: number) {
+  const value = row.splitCumulativeSeconds[splitIndex - 1];
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function getSplitTime(row: EventSplitTimesRow, splitIndex: number) {
+  const current = getSplitCumulative(row, splitIndex);
+  const previous = splitIndex === 1 ? 0 : getSplitCumulative(row, splitIndex - 1) ?? 0;
+
+  if (current === null || current <= previous) {
+    return null;
+  }
+
+  return current - previous;
 }
 
 function extractClassNodes(parsed: Record<string, unknown>) {

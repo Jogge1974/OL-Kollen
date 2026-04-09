@@ -498,6 +498,7 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
     };
   }
 
+  const totalLoss = row.totalLossSeconds;
   const totalRank = getRankForValue(allRows, (candidate) => candidate.totalTimeSeconds, totalTime);
   const leaderTime = getLeaderValue(allRows, (candidate) => candidate.totalTimeSeconds);
   const secondBestTime = getNthValue(allRows, (candidate) => candidate.totalTimeSeconds, 2);
@@ -509,7 +510,7 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
 
   return {
     leftPlacement: row.totalPosition ?? row.position ?? '-',
-    loss: '00:00',
+    loss: formatLossSeconds(totalLoss),
     splitPrimary: `${timeLabel} (${totalRank})`,
     splitSecondary: behindLabel,
     splitTone: totalTone,
@@ -553,10 +554,11 @@ function buildSplitMetrics(splitIndex: number, row: EventSplitTimesRow, allRows:
   const totalBehind = totalLeader !== null ? Math.max(0, currentTotal - totalLeader) : null;
   const splitTone = splitRankNumber === 1 ? 'leader' : splitRankNumber === 2 || splitRankNumber === 3 ? 'podium' : 'default';
   const totalTone = totalRankNumber === 1 ? 'leader' : totalRankNumber === 2 || totalRankNumber === 3 ? 'podium' : 'default';
+  const splitLoss = row.splitLossSeconds[splitIndex - 1] ?? null;
 
   return {
     leftPlacement: row.totalPosition ?? row.position ?? '-',
-    loss: totalRankNumber === 1 && totalSecondBest !== null ? formatTimeDelta(totalSecondBest - currentTotal) : splitBehind !== null ? `+${formatDuration(splitBehind)}` : '00:00',
+    loss: formatLossSeconds(splitLoss),
     splitPrimary: `${formatDuration(currentSplit)} (${splitRank})`,
     splitSecondary: splitRankNumber === 1 && splitSecondBest !== null ? formatTimeDelta(splitSecondBest - currentSplit) : splitBehind !== null ? `+${formatDuration(splitBehind)}` : '',
     splitTone,
@@ -626,6 +628,18 @@ function getSplitTime(row: EventSplitTimesRow, splitIndex: number) {
   }
 
   return current - previous;
+}
+
+function formatLossSeconds(lossSeconds: number | null) {
+  if (lossSeconds === null) {
+    return '-';
+  }
+
+  if (lossSeconds <= 0) {
+    return '';
+  }
+
+  return `+${formatDuration(lossSeconds)}`;
 }
 
 function formatDuration(totalSeconds: number) {

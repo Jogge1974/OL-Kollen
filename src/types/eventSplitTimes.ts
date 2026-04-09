@@ -16,10 +16,13 @@ export type EventSplitTimesRow = {
   organisationId?: string;
   position?: string;
   primary: string;
+  referencePercent?: number;
   splitCumulativeSeconds: number[];
   splitCount: number;
+  splitLossSeconds: Array<number | null>;
   status?: string;
   totalTimeLabel: string;
   totalTimeSeconds: number | null;
+  totalLossSeconds: number | null;
   totalPosition?: string;
 };
