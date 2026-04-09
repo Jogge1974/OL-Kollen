@@ -9,6 +9,7 @@ const iconByRoute = {
   'event/[id]': 'ellipse-outline',
   index: 'home-outline',
   profile: 'person-outline',
+  sverigelista: 'trophy-outline',
   settings: 'settings-outline',
 } as const;
 
@@ -56,6 +57,13 @@ export default function TabsLayout() {
         options={{
           title: 'Min sida',
           tabBarLabel: 'Min sida',
+        }}
+      />
+      <Tabs.Screen
+        name="sverigelista"
+        options={{
+          title: 'Sverigelistan',
+          tabBarLabel: 'Sverigelistan',
         }}
       />
       <Tabs.Screen
