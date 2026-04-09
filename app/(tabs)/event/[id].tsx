@@ -69,6 +69,7 @@ export default function EventDetailScreen() {
       hasPublishedStarts: event.hasPublishedStarts,
       id: event.id,
       name: event.name,
+      organiserLabel: event.organiserNames.join(', '),
       startDate: event.startDate,
     });
   };

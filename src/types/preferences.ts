@@ -5,6 +5,7 @@ export type FavoriteEventSummary = {
   hasPublishedResults: boolean;
   hasPublishedStarts: boolean;
   id: string;
+  organiserLabel?: string;
   name: string;
   startDate: string;
 };

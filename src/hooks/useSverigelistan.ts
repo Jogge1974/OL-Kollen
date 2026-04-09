@@ -211,12 +211,14 @@ function buildMonthlyTrend(rows: SverigelistanRow[]) {
     const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
     const row = entriesByMonth.get(monthKey);
 
-    points.push({
-      className: null,
-      label: monthDate.toLocaleDateString('sv-SE', { month: 'short' }).replace('.', ''),
-      rank: row?.Rank ?? null,
-      updated: row?.Updated ?? null,
-    });
+    if (row) {
+      points.push({
+        className: null,
+        label: monthDate.toLocaleDateString('sv-SE', { month: 'short' }).replace('.', ''),
+        rank: row.Rank,
+        updated: row.Updated,
+      });
+    }
   }
 
   return points;

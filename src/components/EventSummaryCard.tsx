@@ -35,6 +35,7 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
       hasPublishedStarts: item.hasPublishedStarts,
       id: item.id,
       name: item.name,
+      organiserLabel,
       startDate: item.startDate,
     });
   };

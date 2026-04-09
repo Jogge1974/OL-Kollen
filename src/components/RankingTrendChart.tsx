@@ -10,6 +10,7 @@ import { SverigelistanTrendPoint } from '@/src/types/sverigelistan';
 type RankingTrendChartProps = {
   classPoints?: SverigelistanTrendPoint[];
   points: SverigelistanTrendPoint[];
+  showTitle?: boolean;
 };
 
 type ChartPoint = {
@@ -19,15 +20,15 @@ type ChartPoint = {
   y: number | null;
 };
 
-const CHART_HEIGHT = 180;
-const CHART_PADDING_BOTTOM = 34;
-const CHART_PADDING_HORIZONTAL = 4;
-const CHART_PADDING_TOP = 18;
-const DOT_SIZE = 10;
-const AXIS_WIDTH = 28;
-const AXIS_GAP = 6;
+const CHART_HEIGHT = 120;
+const CHART_PADDING_BOTTOM = 24;
+const CHART_PADDING_HORIZONTAL = 6;
+const CHART_PADDING_TOP = 14;
+const DOT_SIZE = 8;
+const AXIS_WIDTH = 34;
+const AXIS_GAP = 8;
 
-export function RankingTrendChart({ classPoints = [], points }: RankingTrendChartProps) {
+export function RankingTrendChart({ classPoints = [], points, showTitle = true }: RankingTrendChartProps) {
   const [chartWidth, setChartWidth] = React.useState(0);
 
   const onLayout = (event: LayoutChangeEvent) => {
@@ -40,14 +41,14 @@ export function RankingTrendChart({ classPoints = [], points }: RankingTrendChar
   const usableWidth = Math.max(chartWidth - CHART_PADDING_HORIZONTAL * 2 - AXIS_WIDTH * 2 - AXIS_GAP * 2, 1);
   const usableHeight = CHART_HEIGHT - CHART_PADDING_TOP - CHART_PADDING_BOTTOM - DOT_SIZE;
 
-  const primaryScale = getScale(points);
-  const secondaryScale = getScale(classPoints);
+  const primaryScale = getScale(points, 50);
+  const secondaryScale = getScale(classPoints, 10);
   const primaryChartPoints = buildChartPoints(points, primaryScale, usableHeight, usableWidth);
   const secondaryChartPoints = buildChartPoints(classPoints, secondaryScale, usableHeight, usableWidth);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Placering senaste 12 mÃ¥naderna</Text>
+      {showTitle ? <Text style={styles.title}>Placering senaste månaderna</Text> : null}
 
       <View onLayout={onLayout} style={styles.chartFrame}>
         <View style={styles.axisLeft}>
@@ -132,7 +133,12 @@ function renderPoints(chartPoints: ChartPoint[], pointStyle: object) {
   );
 }
 
-function buildChartPoints(points: SverigelistanTrendPoint[], scale: { best: number; spread: number }, usableHeight: number, usableWidth: number): ChartPoint[] {
+function buildChartPoints(
+  points: SverigelistanTrendPoint[],
+  scale: { max: number; min: number },
+  usableHeight: number,
+  usableWidth: number,
+): ChartPoint[] {
   return points.map((point, index) => {
     const x = CHART_PADDING_HORIZONTAL + AXIS_WIDTH + AXIS_GAP + (usableWidth * index) / Math.max(points.length - 1, 1);
 
@@ -145,7 +151,8 @@ function buildChartPoints(points: SverigelistanTrendPoint[], scale: { best: numb
       };
     }
 
-    const ratio = scale.spread === 0 ? 0.5 : (point.rank - scale.best) / scale.spread;
+    const spread = Math.max(scale.max - scale.min, 1);
+    const ratio = (point.rank - scale.min) / spread;
     const y = CHART_PADDING_TOP + DOT_SIZE / 2 + ratio * usableHeight;
 
     return {
@@ -157,14 +164,15 @@ function buildChartPoints(points: SverigelistanTrendPoint[], scale: { best: numb
   });
 }
 
-function getScale(points: SverigelistanTrendPoint[]) {
+function getScale(points: SverigelistanTrendPoint[], padding: number) {
   const rankedPoints = points.filter((point) => point.rank !== null).map((point) => point.rank as number);
   const best = rankedPoints.length > 0 ? Math.min(...rankedPoints) : 1;
   const worst = rankedPoints.length > 0 ? Math.max(...rankedPoints) : 2;
 
   return {
+    max: Math.max(worst + padding, best + 1),
+    min: Math.max(1, best - padding),
     best,
-    spread: Math.max(worst - best, 1),
     worst,
   };
 }
@@ -196,15 +204,15 @@ const styles = StyleSheet.create({
     ...typography.caption,
     bottom: 0,
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 12,
     position: 'absolute',
   },
   axisValueTop: {
     ...typography.caption,
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 12,
     position: 'absolute',
     top: 20,
   },
@@ -254,8 +262,8 @@ const styles = StyleSheet.create({
   monthLabel: {
     ...typography.caption,
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 12,
     textAlign: 'center',
     width: 24,
   },
@@ -281,7 +289,10 @@ const styles = StyleSheet.create({
   title: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
+
+
+

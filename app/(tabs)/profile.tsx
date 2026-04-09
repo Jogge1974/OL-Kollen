@@ -7,7 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
 import { AppTextField } from '@/src/components/AppTextField';
+import { FavoritesAndResultsPanel } from '@/src/components/FavoritesAndResultsPanel';
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
+import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
+import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
+import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useRememberMe } from '@/src/hooks/useRememberMe';
 import { useSverigelistan } from '@/src/hooks/useSverigelistan';
 import { useAuthStore } from '@/src/store/authStore';
@@ -21,7 +25,9 @@ export default function ProfileScreen() {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showLoginForm, setShowLoginForm] = React.useState(false);
+  const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
   const { rememberMe, setRememberMe } = useRememberMe(true);
+  const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
 
   const error = useAuthStore((state) => state.error);
   const isSubmitting = useAuthStore((state) => state.isSubmitting);
@@ -33,6 +39,7 @@ export default function ProfileScreen() {
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const hydratePreferences = usePreferencesStore((state) => state.hydratePreferences);
   const removeFavorite = usePreferencesStore((state) => state.removeFavorite);
+  const clearAllFavorites = usePreferencesStore((state) => state.clearAllFavorites);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const {
     className,
@@ -51,6 +58,22 @@ export default function ProfileScreen() {
     birthDate: user?.birthDate ?? null,
     gender: user?.gender ?? null,
     runnerId: user?.personId ?? null,
+  });
+  const {
+    availableYears,
+    isLoadingResults,
+    isLoadingStarts,
+    refetch: refetchPersonLists,
+    resultsError,
+    resultsFilter,
+    resultsSections,
+    resultsYear,
+    setResultsFilter,
+    setResultsYear,
+    startsError,
+    startsSections,
+  } = usePersonEventorLists({
+    personId: user?.personId ?? null,
   });
 
   const handleLogin = async () => {
@@ -73,11 +96,18 @@ export default function ProfileScreen() {
     setIsRefreshing(true);
 
     try {
-      await Promise.all([hydrateSession(), hydratePreferences(), refetch()]);
+      await Promise.all([hydrateSession(), hydratePreferences(), refetch(), refetchPersonLists()]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [hydratePreferences, hydrateSession, refetch]);
+  }, [hydratePreferences, hydrateSession, refetch, refetchPersonLists]);
+
+  const handleOpenResultList = React.useCallback(
+    (eventId: string, classLabel: string) => {
+      void openPublishedListModal('results', 'public', eventId, null, null, setActiveResultListModal, classLabel);
+    },
+    [],
+  );
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -152,9 +182,19 @@ export default function ProfileScreen() {
         )}
 
         {user ? (
-          <View style={styles.panel}>
+          <Pressable
+            onPress={
+              !user.personId || isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry
+                ? undefined
+                : () => setShowSverigelistanTrend((value) => !value)
+            }
+            style={styles.panel}
+          >
             <View style={styles.sverigelistanHeader}>
               <Text style={styles.panelTitle}>Sverigelistan</Text>
+              {!user.personId || isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry ? null : (
+                <Text style={styles.sverigelistanUpdated}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
+              )}
             </View>
 
             {!user.personId ? (
@@ -170,18 +210,18 @@ export default function ProfileScreen() {
             ) : (
               <>
                 <View style={styles.rankSummaryGrid}>
-                  <View style={styles.rankSummaryCard}>
+                  <View style={[styles.rankSummaryCard, styles.rankSummaryCardWide]}>
                     <Text style={styles.rankSummaryLabel}>Plac. (förra mån.)</Text>
                     <View style={styles.rankSummaryValueRow}>
                       <View style={styles.rankSummaryValueWrap}>
                         <Text style={styles.rankSummaryValue}>{currentEntry.Rank}</Text>
-                        {previousEntry ? <Text style={styles.rankSummaryComparison}>({previousEntry.Rank})</Text> : null}
+                        <Text style={styles.rankSummaryComparison}>({previousEntry ? previousEntry.Rank : '-'})</Text>
                       </View>
                       {renderTrendBadge(trendDirection)}
                     </View>
                   </View>
 
-                  <View style={styles.rankSummaryCard}>
+                  <View style={[styles.rankSummaryCard, styles.rankSummaryCardWide]}>
                     <Text style={styles.rankSummaryLabel}>{className ? `Plac. ${className}` : 'Plac. klass'}</Text>
                     <View style={styles.rankSummaryValueWrap}>
                       <Text style={styles.rankSummaryValue}>{currentClassRank ?? '—'}</Text>
@@ -189,8 +229,8 @@ export default function ProfileScreen() {
                     </View>
                   </View>
 
-                  <View style={styles.rankSummaryCard}>
-                    <Text style={styles.rankSummaryLabel}>Poäng (förra mån.)</Text>
+                  <View style={[styles.rankSummaryCard, styles.rankSummaryCardNarrow]}>
+                    <Text style={styles.rankSummaryLabel}>Poäng</Text>
                     <View style={styles.rankSummaryValueWrap}>
                       <Text style={styles.rankSummaryValue}>{formatPoints(currentEntry.Points)}</Text>
                       {previousEntry ? <Text style={styles.rankSummaryComparison}>({formatPoints(previousEntry.Points)})</Text> : null}
@@ -198,47 +238,42 @@ export default function ProfileScreen() {
                   </View>
                 </View>
 
-                <Text style={styles.helperText}>Senast uppdaterad {formatUpdatedDate(currentEntry.Updated)}.</Text>
-                <RankingTrendChart classPoints={classTrend} points={monthlyTrend} />
+                {showSverigelistanTrend ? (
+                  <>
+                    <View style={styles.trendHeaderRow}>
+                      <Text style={styles.trendHeaderTitle}>Placering senaste månaderna</Text>
+                      <Text style={styles.trendToggleLink}>&lt;&lt; Visa mindre</Text>
+                    </View>
+                    <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
+                  </>
+                ) : (
+                  <Text style={styles.trendToggleLink}>Visa mer &gt;&gt;</Text>
+                )}
               </>
             )}
-          </View>
+          </Pressable>
         ) : null}
+
+        {user ? <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} /> : null}
 
         {user ? (
-          <View style={styles.panel}>
-            <View style={styles.favoritesHeader}>
-              <Text style={styles.panelTitle}>Favoriter</Text>
-              <View style={styles.favoriteCountBadge}>
-                <Text style={styles.favoriteCountText}>{favoriteEvents.length}</Text>
-              </View>
-            </View>
-
-            {favoriteEvents.length === 0 ? (
-              <Text style={styles.helperText}>Du har inte favoritmarkerat någon tävling ännu.</Text>
-            ) : (
-              <View style={styles.favoriteList}>
-                {favoriteEvents.map((event) => (
-                  <View key={event.id} style={styles.favoriteRow}>
-                    <Pressable
-                      onPress={() => router.push({ params: { id: event.id }, pathname: '/event/[id]' })}
-                      style={({ pressed }) => [styles.favoriteLink, pressed ? styles.favoriteLinkPressed : null]}
-                    >
-                      <Text numberOfLines={2} style={styles.favoriteName}>
-                        {event.name}
-                      </Text>
-                      <Text style={styles.favoriteMeta}>{[event.dateLabel, event.classificationLabel].filter(Boolean).join(' • ')}</Text>
-                    </Pressable>
-
-                    <Pressable onPress={() => void removeFavorite(event.id)} style={styles.favoriteRemoveButton}>
-                      <Ionicons color={colors.primaryDeep} name="star" size={16} />
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
+          <FavoritesAndResultsPanel
+            availableYears={availableYears}
+            favoriteEvents={favoriteEvents}
+            onClearFavorites={clearAllFavorites}
+            onOpenResultList={handleOpenResultList}
+            onRemoveFavorite={removeFavorite}
+            resultsError={resultsError}
+            resultsFilter={resultsFilter}
+            resultsLoading={isLoadingResults}
+            resultsSections={resultsSections}
+            resultsYear={resultsYear}
+            setResultsFilter={setResultsFilter}
+            setResultsYear={setResultsYear}
+          />
         ) : null}
+
+        <PublishedListModal onClose={() => setActiveResultListModal(null)} state={activeResultListModal} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -320,8 +355,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 24,
     borderWidth: 1,
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: spacing.sm,
+    padding: spacing.sm,
   },
   profileHeader: {
     alignItems: 'center',
@@ -421,43 +456,69 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 18,
     borderWidth: 1,
+    alignItems: 'center',
     flex: 1,
-    gap: 4,
-    padding: spacing.sm,
+    gap: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 6,
+  },
+  rankSummaryCardNarrow: {
+    flex: 0.82,
+  },
+  rankSummaryCardWide: {
+    flex: 1.08,
   },
   rankSummaryGrid: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   rankSummaryLabel: {
     ...typography.caption,
     color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'center',
+    width: '100%',
   },
   rankSummaryValue: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   rankSummaryComparison: {
     ...typography.body,
     color: colors.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   rankSummaryValueRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 6,
     justifyContent: 'space-between',
+    width: '100%',
   },
   rankSummaryValueWrap: {
     alignItems: 'baseline',
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'nowrap',
-    gap: 6,
+    gap: 4,
+    justifyContent: 'center',
   },
   sverigelistanHeader: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  sverigelistanUpdated: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 13,
   },
   trendBadge: {
     alignItems: 'center',
@@ -516,6 +577,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
   },
+  trendHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  trendHeaderTitle: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+  },
+  trendToggleLink: {
+    ...typography.captionStrong,
+    color: colors.textMuted,
+    alignSelf: 'flex-end',
+    paddingRight: 2,
+    paddingVertical: 2,
+  },
 });
+
 
 

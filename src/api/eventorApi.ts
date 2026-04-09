@@ -222,6 +222,60 @@ export async function fetchEventCompetitorCount(eventId: string, organisationId:
   };
 }
 
+export async function fetchPersonStartsXml(personId: string, fromDate: string, toDate: string) {
+  const searchParams = new URLSearchParams({
+    includeOrganisationElement: 'true',
+    includePersonElement: 'true',
+    fromDate,
+    personId,
+    toDate,
+  });
+  const requestUrl = buildEventorUrl(`/starts/person?${searchParams.toString()}`);
+
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return xml;
+}
+
+export async function fetchPersonResultsXml(personId: string, fromDate: string, toDate: string) {
+  const searchParams = new URLSearchParams({
+    includeOrganisationElement: 'true',
+    includePersonElement: 'true',
+    fromDate,
+    personId,
+    toDate,
+  });
+  const requestUrl = buildEventorUrl(`/results/person?${searchParams.toString()}`);
+
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return xml;
+}
+
 function buildPublishedListRequest(
   kind: EventPublishedListKind,
   scope: EventPublishedListScope,

@@ -15,6 +15,7 @@ export type PublishedListModalState = {
   emptyMessage: string;
   error: string | null;
   eventId: string;
+  initialAnchorKey?: string | null;
   isLoading: boolean;
   kind: EventPublishedListKind;
   scope: EventPublishedListScope;
@@ -45,8 +46,8 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
 
   React.useEffect(() => {
     setAnchorOffsets({});
-    setSelectedAnchorKey(pickerAnchors[0]?.key ?? null);
-  }, [currentState?.title, pickerAnchors]);
+    setSelectedAnchorKey(currentState?.initialAnchorKey ?? pickerAnchors[0]?.key ?? null);
+  }, [currentState?.initialAnchorKey, currentState?.title, pickerAnchors]);
 
   React.useEffect(() => {
     return () => {
@@ -428,11 +429,15 @@ export async function openPublishedListModal(
   organisationId: string | null,
   organisationLabel: string | null,
   setState: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>,
+  initialAnchorLabel?: string | null,
 ) {
+  const initialAnchorKey = initialAnchorLabel ? `section:${initialAnchorLabel}` : null;
+
   setState({
     emptyMessage: getEmptyListMessage(kind),
     error: null,
     eventId,
+    initialAnchorKey,
     isLoading: true,
     kind,
     scope,
@@ -464,6 +469,7 @@ export async function openPublishedListModal(
       emptyMessage: formatted.emptyMessage,
       error: null,
       eventId,
+      initialAnchorKey,
       isLoading: false,
       kind,
       scope,
@@ -475,6 +481,7 @@ export async function openPublishedListModal(
       emptyMessage: getEmptyListMessage(kind),
       error: loadError instanceof Error ? loadError.message : 'Det gick inte att hamta listan.',
       eventId,
+      initialAnchorKey,
       isLoading: false,
       kind,
       scope,
