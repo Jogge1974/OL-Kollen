@@ -67,6 +67,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
     [currentState?.sections, selectedClassLabel],
   );
   const splitPages = React.useMemo(() => buildSplitPages(selectedSection), [selectedSection]);
+  const pagerPages = React.useMemo(() => buildPagerPages(splitPages), [splitPages]);
   const selectedPage = splitPages[selectedPageIndex] ?? splitPages[0] ?? null;
 
   const tableWidth = Math.max(windowWidth, 280);
@@ -93,15 +94,23 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
     };
   }, []);
 
+  const scrollToPagerIndex = React.useCallback(
+    (pageIndex: number) => {
+      const pagerIndex = splitPages.length > 1 ? pageIndex + 1 : pageIndex;
+      metricsScrollRef.current?.scrollTo({ animated: false, x: pagerIndex * rightPaneWidth, y: 0 });
+    },
+    [rightPaneWidth, splitPages.length],
+  );
+
   React.useEffect(() => {
-    metricsScrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 });
-  }, [selectedSection]);
+    scrollToPagerIndex(0);
+  }, [scrollToPagerIndex, selectedSection]);
 
   const handleClassPress = React.useCallback((classLabel: string) => {
     setSelectedClassLabel(classLabel);
     setSelectedPageIndex(0);
-    metricsScrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 });
-  }, []);
+    scrollToPagerIndex(0);
+  }, [scrollToPagerIndex]);
 
   const handlePreviousPage = React.useCallback(() => {
     if (splitPages.length === 0) {
@@ -110,8 +119,8 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
 
     const nextIndex = selectedPageIndex <= 0 ? splitPages.length - 1 : selectedPageIndex - 1;
     setSelectedPageIndex(nextIndex);
-    metricsScrollRef.current?.scrollTo({ animated: false, x: nextIndex * rightPaneWidth, y: 0 });
-  }, [rightPaneWidth, selectedPageIndex, splitPages.length]);
+    scrollToPagerIndex(nextIndex);
+  }, [scrollToPagerIndex, selectedPageIndex, splitPages.length]);
 
   const handleNextPage = React.useCallback(() => {
     if (splitPages.length === 0) {
@@ -120,15 +129,33 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
 
     const nextIndex = selectedPageIndex >= splitPages.length - 1 ? 0 : selectedPageIndex + 1;
     setSelectedPageIndex(nextIndex);
-    metricsScrollRef.current?.scrollTo({ animated: false, x: nextIndex * rightPaneWidth, y: 0 });
-  }, [rightPaneWidth, selectedPageIndex, splitPages.length]);
+    scrollToPagerIndex(nextIndex);
+  }, [scrollToPagerIndex, selectedPageIndex, splitPages.length]);
 
   const handlePageScrollEnd = React.useCallback(
     (event: { nativeEvent: { contentOffset: { x: number } } }) => {
-      const nextIndex = Math.max(0, Math.min(splitPages.length - 1, Math.round(event.nativeEvent.contentOffset.x / rightPaneWidth)));
-      setSelectedPageIndex(nextIndex);
+      if (splitPages.length <= 1) {
+        return;
+      }
+
+      const displayIndex = Math.max(0, Math.min(pagerPages.length - 1, Math.round(event.nativeEvent.contentOffset.x / rightPaneWidth)));
+
+      if (displayIndex === 0) {
+        const nextIndex = splitPages.length - 1;
+        setSelectedPageIndex(nextIndex);
+        scrollToPagerIndex(nextIndex);
+        return;
+      }
+
+      if (displayIndex === pagerPages.length - 1) {
+        setSelectedPageIndex(0);
+        scrollToPagerIndex(0);
+        return;
+      }
+
+      setSelectedPageIndex(displayIndex - 1);
     },
-    [rightPaneWidth, splitPages.length],
+    [pagerPages.length, scrollToPagerIndex, splitPages.length],
   );
 
   return (
@@ -253,16 +280,17 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                         onMomentumScrollEnd={handlePageScrollEnd}
                         showsHorizontalScrollIndicator={false}
                         style={[styles.metricsPager, { width: rightPaneWidth }]}
-                        contentContainerStyle={{ width: rightPaneWidth * splitPages.length }}
+                        contentContainerStyle={{ width: rightPaneWidth * pagerPages.length }}
                         decelerationRate="fast"
                       >
-                        {splitPages.map((page) => (
+                        {pagerPages.map((page, pageIndex) => (
                           <View key={page.key} style={[styles.metricsPage, { width: rightPaneWidth }]}>
                             {(() => {
                               const pageMetricsLayout = metricsLayout;
+                              const pageData = splitPages.length > 1 ? (pageIndex === 0 ? splitPages[splitPages.length - 1] : pageIndex === pagerPages.length - 1 ? splitPages[0] : page) : page;
 
                               return selectedSection.rows.map((row, rowIndex) => {
-                                const computed = buildRowMetrics(page, row, selectedSection.rows);
+                                const computed = buildRowMetrics(pageData, row, selectedSection.rows);
                                 const splitTitle = page.key === 'total' ? '' : computed.splitPrimary;
                                 const splitSubtitle = page.key === 'total' ? '' : computed.splitSecondary;
 
@@ -331,6 +359,14 @@ function buildSplitPages(section: EventSplitTimesSection | null): SplitPage[] {
   }
 
   return pages;
+}
+
+function buildPagerPages(pages: SplitPage[]): SplitPage[] {
+  if (pages.length <= 1) {
+    return pages;
+  }
+
+  return [pages[pages.length - 1], ...pages, pages[0]];
 }
 
 function buildMetricsLayout(section: EventSplitTimesSection | null, pages: SplitPage[], tableWidth: number): MetricsLayout {
