@@ -14,12 +14,22 @@ type PersonActivitySectionListProps = {
   error: string | null;
   isLoading: boolean;
   kind: 'results' | 'starts';
+  onOpenSplitTimes?: (eventId: string, classLabel: string) => void;
   onOpenResultList?: (eventId: string, classLabel: string) => void;
   onPressEvent?: (eventId: string) => void;
   sections: PersonActivitySection[];
 };
 
-export function PersonActivitySectionList({ emptyLabel, error, isLoading, kind, onOpenResultList, onPressEvent, sections }: PersonActivitySectionListProps) {
+export function PersonActivitySectionList({
+  emptyLabel,
+  error,
+  isLoading,
+  kind,
+  onOpenResultList,
+  onOpenSplitTimes,
+  onPressEvent,
+  sections,
+}: PersonActivitySectionListProps) {
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
 
@@ -149,7 +159,7 @@ export function PersonActivitySectionList({ emptyLabel, error, isLoading, kind, 
                       >
                         <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextPrimary]}>Resultatlista</Text>
                       </Pressable>
-                      <Pressable disabled style={[styles.resultActionButton, styles.resultActionButtonMuted]}>
+                      <Pressable onPress={() => onOpenSplitTimes?.(row.eventId, row.classLabel)} style={[styles.resultActionButton, styles.resultActionButtonMuted]}>
                         <Text style={styles.resultActionButtonText}>Sträcktider</Text>
                       </Pressable>
                       <Pressable disabled style={[styles.resultActionButton, styles.resultActionButtonAnalysis]}>

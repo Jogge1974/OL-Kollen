@@ -10,6 +10,7 @@ import { AppTextField } from '@/src/components/AppTextField';
 import { FavoritesAndResultsPanel } from '@/src/components/FavoritesAndResultsPanel';
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
+import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useRememberMe } from '@/src/hooks/useRememberMe';
@@ -28,6 +29,7 @@ export default function ProfileScreen() {
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
   const { rememberMe, setRememberMe } = useRememberMe(true);
   const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
+  const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
 
   const error = useAuthStore((state) => state.error);
   const isSubmitting = useAuthStore((state) => state.isSubmitting);
@@ -108,6 +110,10 @@ export default function ProfileScreen() {
     },
     [],
   );
+
+  const handleOpenSplitTimes = React.useCallback((eventId: string, classLabel: string) => {
+    void openEventSplitTimesModal(eventId, setActiveSplitTimesModal, classLabel);
+  }, []);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -262,6 +268,7 @@ export default function ProfileScreen() {
             favoriteEvents={favoriteEvents}
             onClearFavorites={clearAllFavorites}
             onOpenResultList={handleOpenResultList}
+            onOpenSplitTimes={handleOpenSplitTimes}
             onRemoveFavorite={removeFavorite}
             resultsError={resultsError}
             resultsFilter={resultsFilter}
@@ -274,6 +281,7 @@ export default function ProfileScreen() {
         ) : null}
 
         <PublishedListModal onClose={() => setActiveResultListModal(null)} state={activeResultListModal} />
+        <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} state={activeSplitTimesModal} />
       </ScrollView>
     </SafeAreaView>
   );

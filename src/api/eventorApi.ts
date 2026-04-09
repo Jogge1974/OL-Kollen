@@ -174,6 +174,37 @@ export async function fetchEventPublishedListXml(
   return xml;
 }
 
+export async function fetchEventSplitTimesXml(eventId: string) {
+  const searchParams = new URLSearchParams({
+    eventId,
+    includeOrganisationElement: 'true',
+    includePersonElement: 'true',
+    includeSplitTimes: 'true',
+  });
+  const requestUrl = buildEventorUrl(`/results/event/iofxml?${searchParams.toString()}`);
+
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+
+  const xml = await response.text();
+
+  if (!response.ok) {
+    console.error('[Eventor] Split times failed', {
+      eventId,
+      status: response.status,
+      url: requestUrl,
+    });
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return xml;
+}
+
 export async function fetchEventClassNameMap(eventId: string) {
   const params = new URLSearchParams({ eventId });
   const requestUrl = buildEventorUrl(`/eventclasses?${params.toString()}`);

@@ -12,6 +12,7 @@ import { AppButton } from '@/src/components/AppButton';
 import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
+import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { useEventCompetitorCount } from '@/src/hooks/useEventCompetitorCount';
 import { useEventDocuments } from '@/src/hooks/useEventDocuments';
 import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
@@ -28,6 +29,7 @@ export default function EventDetailScreen() {
   const { documents, error: documentsError, isLoading: isLoadingDocuments, reload: reloadDocuments } = useEventDocuments(event?.id ?? null);
   const [activeDocument, setActiveDocument] = React.useState<EventDocument | null>(null);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
+  const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
   const [isInfoExpanded, setIsInfoExpanded] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
@@ -76,6 +78,10 @@ export default function EventDetailScreen() {
 
   const openList = async (kind: EventPublishedListKind, scope: 'public' | 'organisation') => {
     await openPublishedListModal(kind, scope, event.id, organisationId, clubName, setActiveListModal);
+  };
+
+  const openSplitTimes = async () => {
+    await openEventSplitTimesModal(event.id, setActiveSplitTimesModal, null, 'Sträcktider');
   };
 
   const handleOpenAppleMaps = async () => {
@@ -177,7 +183,7 @@ export default function EventDetailScreen() {
                   tone="result"
                 />
               ) : null}
-              <ActionButton disabled label="Sträcktider" onPress={() => undefined} tone="result" />
+              <ActionButton label="Sträcktider" onPress={() => void openSplitTimes()} tone="result" />
             </View>
           ) : null}
 
@@ -268,6 +274,7 @@ export default function EventDetailScreen() {
 
       <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} />
       <PublishedListModal state={activeListModal} onClose={() => setActiveListModal(null)} />
+      <SplitTimesModal state={activeSplitTimesModal} onClose={() => setActiveSplitTimesModal(null)} />
     </SafeAreaView>
   );
 }
