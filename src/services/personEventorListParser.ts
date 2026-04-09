@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 
 import { PersonActivityRow, PersonActivitySection, PersonResultsFilter } from '@/src/types/personLists';
+import { formatPacePerKmLabel } from '@/src/utils/pace';
 
 const parser = new XMLParser({
   attributeNamePrefix: '',
@@ -219,12 +220,7 @@ function compareRows(left: PersonActivityRow, right: PersonActivityRow, kind: 'r
 }
 
 function calculatePace(timeSeconds: number, courseLengthMeters: number) {
-  if (timeSeconds <= 0 || courseLengthMeters <= 0) {
-    return '-';
-  }
-
-  const minutesPerKm = timeSeconds / 60 / (courseLengthMeters / 1000);
-  return minutesPerKm.toFixed(2);
+  return formatPacePerKmLabel(timeSeconds, courseLengthMeters);
 }
 
 function formatCourseLength(lengthMeters: number) {

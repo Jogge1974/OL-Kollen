@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 
 import { EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
+import { formatPacePerKmLabel } from '@/src/utils/pace';
 
 const parser = new XMLParser({
   attributeNamePrefix: '',
@@ -24,6 +25,7 @@ export type PublishedListRow = {
   givenName?: string;
   organisation?: string;
   organisationId?: string;
+  personId?: string;
   pace?: string;
   position?: string;
   primary: string;
@@ -265,6 +267,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
         givenName: personName.given ?? undefined,
         organisation: getString(organisation?.Name) ?? '-',
         organisationId: organisationId ?? undefined,
+        personId: getNodeText(person?.PersonId) ?? getNodeText(person?.Id) ?? undefined,
         pace: calculatePace(timeSeconds, courseLengthMeters),
         position: position ?? '-',
         positionSort: position ? Number(position) : Number.MAX_SAFE_INTEGER,
@@ -306,6 +309,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             diff: row.diff,
             familyName: row.familyName,
             givenName: row.givenName,
+            personId: row.personId,
             pace: row.pace,
             position: row.position,
             primary: row.primary,
@@ -332,6 +336,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             givenName: row.givenName,
             organisation: row.organisation,
             organisationId: row.organisationId,
+            personId: row.personId,
             pace: row.pace,
             position: row.position,
             primary: row.primary,
@@ -344,12 +349,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
 }
 
 function calculatePace(timeSeconds: number, courseLengthMeters: number) {
-  if (timeSeconds <= 0 || courseLengthMeters <= 0) {
-    return '-';
-  }
-
-  const minutesPerKm = timeSeconds / 60 / (courseLengthMeters / 1000);
-  return minutesPerKm.toFixed(2);
+  return formatPacePerKmLabel(timeSeconds, courseLengthMeters);
 }
 
 function compareNullableNumbers(left: number | null, right: number | null) {

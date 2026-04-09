@@ -63,6 +63,7 @@ function parsePersonResultNode(
   const splitCumulativeSeconds = splitNodes.map((splitNode) => parseSeconds(getTextValue(splitNode.Time)));
   const totalTimeText = getTextValue(result?.Time);
   const totalTimeSeconds = parseSeconds(totalTimeText);
+  const splitCumulativeWithFinishSeconds = appendFinishSplit(splitCumulativeSeconds, totalTimeSeconds);
   const position = getNodeText(result?.Position) ?? getNodeText(result?.ResultPosition);
   const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
 
@@ -78,8 +79,8 @@ function parsePersonResultNode(
     organisationId: getNodeText(organisation?.Id) ?? getNodeText(organisation?.OrganisationId) ?? undefined,
     position: position ?? '-',
     primary: personName.fullName || getString(person?.Name) || getString(personNode.Name) || 'Okänd',
-    splitCumulativeSeconds,
-    splitCount: splitCumulativeSeconds.length,
+    splitCumulativeSeconds: splitCumulativeWithFinishSeconds,
+    splitCount: splitCumulativeWithFinishSeconds.length,
     splitLossSeconds: [],
     status: status ?? undefined,
     totalPosition: position ?? '-',
@@ -249,6 +250,19 @@ function formatDuration(totalSeconds: number) {
 function getStatusText(value: unknown) {
   const record = getRecord(value);
   return getString(record?.value) ?? getString(record?.Value) ?? getNodeText(value) ?? getTextValue(value);
+}
+
+function appendFinishSplit(splitCumulativeSeconds: number[], totalTimeSeconds: number) {
+  if (!Number.isFinite(totalTimeSeconds) || totalTimeSeconds <= 0) {
+    return splitCumulativeSeconds;
+  }
+
+  const lastSplit = splitCumulativeSeconds[splitCumulativeSeconds.length - 1] ?? 0;
+  if (totalTimeSeconds <= lastSplit) {
+    return splitCumulativeSeconds;
+  }
+
+  return [...splitCumulativeSeconds, totalTimeSeconds];
 }
 
 function getPersonNameParts(person: Record<string, unknown> | null) {

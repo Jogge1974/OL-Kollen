@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
@@ -14,6 +14,8 @@ type UpcomingStartsPanelProps = {
 };
 
 export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStartsPanelProps) {
+  const pathname = usePathname();
+
   if (!isLoading && !error && sections.length === 0) {
     return null;
   }
@@ -26,7 +28,7 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
         error={error}
         isLoading={isLoading}
         kind="starts"
-        onPressEvent={(eventId) => router.push({ params: { id: eventId }, pathname: '/event/[id]' })}
+        onPressEvent={(eventId) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
         sections={sections}
       />
     </View>

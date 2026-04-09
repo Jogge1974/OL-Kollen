@@ -73,7 +73,7 @@ function PushNotificationNavigator() {
         try {
           router.replace('/calendar');
           router.push({
-            params: { id: eventId },
+            params: { id: eventId, returnTo: '/calendar' },
             pathname: '/event/[id]',
           });
         } catch {

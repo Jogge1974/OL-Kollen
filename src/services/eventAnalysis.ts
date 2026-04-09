@@ -1,4 +1,5 @@
 import { EventSplitTimesRow, EventSplitTimesSection } from '@/src/types/eventSplitTimes';
+import { formatPacePerKmLabel } from '@/src/utils/pace';
 
 export type EventAnalysisThird = {
   controls: string;
@@ -122,7 +123,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
       optimalRaceTimeDeltaLabel: optimalRaceTimeDeltaSeconds !== null ? formatTimeDelta(optimalRaceTimeDeltaSeconds) : null,
       pacePerKmLabel: formatPacePerKm(target.totalTimeSeconds, section.classLengthMeters ?? null),
       placingLabel,
-      referencePercentLabel: `${formatPercent(referencePercent)}%`,
+      referencePercentLabel: `${formatPercent(referencePercent * 100)}%`,
       runnerName: target.primary,
       organisation: target.organisation,
       statusLabel: formatStatus(target.status),
@@ -244,12 +245,7 @@ function buildTotalProgressValues(row: EventSplitTimesRow) {
   const values: Array<number | null> = [];
 
   for (let index = 0; index < row.splitCount; index += 1) {
-    const total = getTotalAtLeg(row, index);
-    values.push(total);
-  }
-
-  if (row.totalTimeSeconds !== null && row.status === 'OK') {
-    values.push(row.totalTimeSeconds);
+    values.push(getTotalAtLeg(row, index));
   }
 
   return values;
@@ -415,19 +411,20 @@ function rankAscending(values: number[], target: number) {
 }
 
 function formatPercent(value: number) {
-  return value.toLocaleString('sv-SE', {
+  const rounded = Math.round(value * 10) / 10;
+
+  if (Number.isInteger(rounded)) {
+    return `${rounded}`;
+  }
+
+  return rounded.toLocaleString('sv-SE', {
     maximumFractionDigits: 1,
     minimumFractionDigits: 1,
   });
 }
 
 function formatPacePerKm(totalTimeSeconds: number | null, courseLengthMeters: number | null) {
-  if (!totalTimeSeconds || !courseLengthMeters || courseLengthMeters <= 0) {
-    return '-';
-  }
-
-  const secondsPerKm = totalTimeSeconds / (courseLengthMeters / 1000);
-  return `${formatTime(Math.round(secondsPerKm))} /km`;
+  return formatPacePerKmLabel(totalTimeSeconds, courseLengthMeters);
 }
 
 function formatTime(totalSeconds: number) {

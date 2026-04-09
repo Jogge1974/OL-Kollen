@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
@@ -44,6 +44,7 @@ export function FavoritesAndResultsPanel({
   setResultsFilter,
   setResultsYear,
 }: FavoritesAndResultsPanelProps) {
+  const pathname = usePathname();
   const [selectedTab, setSelectedTab] = React.useState<'favorites' | 'results'>('favorites');
 
   const confirmClearFavorites = () => {
@@ -91,7 +92,7 @@ export function FavoritesAndResultsPanel({
               {favoriteEvents.map((event) => (
                 <View key={event.id} style={styles.favoriteRow}>
                   <Pressable
-                    onPress={() => router.push({ params: { id: event.id }, pathname: '/event/[id]' })}
+                    onPress={() => router.push({ params: { id: event.id, returnTo: pathname }, pathname: '/event/[id]' })}
                     style={({ pressed }) => [styles.favoriteLink, pressed ? styles.favoriteLinkPressed : null]}
                   >
                     <Text numberOfLines={2} style={styles.favoriteName}>
@@ -154,7 +155,7 @@ export function FavoritesAndResultsPanel({
             onOpenAnalysis={onOpenAnalysis}
             onOpenResultList={onOpenResultList}
             onOpenSplitTimes={onOpenSplitTimes}
-            onPressEvent={(eventId) => router.push({ params: { id: eventId }, pathname: '/event/[id]' })}
+            onPressEvent={(eventId) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
             sections={resultsSections}
           />
         </>

@@ -32,11 +32,11 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
     [visibleDistrictOptions],
   );
 
-  const classificationRows = React.useMemo(
+  const classificationColumns = React.useMemo(
     () => [
-      [CLASSIFICATION_OPTIONS[0], CLASSIFICATION_OPTIONS[3]],
-      [CLASSIFICATION_OPTIONS[1], CLASSIFICATION_OPTIONS[4]],
-      [CLASSIFICATION_OPTIONS[2], CLASSIFICATION_OPTIONS[5]],
+      [CLASSIFICATION_OPTIONS[0], CLASSIFICATION_OPTIONS[1]],
+      [CLASSIFICATION_OPTIONS[2], CLASSIFICATION_OPTIONS[3]],
+      [CLASSIFICATION_OPTIONS[4], CLASSIFICATION_OPTIONS[5]],
     ],
     [],
   );
@@ -118,25 +118,18 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
 
       <View style={styles.filterCard}>
         <Text style={styles.filterHeading}>Tävlingar</Text>
-        <View style={styles.classificationRows}>
-          {classificationRows.map(([leftOption, rightOption]) => (
-            <View key={leftOption.id} style={styles.classificationRow}>
-              <View style={styles.classificationCell}>
+        <View style={styles.classificationColumnsRow}>
+          {classificationColumns.map((column, index) => (
+            <View key={`classification-column-${index}`} style={styles.classificationColumn}>
+              {column.map((option) => (
                 <ClassificationOption
-                  checked={template.classificationIds.includes(leftOption.id)}
-                  id={leftOption.id}
-                  label={leftOption.label}
-                  onPress={() => toggleClassification(leftOption.id)}
+                  key={option.id}
+                  checked={template.classificationIds.includes(option.id)}
+                  id={option.id}
+                  label={option.label}
+                  onPress={() => toggleClassification(option.id)}
                 />
-              </View>
-              <View style={styles.classificationCell}>
-                <ClassificationOption
-                  checked={template.classificationIds.includes(rightOption.id)}
-                  id={rightOption.id}
-                  label={rightOption.label}
-                  onPress={() => toggleClassification(rightOption.id)}
-                />
-              </View>
+              ))}
             </View>
           ))}
         </View>
@@ -190,11 +183,11 @@ function ClassificationOption({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.checkboxItem}>
-      <View style={styles.checkboxRow}>
+    <Pressable onPress={onPress} style={styles.classificationItem}>
+      <View style={styles.classificationRow}>
         <Checkbox color={checked ? colors.primary : undefined} value={checked} onValueChange={onPress} />
-        <Text style={styles.checkboxTitle}>{id}</Text>
-        <Text numberOfLines={2} style={styles.checkboxDescription}>
+        <Text style={styles.classificationTitle}>{id}</Text>
+        <Text numberOfLines={2} style={styles.classificationDescription}>
           {label}
         </Text>
       </View>
@@ -300,32 +293,30 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  classificationRows: {
-    gap: spacing.xs,
-  },
-  classificationRow: {
+  classificationColumnsRow: {
     flexDirection: 'row',
     gap: spacing.xs,
   },
-  classificationCell: {
+  classificationColumn: {
     flex: 1,
+    gap: spacing.xs,
   },
-  checkboxItem: {
+  classificationItem: {
     borderRadius: 14,
     paddingHorizontal: 2,
     paddingVertical: 2,
   },
-  checkboxRow: {
+  classificationRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.xs,
   },
-  checkboxTitle: {
+  classificationTitle: {
     ...typography.captionStrong,
     color: colors.primaryDeep,
     width: 20,
   },
-  checkboxDescription: {
+  classificationDescription: {
     ...typography.caption,
     color: colors.textPrimary,
     flex: 1,

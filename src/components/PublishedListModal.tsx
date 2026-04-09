@@ -5,7 +5,7 @@ import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { fetchEventClassNameMap, fetchEventPublishedListXml } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
-import { PublishedListSection, formatPublishedListXml } from '@/src/services/publishedListFormatter';
+import { PublishedListRow, PublishedListSection, formatPublishedListXml } from '@/src/services/publishedListFormatter';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
@@ -29,12 +29,31 @@ type PickerAnchor = {
   label: string;
 };
 
-export function PublishedListModal({ onClose, state }: { onClose: () => void; state: PublishedListModalState | null }) {
+type OpenAnalysisHandler = (eventId: string, classLabel: string, personId?: string | null) => void;
+type PendingChoice = {
+  classLabel: string;
+  eventId: string;
+  organisationId: string;
+  organisationLabel: string | null;
+  personId: string;
+  personLabel: string;
+};
+
+export function PublishedListModal({
+  onClose,
+  onOpenAnalysis,
+  state,
+}: {
+  onClose: () => void;
+  onOpenAnalysis?: OpenAnalysisHandler;
+  state: PublishedListModalState | null;
+}) {
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorOffsets, setAnchorOffsets] = React.useState<Record<string, number>>({});
   const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedAnchorKey, setSelectedAnchorKey] = React.useState<string | null>(null);
+  const [pendingChoice, setPendingChoice] = React.useState<PendingChoice | null>(null);
   const currentState = state;
   const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
 
@@ -48,6 +67,7 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
   React.useEffect(() => {
     setAnchorOffsets({});
     setSelectedAnchorKey(currentState?.initialAnchorKey ?? pickerAnchors[0]?.key ?? null);
+    setPendingChoice(null);
   }, [currentState?.initialAnchorKey, currentState?.title, pickerAnchors]);
 
   React.useEffect(() => {
@@ -150,6 +170,8 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
                     key={section.title}
                     kind={currentState.kind}
                     onAnchorLayout={handleAnchorLayout}
+                    onOpenAnalysis={onOpenAnalysis}
+                    onOpenAnalysisChoice={setPendingChoice}
                     onOpenOrganisation={setNestedState}
                     scope={currentState.scope}
                     section={section}
@@ -157,10 +179,62 @@ export function PublishedListModal({ onClose, state }: { onClose: () => void; st
                 ))
               : null}
           </ScrollView>
+
+          {pendingChoice ? (
+            <View style={styles.choiceOverlay}>
+              <Pressable style={styles.choiceBackdrop} onPress={() => setPendingChoice(null)} />
+              <View style={styles.choiceCard}>
+                <Text style={styles.choiceTitle}>{pendingChoice.organisationLabel ?? 'Klubb'}</Text>
+                <Text style={styles.choiceText}>Vill du öppna klubbresultat eller analys?</Text>
+
+                <View style={styles.choiceButtons}>
+                  <Pressable
+                    onPress={() => {
+                      setPendingChoice(null);
+                      void openPublishedListModal('results', 'organisation', pendingChoice.eventId, pendingChoice.organisationId, pendingChoice.organisationLabel, setNestedState);
+                    }}
+                    style={[styles.choiceButton, styles.choiceButtonSecondary]}
+                  >
+                    <View style={styles.choiceButtonInlineRow}>
+                      <Text style={[styles.choiceButtonLabel, styles.choiceButtonSecondaryLabel]}>Klubbresultat</Text>
+                      <OrganisationLabel
+                        label={pendingChoice.organisationLabel}
+                        logoSize={16}
+                        organisationId={pendingChoice.organisationId}
+                        textStyle={styles.choiceButtonClubText}
+                        viewStyle={styles.choiceButtonClubRow}
+                      />
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setPendingChoice(null);
+                      onClose();
+                      setTimeout(() => {
+                        onOpenAnalysis?.(pendingChoice.eventId, pendingChoice.classLabel, pendingChoice.personId);
+                      }, 0);
+                    }}
+                    style={[styles.choiceButton, styles.choiceButtonPrimary]}
+                  >
+                    <View style={styles.choiceButtonInlineRow}>
+                      <Text style={styles.choiceButtonLabel}>Analys</Text>
+                      <Text numberOfLines={1} style={styles.choiceButtonPersonText}>
+                        {pendingChoice.personLabel}
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
+
+                <Pressable onPress={() => setPendingChoice(null)} style={styles.choiceCancel}>
+                  <Text style={styles.choiceCancelText}>Avbryt</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
 
-      <PublishedListModal onClose={() => setNestedState(null)} state={nestedState} />
+      <PublishedListModal onClose={() => setNestedState(null)} onOpenAnalysis={onOpenAnalysis} state={nestedState} />
     </Modal>
   );
 }
@@ -169,6 +243,8 @@ function PublishedTableSection({
   eventId,
   kind,
   onAnchorLayout,
+  onOpenAnalysis,
+  onOpenAnalysisChoice,
   onOpenOrganisation,
   scope,
   section,
@@ -176,6 +252,8 @@ function PublishedTableSection({
   eventId: string;
   kind: EventPublishedListKind;
   onAnchorLayout: (anchorKey: string, event: LayoutChangeEvent) => void;
+  onOpenAnalysis?: OpenAnalysisHandler;
+  onOpenAnalysisChoice: (choice: PendingChoice) => void;
   onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
   scope: EventPublishedListScope;
   section: PublishedListSection;
@@ -212,15 +290,31 @@ function PublishedTableSection({
     return Math.min(Math.floor(windowWidth * 0.6), estimatedWidth);
   }, [isEntries, scope, section.rows, windowWidth]);
 
-  const handleOpenOrganisation = React.useCallback(
-    (organisationId?: string, organisationLabel?: string) => {
-      if (!organisationId) {
+  const handleRowPress = React.useCallback(
+    (row: PublishedListRow) => {
+      if (!row.organisationId) {
         return;
       }
 
-      void openPublishedListModal(kind, 'organisation', eventId, organisationId, organisationLabel ?? null, onOpenOrganisation);
+      const openOrganisation = () => {
+        void openPublishedListModal(kind, 'organisation', eventId, row.organisationId ?? null, row.organisation ?? null, onOpenOrganisation);
+      };
+
+      if (kind === 'results' && onOpenAnalysis && row.personId) {
+        onOpenAnalysisChoice({
+          classLabel: row.classLabel ?? section.title,
+          eventId,
+          organisationId: row.organisationId,
+          organisationLabel: row.organisation ?? null,
+          personId: row.personId,
+          personLabel: row.primary,
+        });
+        return;
+      }
+
+      openOrganisation();
     },
-    [eventId, kind, onOpenOrganisation],
+    [eventId, kind, onOpenAnalysis, onOpenOrganisation, section.title],
   );
 
   return (
@@ -323,7 +417,7 @@ function PublishedTableSection({
             ) : null}
 
             {scope === 'public' && !isEntries ? (
-              <Pressable disabled={!row.organisationId} onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)} style={styles.tableNameClubColumn}>
+              <Pressable disabled={!row.organisationId} onPress={() => handleRowPress(row)} style={styles.tableNameClubColumn}>
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
                 <OrganisationLabel
                   label={row.organisation}
@@ -334,11 +428,7 @@ function PublishedTableSection({
                 />
               </Pressable>
             ) : scope === 'public' && isEntries ? (
-              <Pressable
-                disabled={!row.organisationId}
-                onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)}
-                style={[styles.tableNameColumn, publicEntryNameColumnWidth ? { width: publicEntryNameColumnWidth } : null]}
-              >
+              <Pressable disabled={!row.organisationId} onPress={() => handleRowPress(row)} style={[styles.tableNameColumn, publicEntryNameColumnWidth ? { width: publicEntryNameColumnWidth } : null]}>
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
               </Pressable>
             ) : (
@@ -358,7 +448,7 @@ function PublishedTableSection({
             )}
 
             {scope === 'public' && isEntries ? (
-              <Pressable disabled={!row.organisationId} onPress={() => handleOpenOrganisation(row.organisationId, row.organisation)} style={styles.tableEntryClubColumn}>
+              <Pressable disabled={!row.organisationId} onPress={() => handleRowPress(row)} style={styles.tableEntryClubColumn}>
                 <OrganisationLabel
                   label={row.organisation}
                   logoSize={13}
@@ -676,6 +766,85 @@ const styles = StyleSheet.create({
   documentsErrorText: {
     ...typography.captionStrong,
     color: colors.error,
+  },
+  choiceBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  choiceButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  choiceButton: {
+    alignItems: 'flex-start',
+    borderRadius: 999,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  choiceButtonPrimary: {
+    backgroundColor: colors.primaryDeep,
+  },
+  choiceButtonLabel: {
+    ...typography.buttonSmall,
+    color: colors.heroText,
+  },
+  choiceButtonSecondary: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  choiceButtonSecondaryLabel: {
+    color: colors.primaryDeep,
+  },
+  choiceButtonClubRow: {
+    marginLeft: 4,
+  },
+  choiceButtonClubText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+  },
+  choiceButtonPersonText: {
+    ...typography.captionStrong,
+    color: colors.heroText,
+    marginLeft: 4,
+  },
+  choiceButtonInlineRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: 4,
+  },
+  choiceCancel: {
+    alignSelf: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  choiceCancelText: {
+    ...typography.captionStrong,
+    color: colors.textMuted,
+  },
+  choiceCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+  },
+  choiceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+  },
+  choiceText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  choiceTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
   },
   tableSection: {
     borderColor: colors.border,

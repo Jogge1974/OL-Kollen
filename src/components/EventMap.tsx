@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
 import { colors, getClassificationTone } from '@/src/theme/colors';
@@ -28,6 +29,7 @@ export function EventMap({ error, events }: EventMapProps) {
   const mapRef = React.useRef<MapView>(null);
   const ignoreNextMapPressRef = React.useRef(false);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
+  const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [selectedMarkerKey, setSelectedMarkerKey] = React.useState<string | null>(null);
   const [currentRegion, setCurrentRegion] = React.useState<Region>(() => getFallbackRegion(createMarkerGroups(events, DEFAULT_REGION)));
   const markerGroups = React.useMemo(() => createMarkerGroups(events, currentRegion), [currentRegion, events]);
@@ -35,6 +37,9 @@ export function EventMap({ error, events }: EventMapProps) {
   const [locationHint, setLocationHint] = React.useState<string | null>(null);
 
   const selectedGroup = React.useMemo(() => markerGroups.find((group) => group.key === selectedMarkerKey) ?? null, [markerGroups, selectedMarkerKey]);
+  const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
+    void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
+  }, []);
 
   React.useEffect(() => {
     const fallbackRegion = getFallbackRegion(markerGroups);
@@ -177,7 +182,8 @@ export function EventMap({ error, events }: EventMapProps) {
         ) : null}
       </View>
 
-      <PublishedListModal onClose={() => setActiveListModal(null)} state={activeListModal} />
+      <PublishedListModal onClose={() => setActiveListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeListModal} />
+      <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </>
   );
 }

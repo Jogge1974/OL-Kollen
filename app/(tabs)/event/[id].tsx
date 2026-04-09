@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { AppButton } from '@/src/components/AppButton';
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
@@ -24,12 +25,13 @@ import { typography } from '@/src/theme/typography';
 import { EventDocument, EventPublishedListKind } from '@/src/types/eventor';
 
 export default function EventDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
   const { error, event, isLoading, reload } = useEventorEventDetail(id);
   const { documents, error: documentsError, isLoading: isLoadingDocuments, reload: reloadDocuments } = useEventDocuments(event?.id ?? null);
   const [activeDocument, setActiveDocument] = React.useState<EventDocument | null>(null);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
   const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
+  const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [isInfoExpanded, setIsInfoExpanded] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
@@ -43,6 +45,17 @@ export default function EventDetailScreen() {
   const isFavorite = React.useMemo(() => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === event?.id), [event?.id, favoriteEvents]);
   const showResultActions = event?.hasPublishedResults ?? false;
   const secondaryKind: EventPublishedListKind = event?.hasPublishedStarts ? 'starts' : 'entries';
+  const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
+    void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
+  }, []);
+  const handleClose = React.useCallback(() => {
+    if (typeof returnTo === 'string' && returnTo.length > 0) {
+      router.replace(returnTo);
+      return;
+    }
+
+    router.back();
+  }, [returnTo]);
 
   if (isLoading) {
     return <LoadingState label="Hämtar tävlingsdetaljer..." fullScreen />;
@@ -120,9 +133,9 @@ export default function EventDetailScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <LinearGradient colors={tone.detailGradient} style={styles.hero}>
           <View style={styles.heroTopRow}>
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Pressable onPress={handleClose} style={styles.backButton}>
               <Ionicons color={colors.heroText} name="chevron-back" size={18} />
-              <Text style={styles.backLabel}>Till kalendern</Text>
+              <Text style={styles.backLabel}>Stäng</Text>
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
@@ -273,8 +286,9 @@ export default function EventDetailScreen() {
       </ScrollView>
 
       <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} />
-      <PublishedListModal state={activeListModal} onClose={() => setActiveListModal(null)} />
+      <PublishedListModal onClose={() => setActiveListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeListModal} />
       <SplitTimesModal state={activeSplitTimesModal} onClose={() => setActiveSplitTimesModal(null)} />
+      <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </SafeAreaView>
   );
 }

@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import { FlatList, ListRenderItemInfo, RefreshControl, StyleSheet, Text } from 'react-native';
 
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
 import { colors } from '@/src/theme/colors';
@@ -24,6 +25,11 @@ export function EventList({ error, events, onRefresh, refreshing }: EventListPro
   const listRef = React.useRef<FlatList<EventItem>>(null);
   const targetIndex = React.useMemo(() => findFirstCurrentOrUpcomingIndex(events), [events]);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
+  const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
+
+  const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
+    void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
+  }, []);
 
   React.useEffect(() => {
     if (targetIndex <= 0 || !listRef.current) {
@@ -66,7 +72,8 @@ export function EventList({ error, events, onRefresh, refreshing }: EventListPro
         showsVerticalScrollIndicator={false}
       />
 
-      <PublishedListModal onClose={() => setActiveListModal(null)} state={activeListModal} />
+      <PublishedListModal onClose={() => setActiveListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeListModal} />
+      <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </>
   );
 }

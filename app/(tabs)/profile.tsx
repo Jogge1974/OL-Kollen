@@ -26,7 +26,6 @@ import { SverigelistanTrendDirection } from '@/src/types/sverigelistan';
 export default function ProfileScreen() {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [showLoginForm, setShowLoginForm] = React.useState(false);
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
   const { rememberMe, setRememberMe } = useRememberMe(true);
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
@@ -84,7 +83,6 @@ export default function ProfileScreen() {
     try {
       await signInWithEventor({ password, rememberMe, username });
       setPassword('');
-      setShowLoginForm(false);
     } catch {
       // Store state already exposes a clean error message.
     }
@@ -130,56 +128,48 @@ export default function ProfileScreen() {
       >
         {!user ? (
           <View style={styles.panel}>
-            {!showLoginForm ? (
-              <AppButton label="Logga in" onPress={() => setShowLoginForm(true)} />
-            ) : (
-              <>
-                <Text style={styles.panelTitle}>Logga in med Eventor</Text>
+            <Text style={styles.panelTitle}>Logga in med Eventor</Text>
 
-                <AppTextField
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  label="UserName"
-                  onChangeText={setUsername}
-                  placeholder="Ange ditt Eventor-användarnamn"
-                  value={username}
-                />
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="UserName"
+              onChangeText={setUsername}
+              placeholder="Ange ditt Eventor-användarnamn"
+              value={username}
+            />
 
-                <AppTextField
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  label="Password"
-                  onChangeText={setPassword}
-                  placeholder="Ange ditt lösenord"
-                  secureTextEntry
-                  value={password}
-                />
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Password"
+              onChangeText={setPassword}
+              placeholder="Ange ditt lösenord"
+              secureTextEntry
+              value={password}
+            />
 
-                <View style={styles.checkboxRow}>
-                  <Pressable onPress={() => setRememberMe(!rememberMe)} style={styles.rememberMeRow}>
-                    <View style={[styles.rememberMeBox, rememberMe ? styles.rememberMeBoxChecked : null]}>
-                      {rememberMe ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
-                    </View>
-                    <Text style={styles.checkboxLabel}>Kom ihåg mig</Text>
-                  </Pressable>
+            <View style={styles.checkboxRow}>
+              <Pressable onPress={() => setRememberMe(!rememberMe)} style={styles.rememberMeRow}>
+                <View style={[styles.rememberMeBox, rememberMe ? styles.rememberMeBoxChecked : null]}>
+                  {rememberMe ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
                 </View>
+                <Text style={styles.checkboxLabel}>Kom ihåg mig</Text>
+              </Pressable>
+            </View>
 
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-                <AppButton
-                  disabled={!username.trim() || !password.trim()}
-                  label="Logga in"
-                  loading={isSubmitting}
-                  onPress={() => void handleLogin()}
-                />
+            <AppButton
+              disabled={!username.trim() || !password.trim()}
+              label="Logga in"
+              loading={isSubmitting}
+              onPress={() => void handleLogin()}
+            />
 
-                <AppButton label="Avbryt" onPress={() => setShowLoginForm(false)} variant="secondary" />
-
-                <Text style={styles.helperText}>
-                  Inloggningen använder Eventors dokumenterade authenticatePerson-endpoint. Lyckad inloggning sparas lokalt om du markerar Kom ihåg mig.
-                </Text>
-              </>
-            )}
+            <Text style={styles.helperText}>
+              Inloggningen använder Eventors dokumenterade authenticatePerson-endpoint. Lyckad inloggning sparas lokalt om du markerar Kom ihåg mig.
+            </Text>
           </View>
         ) : (
           <View style={styles.profileHeader}>
@@ -245,7 +235,6 @@ export default function ProfileScreen() {
                     <Text style={styles.rankSummaryLabel}>Poäng</Text>
                     <View style={styles.rankSummaryValueWrap}>
                       <Text style={styles.rankSummaryValue}>{formatPoints(currentEntry.Points)}</Text>
-                      {previousEntry ? <Text style={styles.rankSummaryComparison}>({formatPoints(previousEntry.Points)})</Text> : null}
                     </View>
                   </View>
                 </View>
@@ -287,7 +276,7 @@ export default function ProfileScreen() {
           />
         ) : null}
 
-        <PublishedListModal onClose={() => setActiveResultListModal(null)} state={activeResultListModal} />
+        <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
         <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
         <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} state={activeSplitTimesModal} />
       </ScrollView>

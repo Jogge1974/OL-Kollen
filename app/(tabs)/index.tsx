@@ -1,61 +1,365 @@
+import * as React from 'react';
+
+import { Ionicons } from '@expo/vector-icons';
+import { router, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
+import { EmptyState } from '@/src/components/EmptyState';
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
+import { EventSummaryCard } from '@/src/components/EventSummaryCard';
+import { LoadingState } from '@/src/components/LoadingState';
+import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
+import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
+import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
+import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
+import { fetchEventorEvents } from '@/src/api/eventorApi';
+import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
+import { useAuthStore } from '@/src/store/authStore';
+import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
+import { EventItem } from '@/src/types/eventor';
 
 export default function HomeScreen() {
+  const pathname = usePathname();
+  const user = useAuthStore((state) => state.user);
+  const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
+  const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
+  const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
+  const [isLoadingTodayEvents, setIsLoadingTodayEvents] = React.useState(true);
+  const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
+  const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
+  const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
+  const {
+    isLoadingResults,
+    isLoadingStarts,
+    refetch: refetchPersonLists,
+    resultsError,
+    resultsSections,
+    startsError,
+    startsSections,
+  } = usePersonEventorLists({
+    personId: user?.personId ?? null,
+  });
+
+  const todayIso = React.useMemo(() => getLocalIsoDate(), []);
+  const nationalTodayEvents = React.useMemo(
+    () => todayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
+    [todayEvents],
+  );
+  const latestPastEvents = React.useMemo(() => [...resultsSections].slice(-2).reverse(), [resultsSections]);
+  const upcomingStartCount = React.useMemo(
+    () => startsSections.reduce((sum, section) => sum + section.rows.length, 0),
+    [startsSections],
+  );
+
+  const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
+    void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
+  }, []);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadTodayEvents = async () => {
+      setIsLoadingTodayEvents(true);
+      setTodayEventsError(null);
+
+      try {
+        const events = await fetchEventorEvents({
+          classificationIds: [0, 1, 2],
+          districtIds: [],
+          fromDate: todayIso,
+          toDate: todayIso,
+        });
+
+        if (isMounted) {
+          setTodayEvents(events.sort(sortEventsAsc));
+        }
+      } catch (error) {
+        if (isMounted) {
+          setTodayEvents([]);
+          setTodayEventsError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av dagens tävlingar.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingTodayEvents(false);
+        }
+      }
+    };
+
+    void loadTodayEvents();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [todayIso]);
+
+  const refreshAll = React.useCallback(async () => {
+    setIsLoadingTodayEvents(true);
+    setTodayEventsError(null);
+
+    try {
+      await Promise.all([
+        fetchEventorEvents({
+          classificationIds: [0, 1, 2],
+          districtIds: [],
+          fromDate: todayIso,
+          toDate: todayIso,
+        }).then((events) => setTodayEvents(events.sort(sortEventsAsc))),
+        user?.personId ? refetchPersonLists() : Promise.resolve(),
+      ]);
+    } catch (error) {
+      setTodayEvents([]);
+      setTodayEventsError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av dagens tävlingar.');
+    } finally {
+      setIsLoadingTodayEvents(false);
+    }
+  }, [refetchPersonLists, todayIso, user?.personId]);
+
+  const greetingName = user?.firstName ?? user?.fullName ?? 'orienterare';
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <LinearGradient colors={[colors.heroTop, colors.primary, colors.backgroundDeep]} style={styles.hero}>
-        <View style={styles.sunGlow} />
-        <View style={styles.leafGlowLeft} />
-        <View style={styles.leafGlowRight} />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl colors={[colors.primary]} refreshing={isLoadingTodayEvents} tintColor={colors.primary} onRefresh={() => void refreshAll()} />}
+      >
+        <LinearGradient colors={[colors.heroTop, colors.primary, colors.backgroundDeep]} style={styles.hero}>
+          <View style={styles.sunGlow} />
+          <View style={styles.leafGlowLeft} />
+          <View style={styles.leafGlowRight} />
 
-        <View style={styles.topBlock}>
-          <Text style={styles.eyebrow}>Sommarläge</Text>
-          <Text style={styles.title}>OL-Kollen</Text>
-          <Text style={styles.description}>
-            En ren startyta för tävlingar, inloggning och senare premiumfunktioner i samma gemensamma app.
-          </Text>
-        </View>
-
-        <View style={styles.bottomBlock}>
-          <View style={styles.actionPanel}>
-            <AppButton label="Tävlingskalendern" onPress={() => router.push('/calendar')} />
-            <AppButton label="Min sida" onPress={() => router.push('/profile')} variant="secondary" />
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroEyebrow}>Orientering</Text>
+              <Text style={styles.heroTitle}>Kontrollen</Text>
+              <Text style={styles.heroDescription}>
+                Ett alternativ till Eventor.
+              </Text>
+            </View>
+            {user?.accessLevel ? <View style={styles.accessPill}><Text style={styles.accessPillText}>{formatAccessLevel(user.accessLevel)}</Text></View> : null}
           </View>
-        </View>
-      </LinearGradient>
+
+          <View style={styles.heroStatsRow}>
+            <HeroStat icon="calendar-outline" label="Idag" value={`${todayEvents.length}`} />
+            <HeroStat icon="flag-outline" label="Starter" value={user ? `${upcomingStartCount}` : 'Logga in'} />
+            <HeroStat icon="star-outline" label="Favoriter" value={`${favoriteEvents.length}`} />
+          </View>
+        </LinearGradient>
+
+        <SectionCard title="Snabbvägar" subtitle="Hoppa direkt till den vy du använder mest.">
+          <View style={styles.shortcutGrid}>
+            <ShortcutCard icon="calendar-outline" label="Kalender" onPress={() => router.push('/calendar')} />
+            <ShortcutCard icon="trophy-outline" label="Sverigelistan" onPress={() => router.push('/sverigelista')} />
+            <ShortcutCard icon="person-outline" label="Min sida" onPress={() => router.push('/profile')} />
+          </View>
+        </SectionCard>
+
+        {user ? (
+          <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
+        ) : (
+          <SectionCard title="Mina kommande starter" subtitle="Logga in för att se dina starter.">
+            <View style={styles.loginPrompt}>
+              <Text style={styles.loginPromptText}>När du loggar in visas nästa start, dina resultat och analys direkt här.</Text>
+              <AppButton label="Logga in" onPress={() => router.push('/profile')} />
+            </View>
+          </SectionCard>
+        )}
+
+        <SectionCard title="Dagens tävlingar" subtitle="Nationella tävlingar idag.">
+          {isLoadingTodayEvents ? <LoadingState label="Hämtar tävlingar från Eventor..." /> : null}
+
+          {!isLoadingTodayEvents && todayEventsError && nationalTodayEvents.length === 0 ? (
+            <EmptyState
+              action={<AppButton label="Försök igen" onPress={() => void refreshAll()} />}
+              description={todayEventsError}
+              title="Det gick inte att hämta tävlingar"
+            />
+          ) : null}
+
+          {!isLoadingTodayEvents && !todayEventsError && nationalTodayEvents.length === 0 ? (
+            <EmptyState
+              action={<AppButton label="Öppna kalendern" onPress={() => router.push('/calendar')} />}
+              description="Inga nationella tävlingar idag"
+              title="Inga tävlingar idag"
+            />
+          ) : null}
+
+          {nationalTodayEvents.length > 0 ? (
+            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={styles.sectionScroll} contentContainerStyle={styles.sectionScrollContent}>
+              {nationalTodayEvents.map((event) => (
+                <EventSummaryCard key={event.id} item={event} onOpenList={setActiveResultListModal} />
+              ))}
+            </ScrollView>
+          ) : null}
+        </SectionCard>
+
+        <SectionCard title="Mina senaste tävlingar" subtitle="De två senaste resultaten för dig.">
+          {user ? (
+            <PersonActivitySectionList
+              emptyLabel="Inga senaste tävlingar att visa just nu."
+              error={resultsError}
+              isLoading={isLoadingResults}
+              kind="results"
+              onOpenAnalysis={handleOpenAnalysis}
+              onOpenResultList={(eventId: string, classLabel: string) =>
+                void openPublishedListModal('results', 'public', eventId, null, null, setActiveResultListModal, classLabel)
+              }
+              onOpenSplitTimes={(eventId: string, classLabel: string) => void openEventSplitTimesModal(eventId, setActiveSplitTimesModal, classLabel)}
+              onPressEvent={(eventId: string) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
+              sections={latestPastEvents}
+            />
+          ) : (
+            <View style={styles.loginPrompt}>
+              <Text style={styles.loginPromptText}>Logga in för att se dina senaste tävlingar här.</Text>
+              <AppButton label="Logga in" onPress={() => router.push('/profile')} />
+            </View>
+          )}
+        </SectionCard>
+      </ScrollView>
+
+      <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
+      <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} state={activeSplitTimesModal} />
+      <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </SafeAreaView>
   );
 }
 
+function HeroStat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.statPill}>
+      <Ionicons color={colors.heroText} name={icon} size={16} />
+      <View style={styles.statTextWrap}>
+        <Text style={styles.statLabel}>{label}</Text>
+        <Text numberOfLines={1} style={styles.statValue}>
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.shortcutCard, pressed ? styles.shortcutCardPressed : null]}>
+      <View style={styles.shortcutIconWrap}>
+        <Ionicons color={colors.primaryDeep} name={icon} size={18} />
+      </View>
+      <Text style={styles.shortcutLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function SectionCard({ children, subtitle, title }: { children: React.ReactNode; subtitle?: string; title: string }) {
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionHeaderCopy}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        </View>
+      </View>
+      <View style={styles.sectionBody}>{children}</View>
+    </View>
+  );
+}
+
+function sortEventsAsc(left: EventItem, right: EventItem) {
+  const byDate = left.startDate.localeCompare(right.startDate);
+  if (byDate !== 0) {
+    return byDate;
+  }
+
+  return (left.startClock ?? '').localeCompare(right.startClock ?? '') || left.name.localeCompare(right.name, 'sv');
+}
+
+function sortEventsDesc(left: EventItem, right: EventItem) {
+  return sortEventsAsc(right, left);
+}
+
+function getLocalIsoDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = `${now.getMonth() + 1}`.padStart(2, '0');
+  const day = `${now.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatAccessLevel(level: string) {
+  if (level === 'premium') {
+    return 'Premium';
+  }
+
+  if (level === 'admin') {
+    return 'Admin';
+  }
+
+  return 'Free';
+}
+
 const styles = StyleSheet.create({
-  safeArea: {
-    backgroundColor: colors.background,
-    flex: 1,
+  accessPill: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 999,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  accessPillText: {
+    ...typography.captionStrong,
+    color: colors.heroText,
+  },
+  container: {
+    gap: spacing.md,
+    overflow: 'hidden',
+    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   hero: {
-    flex: 1,
-    justifyContent: 'space-between',
+    borderRadius: 28,
+    gap: spacing.md,
     overflow: 'hidden',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-    paddingTop: spacing.xl,
+    padding: spacing.lg,
+    position: 'relative',
   },
-  sunGlow: {
-    backgroundColor: colors.accentGlow,
-    borderRadius: 999,
-    height: 260,
-    position: 'absolute',
-    right: -40,
-    top: 10,
-    width: 260,
+  heroCopy: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  heroDescription: {
+    ...typography.body,
+    color: colors.heroTextMuted,
+    fontSize: 16,
+    lineHeight: 24,
+    maxWidth: 340,
+  },
+  heroEyebrow: {
+    ...typography.eyebrow,
+    color: colors.heroEyebrow,
+    fontSize: 11,
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  heroTitle: {
+    ...typography.heroTitle,
+    color: colors.heroText,
+    fontSize: 40,
+    lineHeight: 42,
+  },
+  heroTopRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
   },
   leafGlowLeft: {
     backgroundColor: colors.secondaryGlow,
@@ -75,36 +379,123 @@ const styles = StyleSheet.create({
     right: 30,
     width: 180,
   },
-  topBlock: {
-    gap: spacing.md,
-    marginTop: spacing.xl,
+  safeArea: {
+    backgroundColor: colors.background,
+    flex: 1,
   },
-  bottomBlock: {
-    gap: spacing.lg,
+  sectionBody: {
+    gap: spacing.sm,
   },
-  actionPanel: {
-    backgroundColor: colors.surfaceOverlay,
-    borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 28,
+  sectionEmptyText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  sectionCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 24,
     borderWidth: 1,
     gap: spacing.sm,
-    padding: spacing.lg,
+    padding: spacing.sm,
   },
-  eyebrow: {
-    ...typography.eyebrow,
-    color: colors.heroEyebrow,
+  sectionHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  title: {
-    ...typography.heroTitle,
-    color: colors.heroText,
-    fontSize: 42,
-    lineHeight: 46,
+  sectionHeaderCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
   },
-  description: {
-    ...typography.body,
+  sectionScroll: {
+    maxHeight: 220,
+  },
+  sectionScrollContent: {
+    gap: spacing.sm,
+  },
+  sectionSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    fontSize: 15,
+    lineHeight: 19,
+  },
+  shortcutCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 84,
+    padding: spacing.sm,
+  },
+  shortcutCardPressed: {
+    opacity: 0.9,
+  },
+  shortcutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  shortcutIconWrap: {
+    alignItems: 'center',
+    backgroundColor: '#EAF6D9',
+    borderRadius: 999,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  shortcutLabel: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  statLabel: {
     color: colors.heroTextMuted,
-    fontSize: 16,
-    lineHeight: 24,
-    maxWidth: 330,
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  statPill: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 18,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minWidth: 92,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  statTextWrap: {
+    flex: 1,
+  },
+  statValue: {
+    ...typography.captionStrong,
+    color: colors.heroText,
+    fontSize: 13,
+    lineHeight: 15,
+  },
+  sunGlow: {
+    backgroundColor: colors.accentGlow,
+    borderRadius: 999,
+    height: 260,
+    position: 'absolute',
+    right: -40,
+    top: 10,
+    width: 260,
+  },
+  loginPrompt: {
+    gap: spacing.sm,
+  },
+  loginPromptText: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
 });

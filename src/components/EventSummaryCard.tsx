@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
@@ -18,6 +18,7 @@ type EventSummaryCardProps = {
 };
 
 export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSummaryCardProps) {
+  const pathname = usePathname();
   const tone = getClassificationTone(item.classificationId);
   const accentStyle = getAccentStyle(item.startDate);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
@@ -45,7 +46,7 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
       {accentStyle.visible ? <View style={[styles.cardAccent, { backgroundColor: accentStyle.backgroundColor }]} /> : null}
 
       <Pressable
-        onPress={() => router.push({ params: { id: item.id }, pathname: '/event/[id]' })}
+        onPress={() => router.push({ params: { id: item.id, returnTo: pathname }, pathname: '/event/[id]' })}
         style={({ pressed }) => [styles.cardPressable, pressed ? styles.cardPressed : null]}
       >
         <View style={[styles.cardMain, mode === 'overlay' ? styles.cardMainOverlay : null]}>

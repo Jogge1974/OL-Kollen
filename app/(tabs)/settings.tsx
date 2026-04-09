@@ -21,13 +21,11 @@ export default function SettingsScreen() {
   const [presetName, setPresetName] = React.useState('');
   const [calendarDefaultDraft, setCalendarDefaultDraft] = React.useState(createDefaultCalendarFilterTemplate());
   const [isCalendarFiltersExpanded, setIsCalendarFiltersExpanded] = React.useState(false);
-  const [isNotificationsExpanded, setIsNotificationsExpanded] = React.useState(true);
+  const [isNotificationsExpanded, setIsNotificationsExpanded] = React.useState(false);
   const [isFavoriteClassesExpanded, setIsFavoriteClassesExpanded] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const signOut = useAuthStore((state) => state.signOut);
-  const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const clearLogoutSensitivePreferences = usePreferencesStore((state) => state.clearLogoutSensitivePreferences);
-  const clearAllFavorites = usePreferencesStore((state) => state.clearAllFavorites);
   const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
   const calendarFilterPresets = usePreferencesStore((state) => state.calendarFilterPresets);
   const addCalendarFilterPreset = usePreferencesStore((state) => state.addCalendarFilterPreset);
@@ -146,33 +144,6 @@ export default function SettingsScreen() {
     await clearLogoutSensitivePreferences();
     await signOut();
     Alert.alert('Utloggad', 'Din lokala session är rensad och favoriter/favoritklasser har tagits bort.');
-  };
-
-  const confirmClearFavorites = () => {
-    Alert.alert(
-      'Rensa alla favorittävlingar?',
-      user
-        ? 'Alla favorittävlingar tas bort från appen och motsvarande bevakningar rensas från Supabase vid nästa synk.'
-        : 'Alla favorittävlingar tas bort från appen.',
-      [
-        {
-          style: 'cancel',
-          text: 'Avbryt',
-        },
-        {
-          style: 'destructive',
-          text: 'Rensa',
-          onPress: () => {
-            void handleClearFavorites();
-          },
-        },
-      ],
-    );
-  };
-
-  const handleClearFavorites = async () => {
-    await clearAllFavorites();
-    Alert.alert('Favoriter rensade', 'Alla favorittävlingar har tagits bort.');
   };
 
   return (
@@ -355,9 +326,6 @@ export default function SettingsScreen() {
             )}
           </View>
         </ExpandableCard>
-
-        {favoriteEvents.length > 0 ? <AppButton label="Rensa alla favorittävlingar" onPress={confirmClearFavorites} variant="secondary" /> : null}
-
         {user ? <AppButton label="Logga ut" onPress={confirmLogout} variant="secondary" /> : null}
       </ScrollView>
     </SafeAreaView>
