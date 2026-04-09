@@ -163,6 +163,32 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
     [pagerPages.length, scrollToPagerIndex, splitPages.length],
   );
 
+  const handlePagerDragEnd = React.useCallback(
+    (event: { nativeEvent: { contentOffset: { x: number } } }) => {
+      if (splitPages.length <= 1) {
+        return;
+      }
+
+      const displayIndex = Math.max(0, Math.min(pagerPages.length - 1, Math.round(event.nativeEvent.contentOffset.x / rightPaneWidth)));
+
+      if (displayIndex === 0) {
+        const nextIndex = splitPages.length - 1;
+        setSelectedPageIndex(nextIndex);
+        scrollToPagerIndex(nextIndex);
+        return;
+      }
+
+      if (displayIndex === pagerPages.length - 1) {
+        setSelectedPageIndex(0);
+        scrollToPagerIndex(0);
+        return;
+      }
+
+      setSelectedPageIndex(displayIndex - 1);
+    },
+    [pagerPages.length, rightPaneWidth, scrollToPagerIndex, splitPages.length],
+  );
+
   return (
     <Modal animationType="slide" transparent visible={Boolean(state)}>
       <View style={styles.modalOverlay}>
@@ -280,6 +306,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                         horizontal
                         pagingEnabled
                         ref={metricsScrollRef}
+                        onScrollEndDrag={handlePagerDragEnd}
                         onMomentumScrollEnd={handlePageScrollEnd}
                         showsHorizontalScrollIndicator={false}
                         style={[styles.metricsPager, { width: rightPaneWidth }]}
@@ -287,7 +314,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                         decelerationRate="fast"
                       >
                         {pagerPages.map((page, pageIndex) => (
-                          <View key={page.key} style={[styles.metricsPage, { width: rightPaneWidth }]}>
+                          <View key={`${page.key}-${pageIndex}`} style={[styles.metricsPage, { width: rightPaneWidth }]}>
                             {(() => {
                               const pageMetricsLayout = metricsLayout;
                               const pageData = splitPages.length > 1 ? (pageIndex === 0 ? splitPages[splitPages.length - 1] : pageIndex === pagerPages.length - 1 ? splitPages[0] : page) : page;
