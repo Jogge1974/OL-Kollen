@@ -442,7 +442,7 @@ async function loadOrganisationDirectory(): Promise<OrganisationDirectory> {
     .sort((left, right) => left.name.localeCompare(right.name, 'sv'))
     .map((district) => ({
       id: Number(district.id),
-      label: district.name,
+      label: sanitizeDistrictLabel(district.name),
     }));
   const organisationToDistrictId = organisations.reduce<Record<string, number>>((result, organisation) => {
     const districtId = resolveDistrictId(organisation.id, organisationById);
@@ -559,6 +559,10 @@ function resolveDistrictId(
   return null;
 }
 
+function sanitizeDistrictLabel(label: string) {
+  return label.replace('s OF', '').replace(' OF', '').trim();
+}
+
 async function getStoredOrganisationDirectory(): Promise<OrganisationDirectory | null> {
   const stored = await getStoredJson<StoredOrganisationDirectory>(ORGANISATION_DIRECTORY_STORAGE_KEY);
 
@@ -577,7 +581,10 @@ async function getStoredOrganisationDirectory(): Promise<OrganisationDirectory |
   }
 
   return {
-    districtOptions: stored.districtOptions,
+    districtOptions: stored.districtOptions.map((option) => ({
+      ...option,
+      label: sanitizeDistrictLabel(option.label),
+    })),
     organisationNameById: stored.organisationNameById,
     organisationToDistrictId: stored.organisationToDistrictId,
   };

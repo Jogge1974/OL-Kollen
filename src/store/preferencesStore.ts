@@ -220,14 +220,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   clearLogoutSensitivePreferences: async () => {
     const current = get();
-    const favoriteClasses: string[] = [];
     const favoriteEvents: FavoriteEventSummary[] = [];
 
-    set({ favoriteClasses, favoriteEvents });
+    set({ favoriteEvents });
     await persistCurrentPreferences({
       calendarDefaultFilterTemplate: current.calendarDefaultFilterTemplate,
       calendarFilterPresets: current.calendarFilterPresets,
-      favoriteClasses,
+      favoriteClasses: current.favoriteClasses,
       favoriteEvents,
       notificationSettings: current.notificationSettings,
     });

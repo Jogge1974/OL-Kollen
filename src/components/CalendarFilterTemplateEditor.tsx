@@ -34,9 +34,8 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
 
   const classificationColumns = React.useMemo(
     () => [
-      [CLASSIFICATION_OPTIONS[0], CLASSIFICATION_OPTIONS[1]],
-      [CLASSIFICATION_OPTIONS[2], CLASSIFICATION_OPTIONS[3]],
-      [CLASSIFICATION_OPTIONS[4], CLASSIFICATION_OPTIONS[5]],
+      [CLASSIFICATION_OPTIONS[0], CLASSIFICATION_OPTIONS[1], CLASSIFICATION_OPTIONS[2]],
+      [CLASSIFICATION_OPTIONS[3], CLASSIFICATION_OPTIONS[4], CLASSIFICATION_OPTIONS[5]],
     ],
     [],
   );
@@ -210,15 +209,15 @@ function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; labe
 
 const styles = StyleSheet.create({
   wrapper: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   offsetRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   offsetField: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 2,
   },
   offsetLabel: {
     ...typography.captionStrong,
@@ -227,7 +226,7 @@ const styles = StyleSheet.create({
   offsetInputRow: {
     alignItems: 'stretch',
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 4,
   },
   offsetSignButton: {
     alignItems: 'center',
@@ -253,17 +252,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     color: colors.textPrimary,
-    minHeight: 54,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    minHeight: 46,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
   },
   filterCard: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
     borderRadius: 18,
     borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: spacing.xs,
+    padding: spacing.sm,
   },
   filterHeading: {
     ...typography.captionStrong,
@@ -271,21 +270,21 @@ const styles = StyleSheet.create({
   },
   districtColumnsRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 4,
   },
   districtColumn: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 4,
   },
   districtItem: {
     borderRadius: 14,
-    paddingHorizontal: 2,
-    paddingVertical: 2,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   districtRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 4,
   },
   districtLabel: {
     ...typography.caption,
@@ -295,21 +294,21 @@ const styles = StyleSheet.create({
   },
   classificationColumnsRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 4,
   },
   classificationColumn: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 4,
   },
   classificationItem: {
     borderRadius: 14,
-    paddingHorizontal: 2,
-    paddingVertical: 2,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   classificationRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 4,
   },
   classificationTitle: {
     ...typography.captionStrong,

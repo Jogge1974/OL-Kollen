@@ -61,8 +61,8 @@ export default function SettingsScreen() {
     }
 
     return {
-      id: district.id,
-      label: `Mitt distrikt (${district.label})`,
+        id: district.id,
+        label: `Mitt distrikt (${district.label})`,
     };
   }, [districtOptions, myDistrictId]);
 
@@ -155,9 +155,11 @@ export default function SettingsScreen() {
         </View>
 
         <ExpandableCard
+          contentStyle={styles.calendarFilterContent}
           expanded={isCalendarFiltersExpanded}
           onPress={() => setIsCalendarFiltersExpanded((current) => !current)}
           title="Kalenderfilter"
+          variant="compact"
         >
           <View style={styles.sectionContent}>
             <Text style={styles.helperText}>
@@ -334,22 +336,26 @@ export default function SettingsScreen() {
 
 function ExpandableCard({
   children,
+  contentStyle,
   expanded,
   onPress,
   title,
+  variant = 'default',
 }: {
   children: React.ReactNode;
+  contentStyle?: object;
   expanded: boolean;
   onPress: () => void;
   title: string;
+  variant?: 'default' | 'compact';
 }) {
   return (
-    <View style={styles.panel}>
+    <View style={[styles.panel, variant === 'compact' ? styles.panelCompact : null]}>
       <Pressable onPress={onPress} style={styles.panelHeader}>
         <Text style={styles.panelTitle}>{title}</Text>
         <Ionicons color={colors.primaryDeep} name={expanded ? 'chevron-up' : 'chevron-down'} size={20} />
       </Pressable>
-      {expanded ? children : null}
+      {expanded ? <View style={contentStyle}>{children}</View> : null}
     </View>
   );
 }
@@ -389,6 +395,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
+  panelCompact: {
+    padding: spacing.md,
+  },
   panelHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -400,6 +409,9 @@ const styles = StyleSheet.create({
   },
   sectionContent: {
     gap: spacing.md,
+  },
+  calendarFilterContent: {
+    gap: spacing.sm,
   },
   presetNameBlock: {
     gap: spacing.sm,

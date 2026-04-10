@@ -582,10 +582,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   navigationContent: {
-    minHeight: 200,
+    minHeight: 260,
   },
   navigationMap: {
-    height: 200,
+    height: 260,
     width: '100%',
   },
   navigationPanel: {
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
   navigationEmptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 200,
+    minHeight: 260,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
