@@ -671,17 +671,17 @@ function getEmptyListMessage(kind: EventPublishedListKind) {
 }
 
 function getListTitle(kind: EventPublishedListKind, scope: EventPublishedListScope, organisationLabel?: string | null) {
-  const prefix = scope === 'organisation' ? `${organisationLabel ?? 'Klubbens'} ` : 'Hela ';
+  const prefix = scope === 'organisation' ? ` ${organisationLabel ?? ''} ` : '';
 
   if (kind === 'results') {
-    return `${prefix}resultatlista`;
+      return `Resultatlista${prefix}`;
   }
 
   if (kind === 'starts') {
-    return `${prefix}startlista`;
+      return `Startlista${prefix}`;
   }
 
-  return `${prefix}anmälningslista`;
+    return `Anmälningslista${prefix}`;
 }
 
 function sortPickerAnchors(anchors: PickerAnchor[], favoriteClasses: string[]) {
