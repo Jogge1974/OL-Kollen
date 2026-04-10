@@ -1,6 +1,5 @@
 ﻿import * as React from 'react';
 
-import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
 import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
@@ -95,6 +94,7 @@ export function SplitTimesModal({
     () => buildPickerAnchors(currentState?.sections ?? [], favoriteClasses),
     [currentState?.sections, favoriteClasses],
   );
+  const currentEventId = currentState?.eventId ?? '';
 
   const selectedSection = React.useMemo(
     () => currentState?.sections.find((section) => section.classLabel === selectedClassLabel) ?? currentState?.sections[0] ?? null,
@@ -369,7 +369,7 @@ export function SplitTimesModal({
                         <SplitTimesClassRow
                           key={`left-${selectedPage.key}-${rowIndex}-${row.primary}`}
                           computed={leftRowMetrics[rowIndex]}
-                          eventId={currentState?.eventId ?? ''}
+                          eventId={currentEventId}
                           onOpenAnalysis={onOpenAnalysis}
                           onOpenAnalysisChoice={setPendingChoice}
                           onOpenOrganisation={setNestedState}
@@ -455,7 +455,6 @@ export function SplitTimesModal({
                   >
                     <View style={styles.choiceButtonStack}>
                       <View style={styles.choiceButtonAnalysisTitleRow}>
-                        <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
                         <Text style={styles.choiceButtonLabelAnalysis}>Analys</Text>
                       </View>
                       <Text numberOfLines={1} style={styles.choiceButtonPersonText}>

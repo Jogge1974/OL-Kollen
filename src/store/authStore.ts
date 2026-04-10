@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { authenticateEventorPerson } from '@/src/api/authApi';
 import { resolveAccessLevel } from '@/src/features/auth/access';
+import { clearStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
 import { getStoredJson, removeStoredValue, setStoredJson } from '@/src/services/secureStorage';
 import { AuthenticatedUser, EventorLoginInput, PersistedAuthSession } from '@/src/types/user';
 
@@ -52,6 +53,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         accessLevel: resolveAccessLevel(),
       };
 
+      await refreshStoredEventorWebSessionCookie(username, password).catch(() => {
+        // Best-effort only. The app login itself should still succeed.
+        return null;
+      });
+
       set({
         error: null,
         isSubmitting: false,
@@ -79,6 +85,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   signOut: async () => {
     await removeStoredValue(AUTH_SESSION_KEY);
+    await clearStoredEventorWebSessionCookie();
     set({
       error: null,
       rememberedUsername: '',

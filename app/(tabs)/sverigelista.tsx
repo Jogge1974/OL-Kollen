@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
 import { LoadingState } from '@/src/components/LoadingState';
+import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
 import { getSverigelistanClassLabel, useSverigelistanDirectory } from '@/src/hooks/useSverigelistanDirectory';
 import { useAuthStore } from '@/src/store/authStore';
 import { colors } from '@/src/theme/colors';
@@ -21,6 +22,7 @@ export default function SverigelistaScreen() {
   const [selectedClassLabel, setSelectedClassLabel] = React.useState<string | null>(null);
   const [selectedClubName, setSelectedClubName] = React.useState<string | null>(null);
   const [searchText, setSearchText] = React.useState('');
+  const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const { error, hasSupabase, isLoading, latestUpdated, refetch, rows } = useSverigelistanDirectory();
 
   React.useEffect(() => {
@@ -77,6 +79,18 @@ export default function SverigelistaScreen() {
     setSearchText('');
     setSelectedClassLabel(null);
     setSelectedClubName(null);
+  }, []);
+
+  const handleOpenRunnerRanking = React.useCallback((row: SverigelistanRow) => {
+    if (!row.RunnerId) {
+      return;
+    }
+
+    setActiveRunnerRanking({
+      clubName: row.Club,
+      name: row.Name,
+      personId: row.RunnerId,
+    });
   }, []);
 
   return (
@@ -204,18 +218,20 @@ export default function SverigelistaScreen() {
         ListHeaderComponentStyle={styles.listHeader}
         style={styles.list}
         refreshControl={<RefreshControl colors={[colors.primary]} refreshing={isLoading} tintColor={colors.primary} onRefresh={refetch} />}
-        renderItem={({ item, index }) => (
-          <SverigelistaRowCard
-            filterLabel={selectedFilterMode === 'class' ? selectedClassLabel : selectedFilterMode === 'club' ? selectedClubName : null}
-            showFilterPlacement={selectedFilterMode === 'class' ? Boolean(selectedClassLabel) : Boolean(selectedClubName)}
-            currentUserRunnerId={currentUserRunnerId}
-            index={index}
-            item={item}
-          />
-        )}
+          renderItem={({ item, index }) => (
+            <SverigelistaRowCard
+              filterLabel={selectedFilterMode === 'class' ? selectedClassLabel : selectedFilterMode === 'club' ? selectedClubName : null}
+              onPress={() => handleOpenRunnerRanking(item)}
+              showFilterPlacement={selectedFilterMode === 'class' ? Boolean(selectedClassLabel) : Boolean(selectedClubName)}
+              currentUserRunnerId={currentUserRunnerId}
+              index={index}
+              item={item}
+            />
+          )}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
+      <RunnerRankingModal onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
     </SafeAreaView>
   );
 }
@@ -224,12 +240,14 @@ function SverigelistaRowCard({
   filterLabel,
   showFilterPlacement,
   currentUserRunnerId,
+  onPress,
   index,
   item,
 }: {
   filterLabel: string | null;
   showFilterPlacement: boolean;
   currentUserRunnerId: number | null;
+  onPress?: () => void;
   index: number;
   item: SverigelistanRow;
 }) {
@@ -238,7 +256,16 @@ function SverigelistaRowCard({
   const showRightRank = showFilterPlacement && filterPlacement !== null;
 
   return (
-    <View style={[styles.rowCard, index % 2 === 0 ? styles.rowCardEven : styles.rowCardOdd, isMe ? styles.rowCardMe : null]}>
+    <Pressable
+      disabled={!onPress || !item.RunnerId}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.rowCard,
+        index % 2 === 0 ? styles.rowCardEven : styles.rowCardOdd,
+        isMe ? styles.rowCardMe : null,
+        pressed && onPress && item.RunnerId ? styles.rowCardPressed : null,
+      ]}
+    >
       <View style={showFilterPlacement ? styles.filterPlacementBadge : styles.rankBadge}>
         <Text style={showFilterPlacement ? styles.filterPlacementText : styles.rankBadgeText}>
           {showFilterPlacement && filterPlacement !== null ? filterPlacement : item.Rank}
@@ -270,7 +297,7 @@ function SverigelistaRowCard({
         <Text style={styles.pointsText}>{formatPoints(item.Points)}</Text>
       </View>
 
-    </View>
+    </Pressable>
   );
 }
 
@@ -590,6 +617,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     position: 'relative',
+  },
+  rowCardPressed: {
+    opacity: 0.88,
   },
   rowCardEven: {
     backgroundColor: colors.surface,
