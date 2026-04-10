@@ -5,7 +5,7 @@ import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
-import { PublishedListRow, PublishedListSection, formatPublishedListXml } from '@/src/services/publishedListFormatter';
+import { PublishedListRow, PublishedListSection, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
@@ -401,7 +401,7 @@ function PublishedTableSection({
       {section.rows.map((row, rowIndex) => {
         const classAnchorKey = row.classLabel ? `class:${row.classLabel}` : null;
         const shouldAttachClassAnchor = scope === 'organisation' && classAnchorKey && !seenClassAnchors.current.has(classAnchorKey);
-        const resultStatus = kind === 'results' && row.status && row.status !== 'OK' ? row.status : null;
+        const resultStatus = kind === 'results' && row.status && row.status !== 'OK' ? formatResultStatus(row.status) : null;
         const resultMetricWidth = (columnWidths.time ?? 0) + (columnWidths.diff ?? 0) + (columnWidths.pace ?? 0);
 
         if (shouldAttachClassAnchor && classAnchorKey) {

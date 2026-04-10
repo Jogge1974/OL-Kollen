@@ -395,7 +395,7 @@ function formatSeconds(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function formatResultStatus(status: string | null) {
+export function formatResultStatus(status: string | null) {
   if (!status) {
     return '-';
   }
@@ -403,6 +403,10 @@ function formatResultStatus(status: string | null) {
   if (status === 'Missing punch') {
     return 'Felst.';
   }
+
+    if (status === 'MissingPunch') {
+        return 'Felst.';
+    }
 
   if (status === 'DidNotStart') {
     return 'Ej start';
