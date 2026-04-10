@@ -88,6 +88,9 @@ export default function SverigelistaScreen() {
 
     setActiveRunnerRanking({
       clubName: row.Club,
+      currentPoints: row.Points,
+      currentRank: row.Rank,
+      gender: row.Gender === 'D' ? 'D' : 'H',
       name: row.Name,
       personId: row.RunnerId,
     });
@@ -231,7 +234,7 @@ export default function SverigelistaScreen() {
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
-      <RunnerRankingModal onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
+      <RunnerRankingModal comparisonRows={genderRows} onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
     </SafeAreaView>
   );
 }

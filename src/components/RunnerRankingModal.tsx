@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
@@ -8,22 +9,31 @@ import { fetchRunnerRankingTable, RunnerRankingTableResult } from '@/src/service
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
+import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export type RunnerRankingSelection = {
   clubName: string;
+  currentPoints: number;
+  currentRank: number;
+  gender: 'D' | 'H';
   name: string;
   personId: number;
 };
 
 type RunnerRankingModalState = RunnerRankingTableResult & {
-  runnerName: string;
   runnerClub: string;
+  runnerCurrentPoints: number;
+  runnerCurrentRank: number;
+  runnerGender: 'D' | 'H';
+  runnerName: string;
 };
 
 export function RunnerRankingModal({
+  comparisonRows,
   onClose,
   selection,
 }: {
+  comparisonRows: SverigelistanRow[];
   onClose: () => void;
   selection: RunnerRankingSelection | null;
 }) {
@@ -42,12 +52,17 @@ export function RunnerRankingModal({
     }
 
     setState({
+      competitions: [],
       headers: [],
       hasResultsTable: false,
       message: null,
+      overview: null,
       pageTitle: null,
       rows: [],
       runnerClub: selection.clubName,
+      runnerCurrentPoints: selection.currentPoints,
+      runnerCurrentRank: selection.currentRank,
+      runnerGender: selection.gender,
       runnerName: selection.name,
       sourceUrl: '',
       success: false,
@@ -62,6 +77,9 @@ export function RunnerRankingModal({
       setState({
         ...result,
         runnerClub: selection.clubName,
+        runnerCurrentPoints: selection.currentPoints,
+        runnerCurrentRank: selection.currentRank,
+        runnerGender: selection.gender,
         runnerName: selection.name,
       });
     };
@@ -73,6 +91,25 @@ export function RunnerRankingModal({
     };
   }, [reloadKey, selection]);
 
+  const projection = React.useMemo(() => {
+    if (!state?.overview || state.overview.currentAverage == null || state.overview.projectedAverage == null) {
+      return null;
+    }
+
+    const runnerCurrentPoints = state?.runnerCurrentPoints ?? 0;
+    const runnerGender = state?.runnerGender ?? 'H';
+    const addition = runnerCurrentPoints - state.overview.currentAverage;
+    const projectedPoints = state.overview.projectedAverage + addition;
+    const comparableRows = comparisonRows.filter((row) => row.Gender === runnerGender);
+    const projectedPlace = 1 + comparableRows.filter((row) => row.Points < projectedPoints).length;
+
+    return {
+      addition,
+      projectedPlace,
+      projectedPoints,
+    };
+  }, [comparisonRows, state?.overview, state?.runnerCurrentPoints, state?.runnerGender]);
+
   return (
     <Modal animationType="slide" transparent visible={Boolean(selection)}>
       <View style={styles.overlay}>
@@ -81,10 +118,10 @@ export function RunnerRankingModal({
           <View style={styles.header}>
             <View style={styles.headerTopRow}>
               <Text numberOfLines={1} style={styles.title}>
-                Löparens tävlingar
+                Sverigelistan
               </Text>
               <Pressable onPress={onClose} style={styles.closeChip}>
-                <Text style={styles.closeIcon}>×</Text>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={16} />
                 <Text style={styles.closeText}>Stäng</Text>
               </Pressable>
             </View>
@@ -95,36 +132,106 @@ export function RunnerRankingModal({
             ) : null}
           </View>
 
-          <View style={styles.content}>
+          <ScrollView contentContainerStyle={styles.content}>
             {state && !state.success && !state.message ? <LoadingState label="Hämtar tävlingslistan..." /> : null}
             {state?.message ? <Text style={styles.errorText}>{state.message}</Text> : null}
 
             {state && state.success ? (
               <>
-                {state.headers.length > 0 ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.headersRow}>
-                    {state.headers.map((header) => (
-                      <View key={header} style={styles.headerChip}>
-                        <Text numberOfLines={1} style={styles.headerChipText}>
-                          {header}
-                        </Text>
+                <View style={styles.summaryCard}>
+                  <View style={styles.summaryTopRow}>
+                    <SummaryChip
+                      icon="person-outline"
+                      label="Placering"
+                      value={`#${state.runnerCurrentRank}`}
+                    />
+                    <SummaryChip icon="speedometer-outline" label="Poäng" value={formatPoints(state.runnerCurrentPoints)} />
+                  </View>
+                </View>
+
+                <View style={styles.listHeaderRow}>
+                  <Text style={styles.sectionTitle}>6 bästa tävlingarna</Text>
+                  <Text style={styles.sectionHint}>Sorterat efter poäng</Text>
+                </View>
+
+                <View style={styles.rows}>
+                  {(state.overview?.selectedRows ?? []).map((row, index) => {
+                    const isSoonestExpiry = state.overview?.soonestExpiryRow?.dateISO === row.dateISO && state.overview?.soonestExpiryRow?.eventName === row.eventName;
+                    return (
+                      <View key={`${row.dateISO}-${row.eventName}-${row.position ?? index}`} style={[styles.rowCard, isSoonestExpiry ? styles.rowCardEmphasis : null]}>
+                        <View style={styles.rankBadge}>
+                          <Text style={styles.rankBadgeText}>{index + 1}</Text>
+                        </View>
+
+                        <View style={styles.rowBody}>
+                          <View style={styles.rowTopLine}>
+                            <Text numberOfLines={1} style={styles.rowDate}>
+                              {row.dateLabel}
+                            </Text>
+                            <Text numberOfLines={1} style={styles.rowTitle}>
+                              {row.eventName}
+                            </Text>
+                            <View style={styles.scorePill}>
+                              <Text style={styles.scorePillText}>{formatPoints(row.score)}</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.rowBottomLine}>
+                            <View style={styles.rowBottomLeft}>
+                              <MetaPill label={row.className} />
+                              <MetaPill label={row.distance} />
+                            </View>
+                            <View style={[styles.expiryBadge, isSoonestExpiry ? styles.expiryBadgeActive : null]}>
+                              <Text style={[styles.expiryBadgeText, isSoonestExpiry ? styles.expiryBadgeTextActive : null]}>
+                                {row.daysUntilExpiry} d kvar
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
                       </View>
-                    ))}
-                  </ScrollView>
+                    );
+                  })}
+                </View>
+
+                {state.overview?.soonestExpiryRow ? (
+                  <View style={styles.expirySummaryCard}>
+                    <Text style={styles.expirySummaryDays}>{state.overview.soonestExpiryRow.daysUntilExpiry} dagar kvar</Text>
+                    <Text style={styles.expirySummaryCaption}>tills tävling ersätts</Text>
+                  </View>
                 ) : null}
 
-                <ScrollView contentContainerStyle={styles.rows}>
-                  {state.rows.map((row, index) => (
-                    <View key={`${state.sourceUrl}-${index}`} style={styles.rowCard}>
-                      <Text numberOfLines={2} style={styles.rowTitle}>
-                        {row.cells[0] ?? `Rad ${index + 1}`}
-                      </Text>
-                      <Text numberOfLines={3} style={styles.rowSubtitle}>
-                        {row.cells.slice(1).join(' • ') || row.cells.join(' • ')}
-                      </Text>
+                {state.overview?.replacementRow ? (
+                  <View style={styles.nextCard}>
+                    <Text style={styles.nextCardTitle}>Tävling näst i tur</Text>
+                    <View style={styles.rowCardCompact}>
+                      <View style={styles.rankBadge}>
+                        <Text style={styles.rankBadgeText}>N</Text>
+                      </View>
+                      <View style={styles.rowBody}>
+                        <View style={styles.rowTopLine}>
+                          <Text numberOfLines={1} style={styles.rowDate}>
+                            {state.overview.replacementRow.dateLabel}
+                          </Text>
+                          <Text numberOfLines={1} style={styles.rowTitle}>
+                            {state.overview.replacementRow.eventName}
+                          </Text>
+                          <View style={styles.scorePill}>
+                            <Text style={styles.scorePillText}>{formatPoints(state.overview.replacementRow.score)}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.rowBottomLine}>
+                          <View style={styles.rowBottomLeft}>
+                            <MetaPill label={state.overview.replacementRow.className} />
+                            <MetaPill label={state.overview.replacementRow.distance} />
+                          </View>
+                          <View style={styles.expiryBadge}>
+                            <Text style={styles.expiryBadgeText}>{state.overview.replacementRow.daysUntilExpiry} d kvar</Text>
+                          </View>
+                        </View>
+                      </View>
                     </View>
-                  ))}
-                </ScrollView>
+                  </View>
+                ) : null}
               </>
             ) : null}
 
@@ -135,11 +242,58 @@ export function RunnerRankingModal({
                 <AppButton label="Försök igen" onPress={() => setReloadKey((value) => value + 1)} variant="secondary" />
               </View>
             ) : null}
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
+}
+
+function SummaryChip({
+  icon,
+  label,
+  subtitle,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  subtitle?: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.summaryChip}>
+      <View style={styles.summaryChipHeader}>
+        <Ionicons color={colors.primaryDeep} name={icon} size={14} />
+        <Text style={styles.summaryLabel}>{label}</Text>
+      </View>
+      <Text numberOfLines={1} style={styles.summaryValue}>
+        {value}
+      </Text>
+      {subtitle ? (
+        <Text numberOfLines={1} style={styles.summarySubtitle}>
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function MetaPill({ label }: { label: string }) {
+  return (
+    <View style={styles.metaPill}>
+      <Text numberOfLines={1} style={styles.metaPillText}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function formatPoints(points: number | null | undefined) {
+  if (points === null || points === undefined || Number.isNaN(points)) {
+    return '-';
+  }
+
+  return Number.isInteger(points) ? `${points}` : points.toFixed(2).replace('.', ',');
 }
 
 const styles = StyleSheet.create({
@@ -155,7 +309,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    height: '86%',
+    height: '90%',
     overflow: 'hidden',
   },
   header: {
@@ -183,8 +337,8 @@ const styles = StyleSheet.create({
     ...typography.buttonSmall,
     alignSelf: 'flex-start',
     color: colors.primary,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 19,
   },
   closeChip: {
     alignItems: 'center',
@@ -197,11 +351,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
-  closeIcon: {
-    color: colors.primaryDeep,
-    fontSize: 18,
-    lineHeight: 18,
-  },
   closeText: {
     ...typography.buttonSmall,
     color: colors.primary,
@@ -209,9 +358,9 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   content: {
-    flex: 1,
     gap: spacing.md,
     padding: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   errorCard: {
     backgroundColor: colors.surfaceMuted,
@@ -229,45 +378,226 @@ const styles = StyleSheet.create({
     ...typography.bodyStrong,
     color: colors.textPrimary,
   },
-  headerChip: {
+  expiryBadge: {
+    alignItems: 'center',
+    backgroundColor: '#F0F6E8',
+    borderColor: '#C9DBB0',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  expiryBadgeActive: {
+    backgroundColor: '#FFF1F1',
+    borderColor: '#E2B1B1',
+  },
+  expiryBadgeText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 11,
+  },
+  expiryBadgeTextActive: {
+    color: colors.error,
+  },
+  expirySummaryCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFF7F7',
+    borderColor: '#E7B5B5',
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 2,
+    paddingVertical: spacing.sm,
+  },
+  expirySummaryCaption: {
+    ...typography.caption,
+    color: colors.error,
+    fontSize: 11,
+  },
+  expirySummaryDays: {
+    ...typography.sectionTitle,
+    color: colors.error,
+    fontSize: 18,
+  },
+  listHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metaPill: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
     borderRadius: 999,
     borderWidth: 1,
-    marginRight: 8,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
-  headerChipText: {
+  metaPillText: {
     ...typography.captionStrong,
     color: colors.textPrimary,
-    fontSize: 12,
+    fontSize: 11,
   },
-  headersRow: {
-    paddingBottom: spacing.xs,
+  nextCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  nextCardTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 16,
+  },
+  rankBadge: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: colors.primaryDeep,
+    borderRadius: 999,
+    justifyContent: 'center',
+    minHeight: 52,
+    width: 34,
+  },
+  rankBadgeText: {
+    ...typography.bodyStrong,
+    color: colors.heroText,
+    fontSize: 13,
+  },
+  rowBody: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
   },
   rowCard: {
+    alignItems: 'stretch',
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    gap: 3,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
+    flexDirection: 'row',
+    gap: 8,
+    padding: spacing.sm,
   },
-  rowSubtitle: {
-    ...typography.caption,
+  rowCardCompact: {
+    alignItems: 'stretch',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    padding: spacing.sm,
+  },
+  rowCardEmphasis: {
+    backgroundColor: '#FFF3F3',
+    borderColor: '#E7B5B5',
+  },
+  rowDate: {
+    ...typography.captionStrong,
     color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
+    flexShrink: 0,
+    fontSize: 11,
+    minWidth: 58,
+  },
+  rowBottomLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  rowBottomLeft: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  rowTopLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   rowTitle: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
-    fontSize: 15,
+    flex: 1,
+    fontSize: 14,
     lineHeight: 18,
+    minWidth: 0,
   },
   rows: {
-    paddingBottom: spacing.lg,
+    gap: spacing.xs,
+  },
+  sectionHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  sectionTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  scorePill: {
+    alignItems: 'center',
+    backgroundColor: '#F1F8EA',
+    borderColor: '#C8DAB0',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  scorePillText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 11,
+  },
+  summaryCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  summaryChip: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  summaryChipHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'flex-start',
+  },
+  summaryLabel: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  summarySubtitle: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+  summaryTopRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  summaryBottomRow: {
+    flexDirection: 'row',
+  },
+  summaryValue: {
+    ...typography.bodyStrong,
+    color: colors.primaryDeep,
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });
