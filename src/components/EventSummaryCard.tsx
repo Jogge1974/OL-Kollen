@@ -197,10 +197,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   cardList: {
-    height: 60,
-    marginBottom: 7,
-    paddingLeft: 12,
-    paddingRight: 12,
+    minHeight: 68,
+    marginBottom: 0,
+    paddingLeft: 5,
+    paddingRight: 5,
   },
   cardOverlay: {
     minHeight: 78,
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   cardMain: {
     gap: 2,
     paddingLeft: 13,
-    paddingRight: 60,
+    paddingRight: 96,
   },
   cardMainOverlay: {
     gap: 4,
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     right: 10,
   },
   publicationIndicatorList: {
-    top: 32,
+    top: 38,
   },
   publicationIndicatorOverlay: {
     bottom: 10,
@@ -331,6 +331,7 @@ const styles = StyleSheet.create({
   },
   favoriteBadgeOverlay: {
     height: 28,
+    right: 10,
     width: 28,
   },
   favoriteBadgeActive: {
