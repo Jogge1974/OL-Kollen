@@ -157,33 +157,35 @@ export function RunnerRankingModal({
                 <View style={styles.rows}>
                   {(state.overview?.selectedRows ?? []).map((row, index) => {
                     const isSoonestExpiry = state.overview?.soonestExpiryRow?.dateISO === row.dateISO && state.overview?.soonestExpiryRow?.eventName === row.eventName;
+                    const isExpiringSoon = row.daysUntilExpiry < 30;
                     return (
-                      <View key={`${row.dateISO}-${row.eventName}-${row.position ?? index}`} style={[styles.rowCard, isSoonestExpiry ? styles.rowCardEmphasis : null]}>
+                      <View
+                        key={`${row.dateISO}-${row.eventName}-${row.position ?? index}`}
+                        style={[styles.rowCard, isSoonestExpiry || isExpiringSoon ? styles.rowCardEmphasis : null]}
+                      >
                         <View style={styles.rankBadge}>
-                          <Text style={styles.rankBadgeText}>{index + 1}</Text>
+                          <Text style={styles.rankBadgeText}>#{index + 1}</Text>
                         </View>
 
                         <View style={styles.rowBody}>
                           <View style={styles.rowTopLine}>
-                            <Text numberOfLines={1} style={styles.rowDate}>
-                              {row.dateLabel}
-                            </Text>
-                            <Text numberOfLines={1} style={styles.rowTitle}>
+                            <Text numberOfLines={1} style={[styles.rowTitle, isExpiringSoon ? styles.rowTitleEmphasis : null]}>
                               {row.eventName}
                             </Text>
-                            <View style={styles.scorePill}>
-                              <Text style={styles.scorePillText}>{formatPoints(row.score)}</Text>
-                            </View>
+                            <Text style={[styles.scoreText, isExpiringSoon ? styles.scoreTextEmphasis : null]}>{formatPoints(row.score)}</Text>
                           </View>
 
-                          <View style={styles.rowBottomLine}>
+                          <View style={[styles.rowBottomLine, isExpiringSoon ? styles.rowBottomLineEmphasis : null]}>
                             <View style={styles.rowBottomLeft}>
-                              <MetaPill label={row.className} />
-                              <MetaPill label={row.distance} />
+                              <Text numberOfLines={1} style={[styles.rowDate, isExpiringSoon ? styles.rowDateEmphasis : null]}>
+                                {row.dateLabel}
+                              </Text>
+                              <MetaPill label={row.className} emphasized={isExpiringSoon} />
+                              <MetaPill label={row.distance} emphasized={isExpiringSoon} />
                             </View>
-                            <View style={[styles.expiryBadge, isSoonestExpiry ? styles.expiryBadgeActive : null]}>
-                              <Text style={[styles.expiryBadgeText, isSoonestExpiry ? styles.expiryBadgeTextActive : null]}>
-                                {row.daysUntilExpiry} d kvar
+                            <View style={[styles.expiryBadge, isSoonestExpiry || isExpiringSoon ? styles.expiryBadgeActive : null]}>
+                              <Text style={[styles.expiryBadgeText, isSoonestExpiry || isExpiringSoon ? styles.expiryBadgeTextActive : null]}>
+                                {row.daysUntilExpiry} dagar kvar
                               </Text>
                             </View>
                           </View>
@@ -204,28 +206,23 @@ export function RunnerRankingModal({
                   <View style={styles.nextCard}>
                     <Text style={styles.nextCardTitle}>Tävling näst i tur</Text>
                     <View style={styles.rowCardCompact}>
-                      <View style={styles.rankBadge}>
-                        <Text style={styles.rankBadgeText}>N</Text>
-                      </View>
                       <View style={styles.rowBody}>
                         <View style={styles.rowTopLine}>
-                          <Text numberOfLines={1} style={styles.rowDate}>
-                            {state.overview.replacementRow.dateLabel}
-                          </Text>
                           <Text numberOfLines={1} style={styles.rowTitle}>
                             {state.overview.replacementRow.eventName}
                           </Text>
-                          <View style={styles.scorePill}>
-                            <Text style={styles.scorePillText}>{formatPoints(state.overview.replacementRow.score)}</Text>
-                          </View>
+                          <Text style={styles.scoreText}>{formatPoints(state.overview.replacementRow.score)}</Text>
                         </View>
-                        <View style={styles.rowBottomLine}>
-                          <View style={styles.rowBottomLeft}>
-                            <MetaPill label={state.overview.replacementRow.className} />
+                          <View style={styles.rowBottomLine}>
+                            <View style={styles.rowBottomLeft}>
+                              <Text numberOfLines={1} style={styles.rowDate}>
+                                {state.overview.replacementRow.dateLabel}
+                              </Text>
+                              <MetaPill label={state.overview.replacementRow.className} />
                             <MetaPill label={state.overview.replacementRow.distance} />
                           </View>
                           <View style={styles.expiryBadge}>
-                            <Text style={styles.expiryBadgeText}>{state.overview.replacementRow.daysUntilExpiry} d kvar</Text>
+                            <Text style={styles.expiryBadgeText}>{state.overview.replacementRow.daysUntilExpiry} dagar kvar</Text>
                           </View>
                         </View>
                       </View>
@@ -278,10 +275,10 @@ function SummaryChip({
   );
 }
 
-function MetaPill({ label }: { label: string }) {
+function MetaPill({ label, emphasized = false }: { label: string; emphasized?: boolean }) {
   return (
-    <View style={styles.metaPill}>
-      <Text numberOfLines={1} style={styles.metaPillText}>
+    <View style={[styles.metaPill, emphasized ? styles.metaPillEmphasis : null]}>
+      <Text numberOfLines={1} style={[styles.metaPillText, emphasized ? styles.metaPillTextEmphasis : null]}>
         {label}
       </Text>
     </View>
@@ -431,10 +428,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
+  metaPillEmphasis: {
+    backgroundColor: '#FFF7F7',
+    borderColor: '#E7B5B5',
+  },
   metaPillText: {
     ...typography.captionStrong,
     color: colors.textPrimary,
     fontSize: 11,
+  },
+  metaPillTextEmphasis: {
+    color: colors.error,
   },
   nextCard: {
     backgroundColor: colors.surfaceMuted,
@@ -442,7 +446,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     gap: spacing.sm,
-    padding: spacing.lg,
+    padding: spacing.sm,
+    width: '100%',
   },
   nextCardTitle: {
     ...typography.bodyStrong,
@@ -452,15 +457,17 @@ const styles = StyleSheet.create({
   rankBadge: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: '#E3F1D2',
+    borderColor: '#AFCF88',
+    borderWidth: 1,
     borderRadius: 999,
     justifyContent: 'center',
     minHeight: 52,
-    width: 34,
+    width: 40,
   },
   rankBadgeText: {
     ...typography.bodyStrong,
-    color: colors.heroText,
+    color: colors.primaryDeep,
     fontSize: 13,
   },
   rowBody: {
@@ -476,7 +483,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
-    padding: spacing.sm,
+    padding: spacing.xs,
   },
   rowCardCompact: {
     alignItems: 'stretch',
@@ -486,6 +493,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
+    width: '100%',
     padding: spacing.sm,
   },
   rowCardEmphasis: {
@@ -499,15 +507,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     minWidth: 58,
   },
+  rowDateEmphasis: {
+    color: colors.error,
+  },
   rowBottomLine: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  rowBottomLineEmphasis: {
+    alignItems: 'center',
+  },
   rowBottomLeft: {
+    alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexShrink: 1,
+    flexWrap: 'nowrap',
     gap: 6,
+    minWidth: 0,
   },
   rowTopLine: {
     alignItems: 'center',
@@ -521,6 +538,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     minWidth: 0,
+  },
+  rowTitleEmphasis: {
+    color: colors.error,
   },
   rows: {
     gap: spacing.xs,
@@ -548,6 +568,14 @@ const styles = StyleSheet.create({
     ...typography.captionStrong,
     color: colors.primaryDeep,
     fontSize: 11,
+  },
+  scoreText: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
+  scoreTextEmphasis: {
+    color: colors.error,
   },
   summaryCard: {
     backgroundColor: colors.surfaceMuted,

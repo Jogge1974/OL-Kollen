@@ -120,7 +120,7 @@ function buildOverview(competitions: RunnerRankingCompetitionRow[]): RunnerRanki
   const countedRows = competitions
     .filter((row) => row.countsForRanking && Number.isFinite(row.score))
     .slice()
-    .sort((left, right) => right.score - left.score || compareIsoDate(left.dateISO, right.dateISO));
+    .sort((left, right) => left.score - right.score || compareIsoDate(left.dateISO, right.dateISO));
 
   const selectedRows = countedRows.slice(0, 6);
   if (selectedRows.length === 0) {

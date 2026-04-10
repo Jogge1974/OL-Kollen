@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   hero: {
-    borderRadius: 28,
+    borderRadius: 14,
     gap: spacing.sm,
     alignSelf: 'stretch',
     overflow: 'hidden',
