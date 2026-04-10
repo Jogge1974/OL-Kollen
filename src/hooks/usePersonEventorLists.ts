@@ -38,39 +38,30 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
   React.useEffect(() => {
     let isMounted = true;
 
-    const load = async () => {
+    const loadStarts = async () => {
       if (!personId) {
         if (!isMounted) {
           return;
         }
 
-        setResultsSections([]);
         setStartsSections([]);
-        setResultsError(null);
         setStartsError(null);
+        setIsLoadingStarts(false);
         return;
       }
 
-      setIsLoadingResults(true);
       setIsLoadingStarts(true);
-      setResultsError(null);
       setStartsError(null);
 
       try {
-        const [startsXml, resultsXml] = await Promise.all([
-          fetchPersonStartsXml(personId, formatYesterdayBoundary(), formatFutureBoundary(30)),
-          fetchPersonResultsXml(personId, formatYearStart(resultsYear), formatYearEnd(resultsYear)),
-        ]);
-
+        const startsXml = await fetchPersonStartsXml(personId, formatYesterdayBoundary(), formatFutureBoundary(30));
         const nextStarts = parsePersonStartsXml(startsXml);
-        const nextResults = filterPersonResultSections(parsePersonResultsXml(resultsXml), resultsYear, resultsFilter);
 
         if (!isMounted) {
           return;
         }
 
         setStartsSections(nextStarts);
-        setResultsSections(nextResults);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -78,20 +69,64 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
 
         const message = error instanceof Error ? error.message : 'Okänt fel vid hämtning av personlistor.';
         setStartsError(message);
-        setResultsError(message);
         setStartsSections([]);
-        setResultsSections([]);
       } finally {
+        if (isMounted) {
+          setIsLoadingStarts(false);
+        }
+      }
+    };
+
+    void loadStarts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [personId, refreshKey]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadResults = async () => {
+      if (!personId) {
         if (!isMounted) {
           return;
         }
 
+        setResultsSections([]);
+        setResultsError(null);
         setIsLoadingResults(false);
-        setIsLoadingStarts(false);
+        return;
+      }
+
+      setIsLoadingResults(true);
+      setResultsError(null);
+
+      try {
+        const resultsXml = await fetchPersonResultsXml(personId, formatYearStart(resultsYear), formatYearEnd(resultsYear));
+        const nextResults = filterPersonResultSections(parsePersonResultsXml(resultsXml), resultsYear, resultsFilter);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setResultsSections(nextResults);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : 'Okänt fel vid hämtning av personlistor.';
+        setResultsError(message);
+        setResultsSections([]);
+      } finally {
+        if (isMounted) {
+          setIsLoadingResults(false);
+        }
       }
     };
 
-    void load();
+    void loadResults();
 
     return () => {
       isMounted = false;

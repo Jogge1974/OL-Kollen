@@ -108,9 +108,9 @@ export function PersonActivitySectionList({
           </View>
 
           <View style={styles.rows}>
-            {section.rows.map((row) => (
+            {section.rows.map((row, rowIndex) => (
               <Pressable
-                key={`${section.eventId}-${row.classLabel}-${row.position ?? row.startTime ?? row.time ?? row.organisation}`}
+                key={`${section.eventId}-${row.personId ?? row.favouriteId ?? row.eventName ?? 'row'}-${row.classLabel}-${rowIndex}`}
                 onPress={onPressEvent ? () => onPressEvent(row.eventId) : undefined}
                 style={({ pressed }) => [styles.row, pressed && onPressEvent ? styles.rowPressed : null]}
               >

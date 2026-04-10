@@ -16,7 +16,7 @@ type UpcomingStartsPanelProps = {
 export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStartsPanelProps) {
   const pathname = usePathname();
 
-  if (!isLoading && !error && sections.length === 0) {
+  if (!error && sections.length === 0) {
     return null;
   }
 

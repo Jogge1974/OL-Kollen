@@ -47,9 +47,10 @@ export default function HomeScreen() {
   });
 
   const todayIso = React.useMemo(() => getLocalIsoDate(), []);
+  const exactTodayEvents = React.useMemo(() => todayEvents.filter((event) => event.startDate === todayIso), [todayEvents, todayIso]);
   const nationalTodayEvents = React.useMemo(
-    () => todayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
-    [todayEvents],
+    () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
+    [exactTodayEvents],
   );
   const latestPastEvents = React.useMemo(() => [...resultsSections].slice(-2).reverse(), [resultsSections]);
   const upcomingStartCount = React.useMemo(
@@ -77,7 +78,7 @@ export default function HomeScreen() {
         });
 
         if (isMounted) {
-          setTodayEvents(events.sort(sortEventsAsc));
+          setTodayEvents(events.filter((event) => event.startDate === todayIso).sort(sortEventsAsc));
         }
       } catch (error) {
         if (isMounted) {
@@ -109,7 +110,7 @@ export default function HomeScreen() {
           districtIds: [],
           fromDate: todayIso,
           toDate: todayIso,
-        }).then((events) => setTodayEvents(events.sort(sortEventsAsc))),
+        }).then((events) => setTodayEvents(events.filter((event) => event.startDate === todayIso).sort(sortEventsAsc))),
         user?.personId ? refetchPersonLists() : Promise.resolve(),
       ]);
     } catch (error) {
@@ -135,7 +136,7 @@ export default function HomeScreen() {
 
           <View style={styles.heroTopRow}>
             <View style={styles.heroCopy}>
-              <Text style={styles.heroEyebrow}>Orientering</Text>
+              <Text style={styles.heroEyebrow}>{user ? `Hej ${greetingName}` : 'Orientering'}</Text>
               <Text style={styles.heroTitle}>Kontrollen</Text>
               <Text style={styles.heroDescription}>
                 Ett alternativ till Eventor.
@@ -145,7 +146,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.heroStatsRow}>
-            <HeroStat icon="calendar-outline" label="Idag" value={`${todayEvents.length}`} />
+            <HeroStat icon="calendar-outline" label="Idag" value={`${exactTodayEvents.length}`} />
             <HeroStat icon="flag-outline" label="Starter" value={user ? `${upcomingStartCount}` : 'Logga in'} />
             <HeroStat icon="star-outline" label="Favoriter" value={`${favoriteEvents.length}`} />
           </View>
@@ -464,7 +465,7 @@ const styles = StyleSheet.create({
   },
   statPill: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     borderRadius: 18,
     flex: 1,
     flexDirection: 'row',
