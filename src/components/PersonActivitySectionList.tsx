@@ -167,9 +167,11 @@ export function PersonActivitySectionList({
                         onPress={() => onOpenResultList?.(row.eventId, row.classLabel)}
                         style={[styles.resultActionButton, styles.resultActionButtonPrimary]}
                       >
+                        <Ionicons color={colors.primaryDeep} name="trophy-outline" size={12} />
                         <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextPrimary]}>Resultatlista</Text>
                       </Pressable>
                       <Pressable onPress={() => onOpenSplitTimes?.(row.eventId, row.classLabel)} style={[styles.resultActionButton, styles.resultActionButtonMuted]}>
+                        <Ionicons color={colors.primaryDeep} name="time-outline" size={12} />
                         <Text style={styles.resultActionButtonText}>Sträcktider</Text>
                       </Pressable>
                       <Pressable
@@ -361,12 +363,12 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   resultActionButtonPrimary: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.primary,
+    backgroundColor: '#E9F2E1',
+    borderColor: '#86AD73',
   },
   resultActionButtonMuted: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
+    backgroundColor: '#F6D94B',
+    borderColor: '#C9A700',
   },
   resultActionButtonAnalysis: {
     backgroundColor: '#E7F1FF',
@@ -374,12 +376,12 @@ const styles = StyleSheet.create({
   },
   resultActionButtonText: {
     ...typography.captionStrong,
-    color: colors.textSecondary,
+    color: '#6B5300',
     fontSize: 11,
     lineHeight: 13,
   },
   resultActionButtonTextPrimary: {
-    color: colors.primaryDeep,
+    color: '#355F2A',
   },
   resultActionButtonTextAnalysis: {
     color: '#2F66A8',

@@ -92,6 +92,11 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
             publicationIndicator === 'Resultatlista' ? styles.publicationBadgeResult : styles.publicationBadgeStart,
           ]}
         >
+          <Ionicons
+            color={colors.textPrimary}
+            name={publicationIndicator === 'Resultatlista' ? 'trophy-outline' : 'list-outline'}
+            size={mode === 'overlay' ? 13 : 12}
+          />
           <Text style={[styles.publicationBadgeText, mode === 'overlay' ? styles.publicationBadgeTextOverlay : null]}>{publicationIndicator}</Text>
         </Pressable>
       ) : null}
@@ -274,39 +279,42 @@ const styles = StyleSheet.create({
     maxWidth: 58,
   },
   publicationBadge: {
+    alignItems: 'center',
     borderRadius: 999,
-    minWidth: 74,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    flexDirection: 'row',
+    gap: 4,
+    minWidth: 86,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     position: 'absolute',
     right: 10,
   },
   publicationIndicatorList: {
-    top: 35,
+    top: 32,
   },
   publicationIndicatorOverlay: {
     bottom: 10,
   },
   publicationBadgeStart: {
     backgroundColor: '#E4F4D5',
-    borderColor: colors.primary,
+    borderColor: '#86AD73',
     borderWidth: 1,
   },
   publicationBadgeResult: {
     backgroundColor: '#F6D94B',
-    borderColor: colors.primary,
+    borderColor: '#C9A700',
     borderWidth: 1,
   },
   publicationBadgeText: {
     color: colors.textPrimary,
     fontFamily: 'Manrope_600SemiBold',
-    fontSize: 9,
-    lineHeight: 11,
+    fontSize: 10,
+    lineHeight: 12,
     textAlign: 'center',
   },
   publicationBadgeTextOverlay: {
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 11,
+    lineHeight: 13,
   },
   favoriteBadge: {
     alignItems: 'center',
