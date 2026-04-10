@@ -31,6 +31,12 @@ export default function SverigelistaScreen() {
     }
   }, [user?.gender]);
 
+  React.useEffect(() => {
+    if (!user) {
+      setActiveRunnerRanking(null);
+    }
+  }, [user]);
+
   const rankingYear = React.useMemo(() => (latestUpdated ? Number(latestUpdated.slice(0, 4)) : new Date().getFullYear()), [latestUpdated]);
 
   const genderRows = React.useMemo(() => rows.filter((row) => row.Gender === selectedGender), [rows, selectedGender]);

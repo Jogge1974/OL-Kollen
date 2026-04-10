@@ -4,11 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
+import { AppTextField } from '@/src/components/AppTextField';
 import { LoadingState } from '@/src/components/LoadingState';
 import { fetchRunnerRankingTable, RunnerRankingTableResult } from '@/src/services/eventorRunnerRanking';
+import { refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
+import { useAuthStore } from '@/src/store/authStore';
 import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export type RunnerRankingSelection = {
@@ -21,6 +24,7 @@ export type RunnerRankingSelection = {
 };
 
 type RunnerRankingModalState = RunnerRankingTableResult & {
+  addition: number | null;
   runnerClub: string;
   runnerCurrentPoints: number;
   runnerCurrentRank: number;
@@ -39,6 +43,12 @@ export function RunnerRankingModal({
 }) {
   const [state, setState] = React.useState<RunnerRankingModalState | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
+  const [manualLoginVisible, setManualLoginVisible] = React.useState(false);
+  const [manualPassword, setManualPassword] = React.useState('');
+  const [manualUsername, setManualUsername] = React.useState('');
+  const [manualLoginError, setManualLoginError] = React.useState<string | null>(null);
+  const authUser = useAuthStore((store) => store.user);
+  const rememberedUsername = useAuthStore((store) => store.rememberedUsername);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -46,15 +56,21 @@ export function RunnerRankingModal({
     if (!selection) {
       setState(null);
       setReloadKey(0);
+      setManualLoginVisible(false);
+      setManualPassword('');
+      setManualUsername('');
+      setManualLoginError(null);
       return () => {
         isMounted = false;
       };
     }
 
-    setState({
-      competitions: [],
-      headers: [],
-      hasResultsTable: false,
+      setState({
+        competitions: [],
+        addition: null,
+        headers: [],
+        hasResultsTable: false,
+      loginRequired: false,
       message: null,
       overview: null,
       pageTitle: null,
@@ -110,6 +126,40 @@ export function RunnerRankingModal({
     };
   }, [comparisonRows, state?.overview, state?.runnerCurrentPoints, state?.runnerGender]);
 
+  React.useEffect(() => {
+    if (!manualLoginVisible) {
+      return;
+    }
+
+    const initialUsername = authUser?.username ?? rememberedUsername ?? '';
+    setManualUsername((current) => current || initialUsername);
+  }, [authUser?.username, manualLoginVisible, rememberedUsername]);
+
+  const handleManualLogin = React.useCallback(async () => {
+    if (!manualPassword.trim()) {
+      setManualLoginError('Ange lösenordet innan du fortsätter.');
+      return;
+    }
+
+    const username = manualUsername.trim();
+    if (!username) {
+      setManualLoginError('Ange användarnamn innan du fortsätter.');
+      return;
+    }
+
+    setManualLoginError(null);
+
+    const cookie = await refreshStoredEventorWebSessionCookie(username, manualPassword).catch(() => null);
+    if (!cookie) {
+      setManualLoginError('Inloggningen lyckades inte. Kontrollera användarnamn och lösenord.');
+      return;
+    }
+
+    setManualLoginVisible(false);
+    setManualPassword('');
+    setReloadKey((value) => value + 1);
+  }, [manualPassword, manualUsername]);
+
   return (
     <Modal animationType="slide" transparent visible={Boolean(selection)}>
       <View style={styles.overlay}>
@@ -146,6 +196,7 @@ export function RunnerRankingModal({
                       value={`#${state.runnerCurrentRank}`}
                     />
                     <SummaryChip icon="speedometer-outline" label="Poäng" value={formatPoints(state.runnerCurrentPoints)} />
+                    <SummaryChip icon="add-circle-outline" label="Tillägg" value={formatPoints(state.addition)} />
                   </View>
                 </View>
 
@@ -156,12 +207,11 @@ export function RunnerRankingModal({
 
                 <View style={styles.rows}>
                   {(state.overview?.selectedRows ?? []).map((row, index) => {
-                    const isSoonestExpiry = state.overview?.soonestExpiryRow?.dateISO === row.dateISO && state.overview?.soonestExpiryRow?.eventName === row.eventName;
                     const isExpiringSoon = row.daysUntilExpiry < 30;
                     return (
                       <View
                         key={`${row.dateISO}-${row.eventName}-${row.position ?? index}`}
-                        style={[styles.rowCard, isSoonestExpiry || isExpiringSoon ? styles.rowCardEmphasis : null]}
+                        style={[styles.rowCard, isExpiringSoon ? styles.rowCardEmphasis : null]}
                       >
                         <View style={styles.rankBadge}>
                           <Text style={styles.rankBadgeText}>#{index + 1}</Text>
@@ -183,8 +233,8 @@ export function RunnerRankingModal({
                               <MetaPill label={row.className} emphasized={isExpiringSoon} />
                               <MetaPill label={row.distance} emphasized={isExpiringSoon} />
                             </View>
-                            <View style={[styles.expiryBadge, isSoonestExpiry || isExpiringSoon ? styles.expiryBadgeActive : null]}>
-                              <Text style={[styles.expiryBadgeText, isSoonestExpiry || isExpiringSoon ? styles.expiryBadgeTextActive : null]}>
+                            <View style={[styles.expiryBadge, isExpiringSoon ? styles.expiryBadgeActive : null]}>
+                              <Text style={[styles.expiryBadgeText, isExpiringSoon ? styles.expiryBadgeTextActive : null]}>
                                 {row.daysUntilExpiry} dagar kvar
                               </Text>
                             </View>
@@ -214,21 +264,36 @@ export function RunnerRankingModal({
                           <Text style={styles.scoreText}>{formatPoints(state.overview.replacementRow.score)}</Text>
                         </View>
                           <View style={styles.rowBottomLine}>
-                            <View style={styles.rowBottomLeft}>
-                              <Text numberOfLines={1} style={styles.rowDate}>
-                                {state.overview.replacementRow.dateLabel}
-                              </Text>
-                              <MetaPill label={state.overview.replacementRow.className} />
+                          <View style={styles.rowBottomLeft}>
+                            <Text numberOfLines={1} style={styles.rowDate}>
+                              {state.overview.replacementRow.dateLabel}
+                            </Text>
+                            <MetaPill label={state.overview.replacementRow.className} />
                             <MetaPill label={state.overview.replacementRow.distance} />
                           </View>
-                          <View style={styles.expiryBadge}>
-                            <Text style={styles.expiryBadgeText}>{state.overview.replacementRow.daysUntilExpiry} dagar kvar</Text>
+                          <View style={[styles.expiryBadge, state.overview.replacementRow.daysUntilExpiry < 30 ? styles.expiryBadgeActive : null]}>
+                            <Text
+                              style={[
+                                styles.expiryBadgeText,
+                                state.overview.replacementRow.daysUntilExpiry < 30 ? styles.expiryBadgeTextActive : null,
+                              ]}
+                            >
+                              {state.overview.replacementRow.daysUntilExpiry} dagar kvar
+                            </Text>
                           </View>
                         </View>
                       </View>
                     </View>
                   </View>
-                ) : null}
+                ) : (
+                  <View style={styles.nextCard}>
+                    <Text style={styles.nextCardTitle}>Tävling näst i tur</Text>
+                    <Text style={styles.nextCardEmptyTitle}>Ingen tävling på tur</Text>
+                    <Text style={styles.nextCardEmptyText}>
+                      Det finns ingen senare tävling som kan ersätta den som ryker först.
+                    </Text>
+                  </View>
+                )}
               </>
             ) : null}
 
@@ -236,12 +301,60 @@ export function RunnerRankingModal({
               <View style={styles.errorCard}>
                 <Text style={styles.errorTitle}>Ingen lista kunde hämtas</Text>
                 <Text style={styles.errorText}>{state.message ?? 'Okänt fel.'}</Text>
-                <AppButton label="Försök igen" onPress={() => setReloadKey((value) => value + 1)} variant="secondary" />
+                <View style={styles.errorActions}>
+                  <AppButton label="Försök igen" onPress={() => setReloadKey((value) => value + 1)} variant="secondary" />
+                  {state.loginRequired ? (
+                    <AppButton label="Ange lösenord" onPress={() => setManualLoginVisible(true)} variant="primary" />
+                  ) : null}
+                </View>
               </View>
             ) : null}
           </ScrollView>
         </View>
       </View>
+
+      <Modal animationType="fade" transparent visible={manualLoginVisible}>
+        <View style={styles.manualOverlay}>
+          <Pressable style={styles.backdrop} onPress={() => setManualLoginVisible(false)} />
+          <View style={styles.manualCard}>
+            <Text style={styles.manualTitle}>Logga in mot Eventor</Text>
+            <Text style={styles.manualText}>Ange lösenordet så försöker vi förnya webbsessionen för Sverigelistan.</Text>
+
+            {!authUser?.username && !rememberedUsername ? (
+              <AppTextField
+                autoCapitalize="none"
+                autoCorrect={false}
+                label="Användarnamn"
+                onChangeText={setManualUsername}
+                placeholder="Ange ditt Eventor-användarnamn"
+                value={manualUsername}
+              />
+            ) : (
+              <View style={styles.manualUsernameBox}>
+                <Text style={styles.manualUsernameLabel}>Användarnamn</Text>
+                <Text style={styles.manualUsernameValue}>{manualUsername}</Text>
+              </View>
+            )}
+
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Lösenord"
+              onChangeText={setManualPassword}
+              placeholder="Ange ditt lösenord"
+              secureTextEntry
+              value={manualPassword}
+            />
+
+            {manualLoginError ? <Text style={styles.manualError}>{manualLoginError}</Text> : null}
+
+            <View style={styles.manualActions}>
+              <AppButton label="Avbryt" onPress={() => setManualLoginVisible(false)} variant="secondary" />
+              <AppButton label="Logga in" onPress={() => void handleManualLogin()} variant="primary" />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -367,6 +480,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
   },
+  errorActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
@@ -420,6 +538,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  manualActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  manualCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+    width: '100%',
+  },
+  manualError: {
+    ...typography.captionStrong,
+    color: colors.error,
+  },
+  manualOverlay: {
+    alignItems: 'center',
+    backgroundColor: colors.overlay,
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  manualText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  manualTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 17,
+  },
+  manualUsernameBox: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  manualUsernameLabel: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  manualUsernameValue: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
   metaPill: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
@@ -453,6 +624,16 @@ const styles = StyleSheet.create({
     ...typography.bodyStrong,
     color: colors.textPrimary,
     fontSize: 16,
+  },
+  nextCardEmptyTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
+  nextCardEmptyText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
   },
   rankBadge: {
     alignItems: 'center',
@@ -514,6 +695,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    minHeight: 28,
   },
   rowBottomLineEmphasis: {
     alignItems: 'center',

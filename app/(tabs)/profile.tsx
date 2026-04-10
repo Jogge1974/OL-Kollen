@@ -26,6 +26,7 @@ import { SverigelistanTrendDirection } from '@/src/types/sverigelistan';
 export default function ProfileScreen() {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [saveEncryptedLogin, setSaveEncryptedLogin] = React.useState(false);
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
   const { rememberMe, setRememberMe } = useRememberMe(true);
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
@@ -81,7 +82,7 @@ export default function ProfileScreen() {
 
   const handleLogin = async () => {
     try {
-      await signInWithEventor({ password, rememberMe, username });
+      await signInWithEventor({ password, rememberMe, saveEncryptedLogin, username });
       setPassword('');
     } catch {
       // Store state already exposes a clean error message.
@@ -158,6 +159,15 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
 
+            <View style={styles.checkboxRow}>
+              <Pressable onPress={() => setSaveEncryptedLogin(!saveEncryptedLogin)} style={styles.rememberMeRow}>
+                <View style={[styles.rememberMeBox, saveEncryptedLogin ? styles.rememberMeBoxChecked : null]}>
+                  {saveEncryptedLogin ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
+                </View>
+                <Text style={styles.checkboxLabel}>Spara användaruppgifterna krypterat</Text>
+              </Pressable>
+            </View>
+
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <AppButton
@@ -168,7 +178,7 @@ export default function ProfileScreen() {
             />
 
             <Text style={styles.helperText}>
-              Inloggningen använder Eventors dokumenterade authenticatePerson-endpoint. Lyckad inloggning sparas lokalt om du markerar Kom ihåg mig.
+              Inloggningen använder Eventors dokumenterade authenticatePerson-endpoint. Om du sparar användaruppgifterna krypterat kan appen logga in mot Sverigelistan automatiskt när webbsessionen går ut. Det kräver dock att din organisation har giltig licens till Sverigelistan
             </Text>
           </View>
         ) : (

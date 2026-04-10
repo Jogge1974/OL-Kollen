@@ -1,4 +1,7 @@
-import { getStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { getStoredEventorCredentials } from '@/src/services/eventorCredentials';
+import { getStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+
+const DEFAULT_MISSING_SCORE = 302.06;
 
 export type RunnerRankingTableRow = {
   cells: string[];
@@ -8,6 +11,7 @@ export type RunnerRankingTableRow = {
 export type RunnerRankingCompetitionRow = {
   className: string;
   countsForRanking: boolean;
+  isFallback: boolean;
   dateISO: string;
   dateLabel: string;
   daysUntilExpiry: number;
@@ -30,8 +34,10 @@ export type RunnerRankingOverview = {
 
 export type RunnerRankingTableResult = {
   competitions: RunnerRankingCompetitionRow[];
+  addition: number | null;
   headers: string[];
   hasResultsTable: boolean;
+  loginRequired: boolean;
   message: string | null;
   overview: RunnerRankingOverview | null;
   pageTitle: string | null;
@@ -55,10 +61,13 @@ export async function fetchRunnerRankingTable(personId: number): Promise<RunnerR
       return buildSuccessResult(sourceUrl, cookieAttempt);
     }
 
-    return buildFailureResult(sourceUrl, cookieAttempt);
+    const cookieFailure = buildFailureResult(sourceUrl, cookieAttempt);
+    const credentialsAttempt = await retryWithStoredCredentials(sourceUrl);
+    return credentialsAttempt ?? cookieFailure;
   }
 
-  return buildFailureResult(sourceUrl, nativeAttempt);
+  const credentialsAttempt = await retryWithStoredCredentials(sourceUrl);
+  return credentialsAttempt ?? buildFailureResult(sourceUrl, nativeAttempt);
 }
 
 async function fetchRankingPage(sourceUrl: string, cookie?: string | null) {
@@ -91,8 +100,10 @@ function isSuccessfulRankingPage(result: Awaited<ReturnType<typeof fetchRankingP
 function buildSuccessResult(sourceUrl: string, result: Awaited<ReturnType<typeof fetchRankingPage>>): RunnerRankingTableResult {
   return {
     competitions: result.parsedTable.competitions,
+    addition: extractRankingAddition(result.html),
     headers: result.parsedTable.headers,
     hasResultsTable: true,
+    loginRequired: false,
     message: result.parsedTable.rows.length === 0 ? 'resultsTable hittades, men inga rader kunde läsas ut.' : null,
     overview: buildOverview(result.parsedTable.competitions),
     pageTitle: result.pageTitle,
@@ -105,8 +116,10 @@ function buildSuccessResult(sourceUrl: string, result: Awaited<ReturnType<typeof
 function buildFailureResult(sourceUrl: string, result: Awaited<ReturnType<typeof fetchRankingPage>>): RunnerRankingTableResult {
   return {
     competitions: [],
+    addition: null,
     headers: [],
     hasResultsTable: false,
+    loginRequired: isLoginRelatedFailure(result.response.status, result.html, result.parsedTable.hasResultsTable),
     message: buildRankingErrorMessage(result.response.status, result.html, result.parsedTable.hasResultsTable),
     overview: null,
     pageTitle: result.pageTitle,
@@ -116,19 +129,52 @@ function buildFailureResult(sourceUrl: string, result: Awaited<ReturnType<typeof
   };
 }
 
+function extractRankingAddition(html: string) {
+  const rowMatches = [...html.matchAll(/<tr[^>]*class=["'][^"']*\blistHeaderRow\b[^"']*["'][^>]*>([\s\S]*?)<\/tr>/gi)];
+
+  for (const rowMatch of rowMatches) {
+    const cells = extractCells(rowMatch[1], 'td');
+    if (cells.length < 4) {
+      continue;
+    }
+
+    const firstCell = cells[0].toLocaleLowerCase('sv');
+    const secondCell = cells[1];
+    const thirdCell = cells[2];
+    const fourthCell = cells[3];
+
+    if (
+      (firstCell.includes('sverigelistan') || firstCell.includes('lista')) &&
+      /^\d+$/.test(secondCell) &&
+      /^-?\d+(?:[.,]\d+)?$/.test(thirdCell) &&
+      /^-?\d+(?:[.,]\d+)?$/.test(fourthCell)
+    ) {
+      const addition = parseNumber(fourthCell);
+      return Number.isFinite(addition) ? addition : null;
+    }
+  }
+
+  return null;
+}
+
 function buildOverview(competitions: RunnerRankingCompetitionRow[]): RunnerRankingOverview | null {
   const countedRows = competitions
     .filter((row) => row.countsForRanking && Number.isFinite(row.score))
     .slice()
     .sort((left, right) => left.score - right.score || compareIsoDate(left.dateISO, right.dateISO));
 
-  const selectedRows = countedRows.slice(0, 6);
+  const actualRows = countedRows.slice(0, 6);
+  const missingRowCount = Math.max(0, 6 - actualRows.length);
+  const selectedRows = [
+    ...actualRows,
+    ...Array.from({ length: missingRowCount }, (_, index) => createFallbackRow(index + 1, actualRows.length)),
+  ];
   if (selectedRows.length === 0) {
     return null;
   }
 
   const currentAverage = average(selectedRows.map((row) => row.score));
-  const soonestExpiryRow = selectedRows.reduce<RunnerRankingCompetitionRow | null>((best, row) => {
+  const soonestExpiryRow = actualRows.reduce<RunnerRankingCompetitionRow | null>((best, row) => {
     if (!best) {
       return row;
     }
@@ -159,6 +205,31 @@ function buildOverview(competitions: RunnerRankingCompetitionRow[]): RunnerRanki
   };
 }
 
+
+async function retryWithStoredCredentials(sourceUrl: string): Promise<RunnerRankingTableResult | null> {
+  const storedCredentials = await getStoredEventorCredentials().catch(() => null);
+  if (!storedCredentials) {
+    return null;
+  }
+
+  const refreshedCookie = await refreshStoredEventorWebSessionCookie(storedCredentials.username, storedCredentials.password).catch(() => null);
+  if (!refreshedCookie) {
+    return buildFailureResult(sourceUrl, {
+      html: '',
+      pageTitle: null,
+      parsedTable: { competitions: [], hasResultsTable: false, headers: [], rows: [] },
+      response: { ok: false, status: 401 } as Response,
+    });
+  }
+
+  const retryAttempt = await fetchRankingPage(sourceUrl, refreshedCookie);
+  if (isSuccessfulRankingPage(retryAttempt)) {
+    return buildSuccessResult(sourceUrl, retryAttempt);
+  }
+
+  return buildFailureResult(sourceUrl, retryAttempt);
+}
+
 function buildRankingErrorMessage(status: number, html: string, hasResultsTable: boolean) {
   if (status === 401 || status === 403) {
     return 'Eventor-sessionen har gått ut eller saknar behörighet. Logga in i appen igen.';
@@ -173,6 +244,10 @@ function buildRankingErrorMessage(status: number, html: string, hasResultsTable:
   }
 
   return `Kunde inte hämta rankinglistan (felkod ${status}).`;
+}
+
+function isLoginRelatedFailure(status: number, html: string, hasResultsTable: boolean) {
+  return status === 401 || status === 403 || !hasResultsTable || looksLikeLoginPage(html);
 }
 
 function looksLikeLoginPage(html: string) {
@@ -255,6 +330,7 @@ function parseCompetitionRow(rowHtml: string, cells: string[], detailLink: strin
   return {
     className: stripText(cells[3]),
     countsForRanking: hasPosition,
+    isFallback: false,
     dateISO,
     dateLabel: formatDateLabel(dateISO),
     daysUntilExpiry: daysUntilExpiry(dateISO),
@@ -266,6 +342,24 @@ function parseCompetitionRow(rowHtml: string, cells: string[], detailLink: strin
     score,
     scoreLabel: formatPoints(score),
   } satisfies RunnerRankingCompetitionRow;
+}
+
+function createFallbackRow(fallbackIndex: number, actualCount: number): RunnerRankingCompetitionRow {
+  return {
+    className: '-',
+    countsForRanking: false,
+    isFallback: true,
+    dateISO: '',
+    dateLabel: '-',
+    daysUntilExpiry: 0,
+    detailLink: null,
+    distance: '-',
+    eventName: `Saknad tävling ${actualCount + fallbackIndex}`,
+    expiresOnISO: '',
+    position: null,
+    score: DEFAULT_MISSING_SCORE,
+    scoreLabel: formatPoints(DEFAULT_MISSING_SCORE),
+  };
 }
 
 function extractCells(rowHtml: string, tag: 'td' | 'th') {
@@ -357,3 +451,4 @@ function formatISODate(date: Date) {
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+

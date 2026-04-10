@@ -2,11 +2,13 @@ import { create } from 'zustand';
 
 import { authenticateEventorPerson } from '@/src/api/authApi';
 import { resolveAccessLevel } from '@/src/features/auth/access';
+import { clearStoredEventorCredentials, getStoredEventorCredentials, saveStoredEventorCredentials } from '@/src/services/eventorCredentials';
 import { clearStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
 import { getStoredJson, removeStoredValue, setStoredJson } from '@/src/services/secureStorage';
 import { AuthenticatedUser, EventorLoginInput, PersistedAuthSession } from '@/src/types/user';
 
 const AUTH_SESSION_KEY = 'olkollen.auth.session';
+const REMEMBERED_USERNAME_KEY = 'olkollen.auth.rememberedUsername';
 
 type AuthState = {
   error: string | null;
@@ -14,7 +16,7 @@ type AuthState = {
   isHydrated: boolean;
   isSubmitting: boolean;
   rememberedUsername: string;
-  signInWithEventor: (input: EventorLoginInput & { rememberMe: boolean }) => Promise<void>;
+  signInWithEventor: (input: EventorLoginInput & { rememberMe: boolean; saveEncryptedLogin: boolean }) => Promise<void>;
   signOut: () => Promise<void>;
   user: AuthenticatedUser | null;
 };
@@ -24,11 +26,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrateSession: async () => {
     try {
       const storedSession = await getStoredJson<PersistedAuthSession>(AUTH_SESSION_KEY);
+      const storedRememberedUsername = await getStoredJson<string>(REMEMBERED_USERNAME_KEY).catch(() => null);
+      const storedCredentials = await getStoredEventorCredentials().catch(() => null);
 
       set({
         error: null,
         isHydrated: true,
-        rememberedUsername: storedSession?.rememberedUsername ?? storedSession?.user?.username ?? '',
+        rememberedUsername:
+          storedRememberedUsername ?? storedSession?.rememberedUsername ?? storedSession?.user?.username ?? storedCredentials?.username ?? '',
         user: storedSession?.user ?? null,
       });
     } catch {
@@ -43,7 +48,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isHydrated: false,
   isSubmitting: false,
   rememberedUsername: '',
-  signInWithEventor: async ({ password, rememberMe, username }) => {
+  signInWithEventor: async ({ password, rememberMe, saveEncryptedLogin, username }) => {
     set({ error: null, isSubmitting: true });
 
     try {
@@ -58,14 +63,24 @@ export const useAuthStore = create<AuthState>((set) => ({
         return null;
       });
 
-      set({
-        error: null,
-        isSubmitting: false,
-        rememberedUsername: rememberMe ? username : '',
-        user: enrichedUser,
-      });
+      if (saveEncryptedLogin) {
+        await saveStoredEventorCredentials(username, password);
+      } else {
+        await clearStoredEventorCredentials();
+      }
 
       if (rememberMe) {
+        await setStoredJson(REMEMBERED_USERNAME_KEY, username);
+      }
+
+      set((state) => ({
+        error: null,
+        isSubmitting: false,
+        rememberedUsername: rememberMe ? username : state.rememberedUsername,
+        user: enrichedUser,
+      }));
+
+      if (rememberMe || saveEncryptedLogin) {
         await setStoredJson(AUTH_SESSION_KEY, {
           rememberedUsername: username,
           user: enrichedUser,
@@ -86,9 +101,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: async () => {
     await removeStoredValue(AUTH_SESSION_KEY);
     await clearStoredEventorWebSessionCookie();
+    await clearStoredEventorCredentials();
     set({
       error: null,
-      rememberedUsername: '',
       user: null,
     });
   },
