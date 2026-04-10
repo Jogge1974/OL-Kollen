@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { Ionicons } from '@expo/vector-icons';
 import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
@@ -137,8 +138,9 @@ export function PublishedListModal({
               <Text numberOfLines={2} style={styles.modalTitle}>
                 {currentState?.title}
               </Text>
-              <Pressable onPress={onClose}>
-                <Text style={styles.modalClose}>Stäng</Text>
+              <Pressable onPress={onClose} style={styles.modalCloseChip}>
+                <Ionicons color={colors.primaryDeep} name="close" size={14} />
+                <Text style={styles.modalCloseText}>Stäng</Text>
               </Pressable>
             </View>
             {currentState?.eventSubtitle ? (
@@ -759,9 +761,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  modalClose: {
+  modalCloseChip: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  modalCloseText: {
     ...typography.buttonSmall,
     color: colors.primary,
+    fontSize: 13,
+    lineHeight: 16,
   },
   classPickerContainer: {
     backgroundColor: colors.surface,

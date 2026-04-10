@@ -253,8 +253,9 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
               <Text numberOfLines={2} style={styles.modalTitle}>
                 {currentState?.title}
               </Text>
-              <Pressable onPress={onClose}>
-                <Text style={styles.modalClose}>Stäng</Text>
+              <Pressable onPress={onClose} style={styles.modalCloseChip}>
+                <Text style={styles.modalCloseIcon}>×</Text>
+                <Text style={styles.modalCloseText}>Stäng</Text>
               </Pressable>
             </View>
             {currentState?.eventSubtitle ? (
@@ -1177,9 +1178,27 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
   },
-  modalClose: {
+  modalCloseChip: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  modalCloseIcon: {
+    color: colors.primaryDeep,
+    fontSize: 15,
+    lineHeight: 15,
+  },
+  modalCloseText: {
     ...typography.buttonSmall,
     color: colors.primary,
+    fontSize: 13,
+    lineHeight: 16,
   },
   modalHeader: {
     alignItems: 'center',

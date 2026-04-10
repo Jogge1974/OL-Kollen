@@ -186,7 +186,8 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
                 <Pressable onPress={handleReset} style={styles.resetChip}>
                   <Text style={styles.resetChipText}>Återställ</Text>
                 </Pressable>
-                <Pressable onPress={handleApplyAndClose}>
+                <Pressable onPress={handleApplyAndClose} style={styles.closeChip}>
+                  <Text style={styles.closeIcon}>×</Text>
                   <Text style={styles.closeText}>Stäng</Text>
                 </Pressable>
               </View>
@@ -421,6 +422,24 @@ const styles = StyleSheet.create({
   closeText: {
     ...typography.buttonSmall,
     color: colors.primary,
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  closeIcon: {
+    color: colors.primaryDeep,
+    fontSize: 15,
+    lineHeight: 15,
+  },
+  closeChip: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
   },
   dateRow: {
     flexDirection: 'row',

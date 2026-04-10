@@ -51,8 +51,9 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
             <Text numberOfLines={2} style={styles.modalTitle}>
               {currentState.title}
             </Text>
-            <Pressable onPress={onClose}>
-              <Text style={styles.modalClose}>Stäng</Text>
+            <Pressable onPress={onClose} style={styles.modalCloseChip}>
+              <Ionicons color={colors.primaryDeep} name="close" size={14} />
+              <Text style={styles.modalCloseText}>Stäng</Text>
             </Pressable>
           </View>
 
@@ -554,9 +555,22 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
   },
-  modalClose: {
+  modalCloseChip: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  modalCloseText: {
     ...typography.bodyStrong,
     color: colors.primaryDeep,
+    fontSize: 13,
+    lineHeight: 16,
   },
   modalHeader: {
     alignItems: 'flex-start',

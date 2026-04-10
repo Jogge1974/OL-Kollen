@@ -135,7 +135,7 @@ export default function EventDetailScreen() {
           <View style={styles.heroTopRow}>
             <Pressable onPress={handleClose} style={styles.backButton}>
               <Ionicons color={colors.heroText} name="chevron-back" size={18} />
-              <Text style={styles.backLabel}>Stäng</Text>
+              <Text style={styles.backLabel}>Tillbaka</Text>
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
