@@ -108,6 +108,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   />
                   <MetricLine label="Sträcksegrar" value={analysis.summary.legWinCountLabel} />
                   <MetricLine label="Sträckpallplatser" value={analysis.summary.legPodiumCountLabel} />
+                  <MetricLine label="Antal sträckor" value={`${analysis.legCount}`} />
                   <MetricLine label="Banlängd" value={analysis.summary.courseLengthLabel ?? '-'} />
                   <MetricLine label="Km-tid" value={analysis.summary.pacePerKmLabel} />
                 </MetricSection>

@@ -57,14 +57,16 @@ export type EventAnalysisView = {
 };
 
 export function buildEventAnalysis(section: EventSplitTimesSection, targetPersonId?: string | null): EventAnalysisView | null {
-  if (section.rows.length === 0) {
+  const rows = section.rows.map(ensureFinishSplitRow);
+
+  if (rows.length === 0) {
     return null;
   }
 
-  const target = findTargetRow(section.rows, targetPersonId) ?? section.rows[0];
-  const splitCount = Math.max(target.splitCount, section.rows.reduce((max, row) => Math.max(max, row.splitCount), 0));
-  const bestSplitTimes = getBestSplitTimes(section.rows, splitCount);
-  const officialRows = section.rows.filter((row) => row.status === 'OK' && row.totalTimeSeconds !== null);
+  const target = findTargetRow(rows, targetPersonId) ?? rows[0];
+  const splitCount = Math.max(target.splitCount, rows.reduce((max, row) => Math.max(max, row.splitCount), 0));
+  const bestSplitTimes = getBestSplitTimes(rows, splitCount);
+  const officialRows = rows.filter((row) => row.status === 'OK' && row.totalTimeSeconds !== null);
   const targetTotalLoss = target.status === 'OK' ? target.totalLossSeconds ?? 0 : null;
   const targetAdjustedTotal = target.totalTimeSeconds !== null && targetTotalLoss !== null ? target.totalTimeSeconds - targetTotalLoss : null;
   const totalTimeLabel = target.totalTimeLabel && target.totalTimeLabel !== '-' ? target.totalTimeLabel : target.totalTimeSeconds !== null ? formatTime(target.totalTimeSeconds) : null;
@@ -87,7 +89,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
   const adjustedTotalPlaceIfAllAvoidLoss =
     targetAdjustedTotal !== null && adjustedRows.length > 0 ? rankAscending(adjustedRows.map((item) => item.adjusted), targetAdjustedTotal) : null;
 
-  const legs = buildLegAnalysis(section.rows, target, bestSplitTimes);
+  const legs = buildLegAnalysis(rows, target, bestSplitTimes);
   const legWinCount = legs.filter((leg) => leg.splitPlace === 1).length;
   const legPodiumCount = legs.filter((leg) => leg.splitPlace !== null && leg.splitPlace <= 3).length;
   const bomFreeLegCount = legs.filter((leg) => leg.splitLossSeconds !== null && leg.splitLossSeconds <= 0).length;
@@ -98,7 +100,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
   const courseLengthLabel = section.classLengthLabel ?? null;
   const optimalRaceTimeDeltaSeconds = target.totalTimeSeconds !== null ? target.totalTimeSeconds - optimalRaceTimeSeconds : null;
 
-  const { firstThird, secondThird, thirdThird } = buildThirdProgress(section.rows, target);
+  const { firstThird, secondThird, thirdThird } = buildThirdProgress(rows, target);
 
   return {
     classEntriesCount: section.classEntriesCount ?? null,
@@ -177,6 +179,23 @@ function buildLegAnalysis(rows: EventSplitTimesRow[], target: EventSplitTimesRow
   }
 
   return result;
+}
+
+function ensureFinishSplitRow(row: EventSplitTimesRow) {
+  if (row.splitCount > 0) {
+    const lastSplit = row.splitCumulativeSeconds[row.splitCumulativeSeconds.length - 1] ?? null;
+    const totalTimeSeconds = row.totalTimeSeconds;
+
+    if (totalTimeSeconds !== null && lastSplit !== null && totalTimeSeconds > lastSplit) {
+      return {
+        ...row,
+        splitCumulativeSeconds: [...row.splitCumulativeSeconds, totalTimeSeconds],
+        splitCount: row.splitCount + 1,
+      };
+    }
+  }
+
+  return row;
 }
 
 function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesRow) {
