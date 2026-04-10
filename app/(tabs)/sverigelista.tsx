@@ -245,7 +245,7 @@ function SverigelistaRowCard({
         </Text>
       </View>
 
-      <View style={styles.rowCenter}>
+          <View style={styles.rowCenter}>
         <Text numberOfLines={1} style={styles.rowName}>
           {item.Name}
         </Text>
@@ -253,6 +253,13 @@ function SverigelistaRowCard({
           {item.Club}
         </Text>
       </View>
+
+          {isMe ? (
+              <View style={styles.meBadge}>
+                  <Text style={styles.meBadgeText}>Du</Text>
+              </View>
+          ) : null}
+
 
       <View style={styles.rowRight}>
         {showRightRank ? (
@@ -263,11 +270,6 @@ function SverigelistaRowCard({
         <Text style={styles.pointsText}>{formatPoints(item.Points)}</Text>
       </View>
 
-      {isMe ? (
-        <View style={styles.meBadge}>
-          <Text style={styles.meBadgeText}>Du</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -546,9 +548,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    position: 'absolute',
-    right: 10,
-    top: 10,
+  //  position: 'absolute',
+  //  right: 10,
+      //  top: 10,
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
   },
   meBadgeText: {
     ...typography.captionStrong,
