@@ -1,4 +1,4 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,7 @@ import { EventList } from '@/src/components/EventList';
 import { EventMap } from '@/src/components/EventMap';
 import { FilterModal } from '@/src/components/FilterModal';
 import { LoadingState } from '@/src/components/LoadingState';
+import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { useEventorEvents } from '@/src/hooks/useEventorEvents';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
@@ -27,35 +28,35 @@ export default function CalendarScreen() {
         <LinearGradient colors={[colors.background, colors.backgroundDeep]} style={styles.backgroundWash} />
         <View style={styles.backgroundOrbLarge} />
         <View style={styles.backgroundOrbSmall} />
+        <View style={styles.headerWrap}>
+          <ScreenHeroHeader
+            chips={[
+              { flex: 2, icon: 'calendar-outline', label: 'Datumintervall', value: formatCalendarRange(filters.fromDate, filters.toDate) },
+              { flex: 1, icon: 'map-outline', label: 'Distrikt', value: getSelectedDistrictCountLabel(filters.districtIds.length) },
+            ]}
+            eyebrow="Ranking"
+            title="Tävlingskalendern"
+            topRightText={`${events.length} tävlingar`}
+          />
 
-        <Text style={styles.pageTitle}>Tävlingskalendern</Text>
+          <View style={styles.headerCard}>
+            <View style={styles.controlsRow}>
+              <View style={styles.modeSwitch}>
+                <Pressable onPress={() => setViewMode('list')} style={[styles.modeButton, viewMode === 'list' ? styles.modeButtonActive : null]}>
+                  <Ionicons color={viewMode === 'list' ? colors.heroText : colors.textSecondary} name="list-outline" size={16} />
+                  <Text style={[styles.modeButtonText, viewMode === 'list' ? styles.modeButtonTextActive : null]}>Lista</Text>
+                </Pressable>
+                <Pressable onPress={() => setViewMode('map')} style={[styles.modeButton, viewMode === 'map' ? styles.modeButtonActive : null]}>
+                  <Ionicons color={viewMode === 'map' ? colors.heroText : colors.textSecondary} name="map-outline" size={16} />
+                  <Text style={[styles.modeButtonText, viewMode === 'map' ? styles.modeButtonTextActive : null]}>Karta</Text>
+                </Pressable>
+              </View>
 
-        <View style={styles.headerCard}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryPill}>
-              <Text style={styles.summaryPillText}>{events.length} tävlingar</Text>
-            </View>
-            <Text style={styles.summaryText}>
-              {filters.fromDate} till {filters.toDate}
-            </Text>
-          </View>
-
-          <View style={styles.controlsRow}>
-            <View style={styles.modeSwitch}>
-              <Pressable onPress={() => setViewMode('list')} style={[styles.modeButton, viewMode === 'list' ? styles.modeButtonActive : null]}>
-                <Ionicons color={viewMode === 'list' ? colors.heroText : colors.textSecondary} name="list-outline" size={16} />
-                <Text style={[styles.modeButtonText, viewMode === 'list' ? styles.modeButtonTextActive : null]}>Lista</Text>
+              <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
+                <Ionicons color={colors.primaryDeep} name="funnel-outline" size={16} />
+                <Text style={styles.filterButtonText}>Filter</Text>
               </Pressable>
-              <Pressable onPress={() => setViewMode('map')} style={[styles.modeButton, viewMode === 'map' ? styles.modeButtonActive : null]}>
-                <Ionicons color={viewMode === 'map' ? colors.heroText : colors.textSecondary} name="map-outline" size={16} />
-                <Text style={[styles.modeButtonText, viewMode === 'map' ? styles.modeButtonTextActive : null]}>Karta</Text>
-              </Pressable>
             </View>
-
-            <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
-              <Ionicons color={colors.primaryDeep} name="funnel-outline" size={16} />
-              <Text style={styles.filterButtonText}>Filter</Text>
-            </Pressable>
           </View>
         </View>
 
@@ -72,7 +73,7 @@ export default function CalendarScreen() {
         {!isLoading && !error && events.length === 0 ? (
           <EmptyState
             action={<AppButton label="Öppna filter" onPress={() => setFilterVisible(true)} />}
-            description="Justera datumintervall eller tävlingstyper och försök igen."
+            description="Justera filtret och försök igen."
             title="Inga tävlingar i listan"
           />
         ) : null}
@@ -95,6 +96,30 @@ export default function CalendarScreen() {
       />
     </SafeAreaView>
   );
+}
+
+function formatCalendarRange(fromDate: string, toDate: string) {
+  const start = formatShortDate(fromDate);
+  const end = formatShortDate(toDate);
+
+  return start === end ? start : `${start} – ${end}`;
+}
+
+function formatShortDate(dateValue: string) {
+  const parsed = new Date(`${dateValue}T00:00:00`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return dateValue;
+  }
+
+  return new Intl.DateTimeFormat('sv-SE', {
+    day: 'numeric',
+    month: 'short',
+  }).format(parsed);
+}
+
+function getSelectedDistrictCountLabel(count: number) {
+  return count === 1 ? '1 valt' : `${count} valda`;
 }
 
 const styles = StyleSheet.create({
@@ -131,10 +156,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 160,
   },
-  pageTitle: {
-    ...typography.screenTitle,
-    color: colors.primaryDeep,
-    marginLeft: spacing.xs,
+  headerWrap: {
+    gap: spacing.sm,
   },
   headerCard: {
     backgroundColor: colors.surfaceOverlay,
@@ -210,3 +233,4 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
 });
+

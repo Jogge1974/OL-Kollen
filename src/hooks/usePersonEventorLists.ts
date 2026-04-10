@@ -12,6 +12,7 @@ type UsePersonEventorListsResult = {
   availableYears: number[];
   isLoadingResults: boolean;
   isLoadingStarts: boolean;
+  resultsCompetitionCount: number;
   resultsError: string | null;
   resultsFilter: PersonResultsFilter;
   resultsSections: PersonActivitySection[];
@@ -29,6 +30,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
   const [resultsFilter, setResultsFilter] = React.useState<PersonResultsFilter>('national');
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [resultsSections, setResultsSections] = React.useState<PersonActivitySection[]>([]);
+  const [resultsCompetitionCount, setResultsCompetitionCount] = React.useState(0);
   const [startsSections, setStartsSections] = React.useState<PersonActivitySection[]>([]);
   const [resultsError, setResultsError] = React.useState<string | null>(null);
   const [startsError, setStartsError] = React.useState<string | null>(null);
@@ -95,6 +97,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
         }
 
         setResultsSections([]);
+        setResultsCompetitionCount(0);
         setResultsError(null);
         setIsLoadingResults(false);
         return;
@@ -105,12 +108,14 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
 
       try {
         const resultsXml = await fetchPersonResultsXml(personId, formatYearStart(resultsYear), formatYearEnd(resultsYear));
-        const nextResults = filterPersonResultSections(parsePersonResultsXml(resultsXml), resultsYear, resultsFilter);
+        const parsedResults = parsePersonResultsXml(resultsXml);
+        const nextResults = filterPersonResultSections(parsedResults, resultsYear, resultsFilter);
 
         if (!isMounted) {
           return;
         }
 
+        setResultsCompetitionCount(parsedResults.filter((section) => Number(section.eventDate.slice(0, 4)) === resultsYear).length);
         setResultsSections(nextResults);
       } catch (error) {
         if (!isMounted) {
@@ -120,6 +125,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
         const message = error instanceof Error ? error.message : 'Okänt fel vid hämtning av personlistor.';
         setResultsError(message);
         setResultsSections([]);
+        setResultsCompetitionCount(0);
       } finally {
         if (isMounted) {
           setIsLoadingResults(false);
@@ -138,6 +144,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
     availableYears: buildAvailableYears(resultsYear),
     isLoadingResults,
     isLoadingStarts,
+    resultsCompetitionCount,
     refetch: async () => {
       setRefreshKey((value) => value + 1);
     },

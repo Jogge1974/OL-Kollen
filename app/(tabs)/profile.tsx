@@ -12,6 +12,7 @@ import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
+import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useRememberMe } from '@/src/hooks/useRememberMe';
@@ -68,6 +69,7 @@ export default function ProfileScreen() {
     isLoadingResults,
     isLoadingStarts,
     refetch: refetchPersonLists,
+    resultsCompetitionCount,
     resultsError,
     resultsFilter,
     resultsSections,
@@ -127,6 +129,31 @@ export default function ProfileScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
       >
+        <ScreenHeroHeader
+          badge={user ? { text: 'Free' } : undefined}
+          chips={
+            user
+              ? [
+                  { icon: 'trophy-outline', label: 'Plac.', value: currentEntry ? `${currentEntry.Rank}` : '—' },
+                  { icon: 'flag-outline', label: 'Ant. starter', value: `${resultsCompetitionCount}` },
+                  { icon: 'heart-outline', label: 'Favoriter', value: `${favoriteEvents.length}` },
+                ]
+              : [
+                  { icon: 'lock-closed-outline', label: 'Sverigelista', value: 'Auto' },
+                  { icon: 'heart-outline', label: 'Favoriter', value: 'Synk' },
+                  { icon: 'sync-outline', label: 'Login', value: 'Krypterat' },
+                ]
+          }
+          eyebrow="Min sida"
+          subtitle={
+            user
+              ? user.organisationName ?? (user.organisationIds[0] ?? 'Ingen klubb')
+              : 'Logga in med Eventor för att se Sverigelistan, starter och favoriter.'
+          }
+          title={user ? user.fullName ?? 'Inloggad användare' : 'Logga in'}
+          topRightText={user ? 'Profil' : 'Eventor'}
+        />
+
         {!user ? (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Logga in med Eventor</Text>
@@ -181,17 +208,7 @@ export default function ProfileScreen() {
               Inloggningen använder Eventors dokumenterade authenticatePerson-endpoint. Om du sparar användaruppgifterna krypterat kan appen logga in mot Sverigelistan automatiskt när webbsessionen går ut. Det kräver dock att din organisation har giltig licens till Sverigelistan
             </Text>
           </View>
-        ) : (
-          <View style={styles.profileHeader}>
-            <View style={styles.profileHeaderCopy}>
-              <Text style={styles.profileName}>{user.fullName ?? 'Inloggad användare'}</Text>
-              <Text style={styles.profileClub}>{user.organisationName ?? (user.organisationIds[0] ?? 'Ej tillgängligt')}</Text>
-            </View>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>Free</Text>
-            </View>
-          </View>
-        )}
+        ) : null}
 
         {user ? (
           <Pressable

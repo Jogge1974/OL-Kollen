@@ -1,4 +1,4 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/src/components/AppButton';
 import { AppTextField } from '@/src/components/AppTextField';
 import { CalendarFilterTemplateEditor } from '@/src/components/CalendarFilterTemplateEditor';
+import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { createDefaultCalendarFilterTemplate, describeCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { useAuthStore } from '@/src/store/authStore';
@@ -149,21 +150,29 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={styles.headerCard}>
-          <Text style={styles.title}>Inställningar</Text>
-          <Text style={styles.subtitle}>Notiser och favoritklasser.</Text>
-        </View>
+        <ScreenHeroHeader
+          chips={[
+            { icon: 'funnel-outline', label: 'Filter', value: `${calendarFilterPresets.length} sparade` },
+            { icon: 'notifications-outline', label: 'Notiser', value: notificationSettings.pushOnStartList || notificationSettings.pushOnResultList ? 'Aktiva' : 'Av' },
+            { icon: 'bookmark-outline', label: 'Favoritklasser', value: `${favoriteClasses.length}` },
+          ]}
+          eyebrow="Konton"
+          subtitle="Kalenderfilter, notiser och favoritklasser."
+          title="Inställningar"
+          topRightText="3 sektioner"
+        />
 
         <ExpandableCard
           contentStyle={styles.calendarFilterContent}
           expanded={isCalendarFiltersExpanded}
+          icon="funnel-outline"
           onPress={() => setIsCalendarFiltersExpanded((current) => !current)}
           title="Kalenderfilter"
           variant="compact"
         >
           <View style={styles.sectionContent}>
             <Text style={styles.helperText}>
-              Ändra standardfiltret och spara egna förvalda filter som sedan kan väljas i Tävlingskalenderns filtervy.
+              Ändra standardfiltret eller spara egna förvalda filter som sedan kan väljas i Tävlingskalenderns filtervy.
             </Text>
 
             <CalendarFilterTemplateEditor
@@ -237,11 +246,15 @@ export default function SettingsScreen() {
 
         <ExpandableCard
           expanded={isNotificationsExpanded}
+          icon="notifications-outline"
           onPress={() => setIsNotificationsExpanded((current) => !current)}
           title="Notiser"
         >
           <View style={styles.sectionContent}>
-            <View style={styles.settingRow}>
+                      <Text style={styles.helperText}>
+                          Observera att notiser endast gäller tävlingar man favoritmarkerat.
+                      </Text>
+              <View style={styles.settingRow}>
               <View style={styles.settingCopy}>
                 <Text style={styles.settingTitle}>Push för startlistor</Text>
                 <Text style={styles.settingDescription}>Få en push när en favoritmarkerad tävling får startlista publicerad.</Text>
@@ -271,6 +284,7 @@ export default function SettingsScreen() {
 
         <ExpandableCard
           expanded={isFavoriteClassesExpanded}
+          icon="bookmark-outline"
           onPress={() => setIsFavoriteClassesExpanded((current) => !current)}
           title={`Favoritklasser (${favoriteClasses.length})`}
         >
@@ -328,7 +342,11 @@ export default function SettingsScreen() {
             )}
           </View>
         </ExpandableCard>
-        {user ? <AppButton label="Logga ut" onPress={confirmLogout} variant="secondary" /> : null}
+        {user ? (
+          <View style={styles.logoutFooter}>
+            <AppButton label="Logga ut" onPress={confirmLogout} variant="secondary" />
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -338,6 +356,7 @@ function ExpandableCard({
   children,
   contentStyle,
   expanded,
+  icon,
   onPress,
   title,
   variant = 'default',
@@ -345,6 +364,7 @@ function ExpandableCard({
   children: React.ReactNode;
   contentStyle?: object;
   expanded: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   title: string;
   variant?: 'default' | 'compact';
@@ -352,7 +372,12 @@ function ExpandableCard({
   return (
     <View style={[styles.panel, variant === 'compact' ? styles.panelCompact : null]}>
       <Pressable onPress={onPress} style={styles.panelHeader}>
-        <Text style={styles.panelTitle}>{title}</Text>
+        <View style={styles.panelHeaderCopy}>
+          <View style={styles.panelIconWrap}>
+            <Ionicons color={colors.primaryDeep} name={icon} size={16} />
+          </View>
+          <Text style={styles.panelTitle}>{title}</Text>
+        </View>
         <Ionicons color={colors.primaryDeep} name={expanded ? 'chevron-up' : 'chevron-down'} size={20} />
       </Pressable>
       {expanded ? <View style={contentStyle}>{children}</View> : null}
@@ -367,7 +392,8 @@ const styles = StyleSheet.create({
   },
   container: {
     gap: spacing.md,
-    paddingBottom: spacing.xxl,
+    flexGrow: 1,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
@@ -390,21 +416,35 @@ const styles = StyleSheet.create({
   panel: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
     gap: spacing.sm,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   panelCompact: {
-    padding: spacing.md,
+    padding: spacing.sm,
   },
   panelHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  panelHeaderCopy: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  panelIconWrap: {
+    alignItems: 'center',
+    backgroundColor: colors.accentSoft,
+    borderRadius: 999,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
   panelTitle: {
-    ...typography.sectionTitle,
+    ...typography.bodyStrong,
     color: colors.textPrimary,
   },
   sectionContent: {
@@ -475,6 +515,11 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 20,
   },
+  logoutFooter: {
+    marginTop: 'auto',
+    paddingBottom: spacing.xs,
+    paddingTop: spacing.md,
+  },
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
@@ -527,3 +572,4 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 });
+

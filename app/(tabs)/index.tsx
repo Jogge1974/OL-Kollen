@@ -425,10 +425,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   sectionScroll: {
-    maxHeight: 220,
+    maxHeight: 250,
   },
   sectionScrollContent: {
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   sectionSubtitle: {
     ...typography.caption,

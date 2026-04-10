@@ -1,12 +1,12 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
 import { LoadingState } from '@/src/components/LoadingState';
+import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
 import { getSverigelistanClassLabel, useSverigelistanDirectory } from '@/src/hooks/useSverigelistanDirectory';
 import { useAuthStore } from '@/src/store/authStore';
@@ -121,22 +121,16 @@ export default function SverigelistaScreen() {
         }
         ListHeaderComponent={
           <View style={styles.headerWrap}>
-            <LinearGradient colors={[colors.heroTop, colors.heroBottom]} style={styles.hero}>
-              <View style={styles.heroTopRow}>
-                <Text style={styles.heroEyebrow}>Ranking</Text>
-                <Text numberOfLines={1} style={styles.heroTopDate}>
-                  {latestUpdated ? `Uppd. ${formatPrettyDate(latestUpdated)}` : ''}
-                </Text>
-              </View>
-
-              <Text style={styles.heroTitle}>Sverigelistan</Text>
-
-              <View style={styles.heroMetaRow}>
-                <MiniHeroChip icon="man-outline" label="Herr / Dam" value={selectedGender === 'H' ? 'Herr' : 'Dam'} />
-                <MiniHeroChip icon="filter-outline" label="Klass" value={selectedClassLabel ?? 'Alla'} />
-                <MiniHeroChip icon="people-outline" label="Visar" value={`${filteredRows.length} / ${genderRows.length}`} />
-              </View>
-            </LinearGradient>
+            <ScreenHeroHeader
+              chips={[
+                { icon: 'man-outline', label: 'Herr / Dam', value: selectedGender === 'H' ? 'Herr' : 'Dam' },
+                { icon: 'filter-outline', label: 'Klass', value: selectedClassLabel ?? 'Alla' },
+                { icon: 'people-outline', label: 'Visar', value: `${filteredRows.length} / ${genderRows.length}` },
+              ]}
+              eyebrow="Ranking"
+              title="Sverigelistan"
+              topRightText={latestUpdated ? `Uppd. ${formatPrettyDate(latestUpdated)}` : ''}
+            />
 
             <View style={styles.controlsCard}>
               <View style={styles.genderRow}>
@@ -310,20 +304,6 @@ function SverigelistaRowCard({
   );
 }
 
-function MiniHeroChip({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
-  return (
-    <View style={styles.heroChip}>
-      <Ionicons color={colors.heroText} name={icon} size={14} />
-      <View style={styles.heroChipTextWrap}>
-        <Text style={styles.heroChipLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.heroChipValue}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function buildClassLabels(rows: SverigelistanRow[], rankingYear: number) {
   return [...new Set(rows.map((row) => getSverigelistanClassLabel(row, rankingYear)).filter((label): label is string => Boolean(label && label !== '-')))].sort(sortClassLabel);
 }
@@ -432,7 +412,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.md,
     alignSelf: 'stretch',
-    padding: spacing.sm,
+    padding: spacing.lg,
     width: '100%',
   },
   emptyCard: {
@@ -478,91 +458,6 @@ const styles = StyleSheet.create({
   genderRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  hero: {
-    borderRadius: 14,
-    gap: spacing.sm,
-    alignSelf: 'stretch',
-    overflow: 'hidden',
-    padding: spacing.sm,
-    width: '100%',
-  },
-  heroBadge: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 20,
-    gap: 4,
-    justifyContent: 'center',
-    minWidth: 54,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  heroBadgeText: {
-    ...typography.bodyStrong,
-    color: colors.heroText,
-    fontSize: 15,
-  },
-  heroChip: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 18,
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minWidth: 92,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  heroChipLabel: {
-    color: colors.heroTextMuted,
-    fontSize: 10,
-    lineHeight: 12,
-  },
-  heroChipTextWrap: {
-    flex: 1,
-  },
-  heroChipValue: {
-    ...typography.captionStrong,
-    color: colors.heroText,
-    fontSize: 13,
-    lineHeight: 15,
-  },
-  heroEyebrow: {
-    ...typography.eyebrow,
-    color: colors.heroEyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
-  },
-  heroTopDate: {
-    ...typography.eyebrow,
-    color: colors.heroEyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textAlign: 'right',
-  },
-  heroMetaRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  heroSubtitle: {
-    ...typography.caption,
-    color: colors.heroTextMuted,
-  },
-  heroTitle: {
-    ...typography.sectionTitle,
-    color: colors.heroText,
-    fontSize: 22,
-    lineHeight: 26,
-  },
-  heroTitleWrap: {
-    flex: 1,
-    gap: 4,
-    minWidth: 0,
-  },
-  heroTopRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
   },
   helperText: {
     ...typography.caption,
