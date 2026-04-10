@@ -152,13 +152,13 @@ export default function HomeScreen() {
           </View>
         </LinearGradient>
 
-        <SectionCard title="Snabbvägar" subtitle="Hoppa direkt till den vy du använder mest.">
+        <View style={styles.shortcutSection}>
           <View style={styles.shortcutGrid}>
             <ShortcutCard icon="calendar-outline" label="Kalender" onPress={() => router.push('/calendar')} />
             <ShortcutCard icon="trophy-outline" label="Sverigelistan" onPress={() => router.push('/sverigelista')} />
             <ShortcutCard icon="person-outline" label="Min sida" onPress={() => router.push('/profile')} />
           </View>
-        </SectionCard>
+        </View>
 
         {user ? (
           <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
@@ -171,7 +171,8 @@ export default function HomeScreen() {
           </SectionCard>
         )}
 
-        <SectionCard title="Dagens tävlingar" subtitle="Nationella tävlingar idag.">
+        <View style={styles.sectionSpacer}>
+          <SectionCard flat title="Dagens tävlingar">
           {isLoadingTodayEvents ? <LoadingState label="Hämtar tävlingar från Eventor..." /> : null}
 
           {!isLoadingTodayEvents && todayEventsError && nationalTodayEvents.length === 0 ? (
@@ -197,9 +198,11 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
           ) : null}
-        </SectionCard>
+          </SectionCard>
+        </View>
 
-        <SectionCard title="Mina senaste tävlingar" subtitle="De två senaste resultaten för dig.">
+        <View style={styles.sectionSpacer}>
+        <SectionCard flat title="Mina senaste tävlingar">
           {user ? (
             <PersonActivitySectionList
               emptyLabel="Inga senaste tävlingar att visa just nu."
@@ -221,6 +224,8 @@ export default function HomeScreen() {
             </View>
           )}
         </SectionCard>
+        </View>
+
       </ScrollView>
 
       <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
@@ -255,9 +260,9 @@ function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.gl
   );
 }
 
-function SectionCard({ children, subtitle, title }: { children: React.ReactNode; subtitle?: string; title: string }) {
+function SectionCard({ children, flat = false, subtitle, title }: { children: React.ReactNode; flat?: boolean; subtitle?: string; title: string }) {
   return (
-    <View style={styles.sectionCard}>
+    <View style={[styles.sectionCard, flat ? styles.sectionCardFlat : null]}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderCopy}>
           <Text style={styles.sectionTitle}>{title}</Text>
@@ -387,6 +392,9 @@ const styles = StyleSheet.create({
   sectionBody: {
     gap: spacing.sm,
   },
+  sectionSpacer: {
+    marginTop: spacing.md,
+  },
   sectionEmptyText: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -398,6 +406,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.sm,
     padding: spacing.sm,
+  },
+  sectionCardFlat: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   sectionHeader: {
     alignItems: 'flex-start',
@@ -439,6 +454,9 @@ const styles = StyleSheet.create({
   },
   shortcutCardPressed: {
     opacity: 0.9,
+  },
+  shortcutSection: {
+    gap: spacing.sm,
   },
   shortcutGrid: {
     flexDirection: 'row',
