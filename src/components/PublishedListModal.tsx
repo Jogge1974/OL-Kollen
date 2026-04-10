@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { fetchEventClassNameMap, fetchEventPublishedListXml } from '@/src/api/eventorApi';
+import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListRow, PublishedListSection, formatPublishedListXml } from '@/src/services/publishedListFormatter';
@@ -16,6 +16,7 @@ export type PublishedListModalState = {
   emptyMessage: string;
   error: string | null;
   eventId: string;
+  eventSubtitle?: string | null;
   initialAnchorKey?: string | null;
   isLoading: boolean;
   kind: EventPublishedListKind;
@@ -132,12 +133,19 @@ export function PublishedListModal({
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
-            <Text numberOfLines={2} style={styles.modalTitle}>
-              {currentState?.title}
-            </Text>
-            <Pressable onPress={onClose}>
-              <Text style={styles.modalClose}>Stäng</Text>
-            </Pressable>
+            <View style={styles.modalHeaderTopRow}>
+              <Text numberOfLines={2} style={styles.modalTitle}>
+                {currentState?.title}
+              </Text>
+              <Pressable onPress={onClose}>
+                <Text style={styles.modalClose}>Stäng</Text>
+              </Pressable>
+            </View>
+            {currentState?.eventSubtitle ? (
+              <Text numberOfLines={2} style={styles.modalSubtitle}>
+                {currentState.eventSubtitle}
+              </Text>
+            ) : null}
           </View>
 
           {shouldShowPicker ? (
@@ -393,6 +401,8 @@ function PublishedTableSection({
       {section.rows.map((row, rowIndex) => {
         const classAnchorKey = row.classLabel ? `class:${row.classLabel}` : null;
         const shouldAttachClassAnchor = scope === 'organisation' && classAnchorKey && !seenClassAnchors.current.has(classAnchorKey);
+        const resultStatus = kind === 'results' && row.status && row.status !== 'OK' ? row.status : null;
+        const resultMetricWidth = (columnWidths.time ?? 0) + (columnWidths.diff ?? 0) + (columnWidths.pace ?? 0);
 
         if (shouldAttachClassAnchor && classAnchorKey) {
           seenClassAnchors.current.add(classAnchorKey);
@@ -471,19 +481,34 @@ function PublishedTableSection({
               </Text>
             ) : null}
 
-            {!isEntries ? (
+            {!isEntries && !resultStatus ? (
               <Text numberOfLines={1} style={[styles.tableCellText, styles.tableMetricColumn, styles.tableMetricStrong, { width: columnWidths.time }]}>
                 {row.time ?? '-'}
               </Text>
             ) : null}
 
-            {kind === 'results' ? (
+            {kind === 'results' && !resultStatus ? (
               <Text numberOfLines={1} style={[styles.tableCellText, styles.tableMetricColumn, styles.tableMetricStrong, { width: columnWidths.diff }]}>
                 {row.diff ?? '-'}
               </Text>
             ) : null}
 
-            {kind === 'results' ? (
+            {kind === 'results' && resultStatus ? (
+              <View
+                style={[
+                  styles.tableMetricMergedStatus,
+                  {
+                    width: resultMetricWidth,
+                  },
+                ]}
+                    >
+                        <Text numberOfLines={1} style={[styles.tableMetricMergedStatusText, styles.tableMetricStrong]}>
+                  {resultStatus}
+                </Text>
+              </View>
+            ) : null}
+
+            {kind === 'results' && !resultStatus ? (
               <Text numberOfLines={1} style={[styles.tableCellText, styles.tableMetricColumn, { width: columnWidths.pace }]}>
                 {row.pace ?? '-'}
               </Text>
@@ -536,6 +561,7 @@ export async function openPublishedListModal(
     emptyMessage: getEmptyListMessage(kind),
     error: null,
     eventId,
+    eventSubtitle: null,
     initialAnchorKey,
     isLoading: true,
     kind,
@@ -545,9 +571,10 @@ export async function openPublishedListModal(
   });
 
   try {
-    const [rawXml, eventClassNameById] = await Promise.all([
+    const [rawXml, eventClassNameById, eventDetail] = await Promise.all([
       fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined),
       kind === 'entries' ? fetchEventClassNameMap(eventId).catch(() => ({})) : Promise.resolve<Record<string, string>>({}),
+      fetchEventorEventById(eventId).catch(() => null),
     ]);
 
     const formatted = formatPublishedListXml(kind, rawXml, {
@@ -573,6 +600,7 @@ export async function openPublishedListModal(
       kind,
       scope,
       sections,
+      eventSubtitle: eventDetail ? `${eventDetail.name} • ${eventDetail.dateLabel}` : null,
       title: getListTitle(kind, scope, organisationLabel),
     });
   } catch (loadError) {
@@ -580,6 +608,7 @@ export async function openPublishedListModal(
       emptyMessage: getEmptyListMessage(kind),
       error: loadError instanceof Error ? loadError.message : 'Det gick inte att hamta listan.',
       eventId,
+      eventSubtitle: null,
       initialAnchorKey,
       isLoading: false,
       kind,
@@ -706,16 +735,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
+    gap: 2,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  modalHeaderTopRow: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   modalTitle: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
     flex: 1,
+    minWidth: 0,
+  },
+  modalSubtitle: {
+    ...typography.buttonSmall,
+    color: colors.primary,
+    alignSelf: 'flex-start',
+    fontSize: 13,
+    lineHeight: 18,
   },
   modalClose: {
     ...typography.buttonSmall,
@@ -980,6 +1022,19 @@ const styles = StyleSheet.create({
   tableMetricColumn: {
     flexShrink: 0,
     width: 74,
+  },
+  tableMetricMergedStatus: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    minWidth: 0,
+  },
+  tableMetricMergedStatusText: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 19,
+    textAlign: 'right',
   },
   tableMetricStrong: {
     fontFamily: typography.bodyStrong.fontFamily,

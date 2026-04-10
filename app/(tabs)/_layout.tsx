@@ -41,8 +41,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarLabel: 'Home',
+          title: 'Hem',
+          tabBarLabel: 'Hem',
         }}
       />
       <Tabs.Screen

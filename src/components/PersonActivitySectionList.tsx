@@ -149,9 +149,17 @@ export function PersonActivitySectionList({
                       <Text numberOfLines={1} style={[styles.resultLineText, styles.resultLineLeft]}>
                         {buildResultLeft(row)}
                       </Text>
-                      <Text numberOfLines={1} style={[styles.resultLineText, styles.resultLineRight]}>
-                        {buildResultRight(row)}
-                      </Text>
+                      {row.status && row.status !== 'OK' ? (
+                        <View style={styles.resultStatusWideCell}>
+                          <Text numberOfLines={1} style={styles.resultStatusWideText}>
+                            {row.status}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text numberOfLines={1} style={[styles.resultLineText, styles.resultLineRight]}>
+                          {buildResultRight(row)}
+                        </Text>
+                      )}
                     </View>
 
                     <View style={styles.resultActionRow}>
@@ -324,6 +332,17 @@ const styles = StyleSheet.create({
   },
   resultLineRight: {
     flexShrink: 0,
+    textAlign: 'right',
+  },
+  resultStatusWideCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  resultStatusWideText: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: 'right',
   },
   resultActionRow: {

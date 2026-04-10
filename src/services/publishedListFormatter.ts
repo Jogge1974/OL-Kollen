@@ -29,6 +29,7 @@ export type PublishedListRow = {
   pace?: string;
   position?: string;
   primary: string;
+  status?: string;
   time?: string;
 };
 
@@ -313,6 +314,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             pace: row.pace,
             position: row.position,
             primary: row.primary,
+            status: row.status ?? undefined,
             time: row.time,
           })),
           title: 'Min klubb',
@@ -340,6 +342,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             pace: row.pace,
             position: row.position,
             primary: row.primary,
+            status: row.status ?? undefined,
             time: row.time,
           })),
         title: section.classLabel,

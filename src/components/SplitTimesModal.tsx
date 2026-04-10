@@ -2,7 +2,7 @@
 
 import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
-import { fetchEventSplitTimesXml } from '@/src/api/eventorApi';
+import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
@@ -16,6 +16,7 @@ export type SplitTimesModalState = {
   emptyMessage: string;
   error: string | null;
   eventId: string;
+  eventSubtitle?: string | null;
   initialClassLabel?: string | null;
   isLoading: boolean;
   sections: EventSplitTimesSection[];
@@ -42,6 +43,7 @@ type RowMetrics = {
   totalSecondary: string;
   totalTone: MetricTone;
   loss: string;
+  totalStatusLabel?: string;
 };
 
 type MetricTone = 'default' | 'leader' | 'podium';
@@ -247,12 +249,19 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
-            <Text numberOfLines={2} style={styles.modalTitle}>
-              {currentState?.title}
-            </Text>
-            <Pressable onPress={onClose}>
-              <Text style={styles.modalClose}>Stäng</Text>
-            </Pressable>
+            <View style={styles.modalHeaderTopRow}>
+              <Text numberOfLines={2} style={styles.modalTitle}>
+                {currentState?.title}
+              </Text>
+              <Pressable onPress={onClose}>
+                <Text style={styles.modalClose}>Stäng</Text>
+              </Pressable>
+            </View>
+            {currentState?.eventSubtitle ? (
+              <Text numberOfLines={2} style={styles.modalSubtitle}>
+                {currentState.eventSubtitle}
+              </Text>
+            ) : null}
           </View>
 
           {pickerAnchors.length > 1 ? (
@@ -509,14 +518,22 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
             showLossDot={lossHighlight && Boolean(splitSubtitle)}
             onPress={onToggleLoss}
           />
-          <MetricCell
-            title={computed.totalPrimary}
-            subtitle={computed.totalSecondary}
-            style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
-            tone={computed.totalTone}
-            lossHighlight={false}
-            onPress={onToggleLoss}
-          />
+          {pageKey === 'total' && computed.totalStatusLabel ? (
+            <View style={[styles.metricColumn, styles.metricColumnStatus, { width: pageMetricsLayout.total }]}>
+              <Text numberOfLines={1} style={styles.metricStatusText}>
+                {computed.totalStatusLabel}
+              </Text>
+            </View>
+          ) : (
+            <MetricCell
+              title={computed.totalPrimary}
+              subtitle={computed.totalSecondary}
+              style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
+              tone={computed.totalTone}
+              lossHighlight={false}
+              onPress={onToggleLoss}
+            />
+          )}
         </>
       )}
     </View>
@@ -602,13 +619,14 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
   if (row.status && row.status !== 'OK') {
     return {
       leftPlacement: row.totalPosition ?? row.position ?? '-',
-      loss: statusLabel,
+      loss: '',
       splitPrimary: '',
       splitSecondary: '',
       splitTone: 'default',
       totalPrimary: '',
       totalSecondary: '',
       totalTone: 'default',
+      totalStatusLabel: statusLabel,
     };
   }
 
@@ -883,6 +901,7 @@ export async function openEventSplitTimesModal(
     emptyMessage: 'Inga sträcktider hittades.',
     error: null,
     eventId,
+    eventSubtitle: null,
     initialClassLabel: initialClassLabel ?? null,
     isLoading: true,
     sections: [],
@@ -890,13 +909,17 @@ export async function openEventSplitTimesModal(
   });
 
   try {
-    const rawXml = await fetchEventSplitTimesXml(eventId);
+    const [rawXml, eventDetail] = await Promise.all([
+      fetchEventSplitTimesXml(eventId),
+      fetchEventorEventById(eventId).catch(() => null),
+    ]);
     const sections = parseEventSplitTimesXml(rawXml);
 
     setState({
       emptyMessage: 'Inga sträcktider hittades.',
       error: null,
       eventId,
+      eventSubtitle: eventDetail ? `${eventDetail.name} • ${eventDetail.dateLabel}` : null,
       initialClassLabel: initialClassLabel ?? null,
       isLoading: false,
       sections,
@@ -907,6 +930,7 @@ export async function openEventSplitTimesModal(
       emptyMessage: 'Inga sträcktider hittades.',
       error: loadError instanceof Error ? loadError.message : 'Det gick inte att hämta sträcktiderna.',
       eventId,
+      eventSubtitle: null,
       initialClassLabel: initialClassLabel ?? null,
       isLoading: false,
       sections: [],
@@ -1101,6 +1125,17 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     textAlign: 'left',
   },
+  metricColumnStatus: {
+    alignItems: 'flex-end',
+    paddingRight: spacing.md,
+  },
+  metricStatusText: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 16,
+    lineHeight: 16,
+    textAlign: 'right',
+  },
   metricValueCenter: {
     textAlign: 'center',
   },
@@ -1150,11 +1185,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
+    gap: 2,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  modalHeaderTopRow: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   modalOverlay: {
     backgroundColor: colors.overlay,
@@ -1174,6 +1214,14 @@ const styles = StyleSheet.create({
     ...typography.bodyStrong,
     color: colors.textPrimary,
     flex: 1,
+    minWidth: 0,
+  },
+  modalSubtitle: {
+    ...typography.buttonSmall,
+    alignSelf: 'flex-start',
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 18,
   },
   nameCell: {
     flex: 1,

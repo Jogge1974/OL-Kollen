@@ -50,6 +50,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
         return;
       }
 
+      setStartsSections([]);
       setIsLoadingStarts(true);
       setStartsError(null);
 

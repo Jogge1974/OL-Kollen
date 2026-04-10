@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { fetchEventSplitTimesXml } from '@/src/api/eventorApi';
+import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { buildEventAnalysis } from '@/src/services/eventAnalysis';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
@@ -17,6 +17,7 @@ export type AnalysisModalState = {
   emptyMessage: string;
   error: string | null;
   eventId: string;
+  eventSubtitle?: string | null;
   initialClassLabel?: string | null;
   initialPersonId?: string | null;
   isLoading: boolean;
@@ -70,6 +71,11 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     <Text numberOfLines={2} style={styles.heroTitle}>
                       {analysis.summary.runnerName}
                     </Text>
+                    {currentState.eventSubtitle ? (
+                      <Text numberOfLines={2} style={styles.heroSubtitle}>
+                        {currentState.eventSubtitle}
+                      </Text>
+                    ) : null}
                     <Text numberOfLines={1} style={styles.heroSubtitle}>
                       {analysis.classLabel}
                       {analysis.summary.classLengthLabel ? ` • ${analysis.summary.classLengthLabel}` : ''}
@@ -277,6 +283,7 @@ export async function openEventAnalysisModal(
     emptyMessage: 'Ingen analys hittades.',
     error: null,
     eventId,
+    eventSubtitle: null,
     initialClassLabel: initialClassLabel ?? null,
     initialPersonId: initialPersonId ?? null,
     isLoading: true,
@@ -285,13 +292,17 @@ export async function openEventAnalysisModal(
   });
 
   try {
-    const rawXml = await fetchEventSplitTimesXml(eventId);
+    const [rawXml, eventDetail] = await Promise.all([
+      fetchEventSplitTimesXml(eventId),
+      fetchEventorEventById(eventId).catch(() => null),
+    ]);
     const sections = parseEventSplitTimesXml(rawXml);
 
     setState({
       emptyMessage: 'Ingen analys hittades.',
       error: null,
       eventId,
+      eventSubtitle: eventDetail ? `${eventDetail.name} • ${eventDetail.dateLabel}` : null,
       initialClassLabel: initialClassLabel ?? null,
       initialPersonId: initialPersonId ?? null,
       isLoading: false,
@@ -303,6 +314,7 @@ export async function openEventAnalysisModal(
       emptyMessage: 'Ingen analys hittades.',
       error: loadError instanceof Error ? loadError.message : 'Det gick inte att hämta analysen.',
       eventId,
+      eventSubtitle: null,
       initialClassLabel: initialClassLabel ?? null,
       initialPersonId: initialPersonId ?? null,
       isLoading: false,
@@ -394,6 +406,12 @@ const styles = StyleSheet.create({
   heroSubtitle: {
     ...typography.caption,
     color: colors.heroTextMuted,
+  },
+  heroEventSubtitle: {
+    ...typography.buttonSmall,
+    color: colors.primaryDeep,
+    fontSize: 13,
+    lineHeight: 18,
   },
   heroTitle: {
     ...typography.sectionTitle,
