@@ -60,7 +60,8 @@ function parsePersonResultNode(
   const personId = getNodeText(personRecord?.PersonId) ?? getNodeText(personRecord?.Id) ?? getNodeText(personNode.PersonId) ?? getNodeText(getRecord(personNode.Person)?.PersonId);
   const result = getRecord(personNode.Result) ?? getRecord(personNode);
   const splitNodes = toArray<Record<string, unknown>>(result?.SplitTime);
-  const splitCumulativeSeconds = splitNodes.map((splitNode) => parseSeconds(getTextValue(splitNode.Time)));
+  const validSplitNodes = splitNodes.filter((splitNode) => !isAdditionalSplitTime(splitNode));
+  const splitCumulativeSeconds = validSplitNodes.map((splitNode) => parseSeconds(getTextValue(splitNode.Time)));
   const totalTimeText = getTextValue(result?.Time);
   const totalTimeSeconds = parseSeconds(totalTimeText);
   const splitCumulativeWithFinishSeconds = appendFinishSplit(splitCumulativeSeconds, totalTimeSeconds);
@@ -250,6 +251,11 @@ function formatDuration(totalSeconds: number) {
 function getStatusText(value: unknown) {
   const record = getRecord(value);
   return getString(record?.value) ?? getString(record?.Value) ?? getNodeText(value) ?? getTextValue(value);
+}
+
+function isAdditionalSplitTime(value: Record<string, unknown>) {
+  const status = getString(value.status) ?? getString(value.Status) ?? getString(value['@_status']) ?? getString(value['@status']);
+  return typeof status === 'string' && status.toLowerCase() === 'additional';
 }
 
 function appendFinishSplit(splitCumulativeSeconds: number[], totalTimeSeconds: number) {

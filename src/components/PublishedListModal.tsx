@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListRow, PublishedListSection, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
@@ -53,6 +54,7 @@ export function PublishedListModal({
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorOffsets, setAnchorOffsets] = React.useState<Record<string, number>>({});
+  const [nestedAnalysisState, setNestedAnalysisState] = React.useState<AnalysisModalState | null>(null);
   const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedAnchorKey, setSelectedAnchorKey] = React.useState<string | null>(null);
   const [pendingChoice, setPendingChoice] = React.useState<PendingChoice | null>(null);
@@ -194,8 +196,7 @@ export function PublishedListModal({
             <View style={styles.choiceOverlay}>
               <Pressable style={styles.choiceBackdrop} onPress={() => setPendingChoice(null)} />
               <View style={styles.choiceCard}>
-                <Text style={styles.choiceTitle}>{pendingChoice.organisationLabel ?? 'Klubb'}</Text>
-                <Text style={styles.choiceText}>Vill du öppna klubbresultat eller analys?</Text>
+                <Text style={styles.choiceTitle}>Klubbresultat eller Analys</Text>
 
                 <View style={styles.choiceButtons}>
                   <Pressable
@@ -205,11 +206,11 @@ export function PublishedListModal({
                     }}
                     style={[styles.choiceButton, styles.choiceButtonSecondary]}
                   >
-                    <View style={styles.choiceButtonInlineRow}>
+                    <View style={styles.choiceButtonStack}>
                       <Text style={[styles.choiceButtonLabel, styles.choiceButtonSecondaryLabel]}>Klubbresultat</Text>
                       <OrganisationLabel
                         label={pendingChoice.organisationLabel}
-                        logoSize={16}
+                        logoSize={19}
                         organisationId={pendingChoice.organisationId}
                         textStyle={styles.choiceButtonClubText}
                         viewStyle={styles.choiceButtonClubRow}
@@ -219,15 +220,15 @@ export function PublishedListModal({
                   <Pressable
                     onPress={() => {
                       setPendingChoice(null);
-                      onClose();
-                      setTimeout(() => {
-                        onOpenAnalysis?.(pendingChoice.eventId, pendingChoice.classLabel, pendingChoice.personId);
-                      }, 0);
+                      void openEventAnalysisModal(pendingChoice.eventId, setNestedAnalysisState, pendingChoice.classLabel, pendingChoice.personId);
                     }}
-                    style={[styles.choiceButton, styles.choiceButtonPrimary]}
+                    style={[styles.choiceButton, styles.choiceButtonAnalysis]}
                   >
-                    <View style={styles.choiceButtonInlineRow}>
-                      <Text style={styles.choiceButtonLabel}>Analys</Text>
+                    <View style={styles.choiceButtonStack}>
+                      <View style={styles.choiceButtonAnalysisTitleRow}>
+                        <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
+                        <Text style={styles.choiceButtonLabelAnalysis}>Analys</Text>
+                      </View>
                       <Text numberOfLines={1} style={styles.choiceButtonPersonText}>
                         {pendingChoice.personLabel}
                       </Text>
@@ -245,6 +246,7 @@ export function PublishedListModal({
       </View>
 
       <PublishedListModal onClose={() => setNestedState(null)} onOpenAnalysis={onOpenAnalysis} state={nestedState} />
+      <AnalysisModal onClose={() => setNestedAnalysisState(null)} state={nestedAnalysisState} />
     </Modal>
   );
 }
@@ -828,24 +830,38 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   choiceButtons: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: spacing.sm,
   },
   choiceButton: {
-    alignItems: 'flex-start',
-    borderRadius: 999,
-    flex: 1,
+    alignItems: 'center',
+    borderRadius: 20,
     justifyContent: 'center',
-    minHeight: 56,
+    minHeight: 72,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
   },
   choiceButtonPrimary: {
     backgroundColor: colors.primaryDeep,
   },
+  choiceButtonAnalysis: {
+    backgroundColor: '#E7F1FF',
+    borderColor: '#90B5E8',
+    borderWidth: 1,
+  },
   choiceButtonLabel: {
     ...typography.buttonSmall,
     color: colors.heroText,
+    fontSize: 14,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  choiceButtonLabelAnalysis: {
+    ...typography.buttonSmall,
+    color: '#2F66A8',
+    fontSize: 14,
+    lineHeight: 17,
+    textAlign: 'center',
   },
   choiceButtonSecondary: {
     backgroundColor: colors.surfaceMuted,
@@ -855,23 +871,34 @@ const styles = StyleSheet.create({
   choiceButtonSecondaryLabel: {
     color: colors.primaryDeep,
   },
+  choiceButtonAnalysisTitleRow: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
   choiceButtonClubRow: {
-    marginLeft: 4,
+    alignSelf: 'center',
+    justifyContent: 'center',
   },
   choiceButtonClubText: {
     ...typography.captionStrong,
     color: colors.primaryDeep,
+    fontSize: 16,
+    lineHeight: 19,
+    textAlign: 'center',
   },
   choiceButtonPersonText: {
     ...typography.captionStrong,
-    color: colors.heroText,
-    marginLeft: 4,
+    color: '#2F66A8',
+    fontSize: 16,
+    lineHeight: 19,
+    textAlign: 'center',
   },
-  choiceButtonInlineRow: {
+  choiceButtonStack: {
     alignItems: 'center',
-    flexDirection: 'row',
-    flexShrink: 1,
-    gap: 4,
+    gap: 6,
   },
   choiceCancel: {
     alignSelf: 'center',
@@ -887,17 +914,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 20,
     borderWidth: 1,
-    gap: spacing.sm,
+    gap: spacing.md,
     marginHorizontal: spacing.lg,
     padding: spacing.lg,
   },
   choiceOverlay: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.62)',
     justifyContent: 'center',
-  },
-  choiceText: {
-    ...typography.body,
-    color: colors.textSecondary,
   },
   choiceTitle: {
     ...typography.sectionTitle,
