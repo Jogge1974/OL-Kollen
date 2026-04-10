@@ -1,10 +1,13 @@
 ﻿import * as React from 'react';
 
+import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
 import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
+import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
+import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
@@ -26,6 +29,17 @@ export type SplitTimesModalState = {
 type PickerAnchor = {
   key: string;
   label: string;
+};
+
+type OpenAnalysisHandler = (eventId: string, classLabel: string, personId?: string | null) => void;
+
+type PendingChoice = {
+  classLabel: string;
+  eventId: string;
+  organisationId: string;
+  organisationLabel: string | null;
+  personId: string;
+  personLabel: string;
 };
 
 type SplitPage = {
@@ -54,14 +68,25 @@ type MetricsLayout = {
   total: number;
 };
 
-export function SplitTimesModal({ onClose, state }: { onClose: () => void; state: SplitTimesModalState | null }) {
+export function SplitTimesModal({
+  onClose,
+  onOpenAnalysis,
+  state,
+}: {
+  onClose: () => void;
+  onOpenAnalysis?: OpenAnalysisHandler;
+  state: SplitTimesModalState | null;
+}) {
   const metricsScrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [nestedAnalysisState, setNestedAnalysisState] = React.useState<AnalysisModalState | null>(null);
+  const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedClassLabel, setSelectedClassLabel] = React.useState<string | null>(null);
   const [selectedPageIndex, setSelectedPageIndex] = React.useState(0);
   const [expandedLossRows, setExpandedLossRows] = React.useState<Record<string, boolean>>({});
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+  const [pendingChoice, setPendingChoice] = React.useState<PendingChoice | null>(null);
   const currentState = state;
   const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
   const { width: windowWidth } = useWindowDimensions();
@@ -100,6 +125,7 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
     setSelectedClassLabel(currentState?.initialClassLabel ?? pickerAnchors[0]?.label ?? null);
     setSelectedPageIndex(0);
     setExpandedLossRows({});
+    setPendingChoice(null);
   }, [currentState?.initialClassLabel, currentState?.title, pickerAnchors]);
 
   React.useEffect(() => {
@@ -343,6 +369,10 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
                         <SplitTimesClassRow
                           key={`left-${selectedPage.key}-${rowIndex}-${row.primary}`}
                           computed={leftRowMetrics[rowIndex]}
+                          eventId={currentState?.eventId ?? ''}
+                          onOpenAnalysis={onOpenAnalysis}
+                          onOpenAnalysisChoice={setPendingChoice}
+                          onOpenOrganisation={setNestedState}
                           row={row}
                           rowIndex={rowIndex}
                         />
@@ -391,7 +421,60 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
               </>
             ) : null}
           </View>
+          {pendingChoice ? (
+            <View style={styles.choiceOverlay}>
+              <Pressable style={styles.choiceBackdrop} onPress={() => setPendingChoice(null)} />
+              <View style={styles.choiceCard}>
+                <Text style={styles.choiceTitle}>Klubbresultat eller Analys</Text>
+
+                <View style={styles.choiceButtons}>
+                  <Pressable
+                    onPress={() => {
+                      setPendingChoice(null);
+                      void openPublishedListModal('results', 'organisation', pendingChoice.eventId, pendingChoice.organisationId, pendingChoice.organisationLabel, setNestedState);
+                    }}
+                    style={[styles.choiceButton, styles.choiceButtonSecondary]}
+                  >
+                    <View style={styles.choiceButtonStack}>
+                      <Text style={[styles.choiceButtonLabel, styles.choiceButtonSecondaryLabel]}>Klubbresultat</Text>
+                      <OrganisationLabel
+                        label={pendingChoice.organisationLabel}
+                        logoSize={19}
+                        organisationId={pendingChoice.organisationId}
+                        textStyle={styles.choiceButtonClubText}
+                        viewStyle={styles.choiceButtonClubRow}
+                      />
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setPendingChoice(null);
+                      void openEventAnalysisModal(pendingChoice.eventId, setNestedAnalysisState, pendingChoice.classLabel, pendingChoice.personId);
+                    }}
+                    style={[styles.choiceButton, styles.choiceButtonAnalysis]}
+                  >
+                    <View style={styles.choiceButtonStack}>
+                      <View style={styles.choiceButtonAnalysisTitleRow}>
+                        <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
+                        <Text style={styles.choiceButtonLabelAnalysis}>Analys</Text>
+                      </View>
+                      <Text numberOfLines={1} style={styles.choiceButtonPersonText}>
+                        {pendingChoice.personLabel}
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
+
+                <Pressable onPress={() => setPendingChoice(null)} style={styles.choiceCancel}>
+                  <Text style={styles.choiceCancelText}>Avbryt</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </View>
+      </View>
+      <PublishedListModal onClose={() => setNestedState(null)} onOpenAnalysis={onOpenAnalysis} state={nestedState} />
+      <AnalysisModal onClose={() => setNestedAnalysisState(null)} state={nestedAnalysisState} />
         {toastMessage ? (
           <View pointerEvents="none" style={styles.metricToastContainer}>
             <View style={styles.metricToast}>
@@ -399,7 +482,6 @@ export function SplitTimesModal({ onClose, state }: { onClose: () => void; state
             </View>
           </View>
         ) : null}
-      </View>
     </Modal>
   );
 }
@@ -449,24 +531,50 @@ function MetricCell({
 
 const SplitTimesClassRow = React.memo(function SplitTimesClassRow({
   computed,
+  eventId,
+  onOpenAnalysis,
+  onOpenAnalysisChoice,
+  onOpenOrganisation,
   row,
   rowIndex,
 }: {
   computed: RowMetrics;
+  eventId: string;
+  onOpenAnalysis?: OpenAnalysisHandler;
+  onOpenAnalysisChoice: (choice: PendingChoice) => void;
+  onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
   row: EventSplitTimesRow;
   rowIndex: number;
 }) {
+  const handleNamePress = React.useCallback(() => {
+    if (row.organisationId && row.personId && onOpenAnalysis) {
+      onOpenAnalysisChoice({
+        classLabel: row.classLabel,
+        eventId,
+        organisationId: row.organisationId,
+        organisationLabel: row.organisation ?? null,
+        personId: row.personId,
+        personLabel: row.primary,
+      });
+      return;
+    }
+
+    if (row.organisationId) {
+      void openPublishedListModal('results', 'organisation', eventId, row.organisationId, row.organisation ?? null, onOpenOrganisation);
+    }
+  }, [eventId, onOpenAnalysis, onOpenAnalysisChoice, onOpenOrganisation, row.classLabel, row.organisation, row.organisationId, row.personId, row.primary]);
+
   return (
     <View style={[styles.tableRow, rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
       <Text numberOfLines={1} style={[styles.cell, styles.rankColumn, styles.rankText]}>
         {computed.leftPlacement}
       </Text>
-      <View style={styles.nameCell}>
+      <Pressable disabled={!row.organisationId} onPress={handleNamePress} style={styles.nameCell}>
         <Text numberOfLines={1} style={[styles.cell, styles.primaryName]}>
           {row.primary}
         </Text>
         <OrganisationLabel label={row.organisation} organisationId={row.organisationId} logoSize={13} textStyle={[styles.cell, styles.clubName]} />
-      </View>
+      </Pressable>
     </View>
   );
 });
@@ -1241,6 +1349,104 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 13,
     lineHeight: 18,
+  },
+  choiceBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  choiceButtons: {
+    flexDirection: 'column',
+    gap: spacing.sm,
+  },
+  choiceButton: {
+    alignItems: 'center',
+    borderRadius: 20,
+    justifyContent: 'center',
+    minHeight: 72,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  choiceButtonAnalysis: {
+    backgroundColor: '#E7F1FF',
+    borderColor: '#90B5E8',
+    borderWidth: 1,
+  },
+  choiceButtonLabel: {
+    ...typography.buttonSmall,
+    color: colors.heroText,
+    fontSize: 16,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  choiceButtonLabelAnalysis: {
+    ...typography.buttonSmall,
+    color: '#2F66A8',
+    fontSize: 16,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  choiceButtonSecondary: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  choiceButtonSecondaryLabel: {
+    color: colors.primaryDeep,
+  },
+  choiceButtonAnalysisTitleRow: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    justifyContent: 'center',
+  },
+  choiceButtonClubRow: {
+    alignSelf: 'center',
+    justifyContent: 'center',
+  },
+  choiceButtonClubText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 14,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  choiceButtonPersonText: {
+    ...typography.captionStrong,
+    color: '#2F66A8',
+    fontSize: 14,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  choiceButtonStack: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  choiceCancel: {
+    alignSelf: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  choiceCancelText: {
+    ...typography.captionStrong,
+    color: colors.textMuted,
+  },
+  choiceCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: spacing.md,
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+  },
+  choiceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.12)',
+    justifyContent: 'center',
+  },
+  choiceTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
   },
   nameCell: {
     flex: 1,

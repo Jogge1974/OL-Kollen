@@ -229,7 +229,7 @@ export default function HomeScreen() {
       </ScrollView>
 
       <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
-      <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} state={activeSplitTimesModal} />
+      <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeSplitTimesModal} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </SafeAreaView>
   );

@@ -278,7 +278,7 @@ export default function ProfileScreen() {
 
         <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
         <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
-        <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} state={activeSplitTimesModal} />
+        <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeSplitTimesModal} />
       </ScrollView>
     </SafeAreaView>
   );

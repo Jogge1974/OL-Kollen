@@ -287,7 +287,7 @@ export default function EventDetailScreen() {
 
       <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} />
       <PublishedListModal onClose={() => setActiveListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeListModal} />
-      <SplitTimesModal state={activeSplitTimesModal} onClose={() => setActiveSplitTimesModal(null)} />
+      <SplitTimesModal state={activeSplitTimesModal} onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </SafeAreaView>
   );
