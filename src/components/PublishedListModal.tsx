@@ -60,6 +60,12 @@ export function PublishedListModal({
   const [pendingChoice, setPendingChoice] = React.useState<PendingChoice | null>(null);
   const currentState = state;
   const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
+  const handleOpenNestedAnalysis = React.useCallback(
+    (eventId: string, classLabel: string, personId?: string | null) => {
+      void openEventAnalysisModal(eventId, setNestedAnalysisState, classLabel, personId ?? null);
+    },
+    [],
+  );
 
   const pickerAnchors = React.useMemo(
     () => buildPickerAnchors(currentState?.sections ?? [], currentState?.scope ?? 'public', favoriteClasses),
@@ -182,6 +188,7 @@ export function PublishedListModal({
                     key={section.title}
                     kind={currentState.kind}
                     onAnchorLayout={handleAnchorLayout}
+                    onOpenNestedAnalysis={handleOpenNestedAnalysis}
                     onOpenAnalysis={onOpenAnalysis}
                     onOpenAnalysisChoice={setPendingChoice}
                     onOpenOrganisation={setNestedState}
@@ -257,6 +264,7 @@ function PublishedTableSection({
   onAnchorLayout,
   onOpenAnalysis,
   onOpenAnalysisChoice,
+  onOpenNestedAnalysis,
   onOpenOrganisation,
   scope,
   section,
@@ -266,6 +274,7 @@ function PublishedTableSection({
   onAnchorLayout: (anchorKey: string, event: LayoutChangeEvent) => void;
   onOpenAnalysis?: OpenAnalysisHandler;
   onOpenAnalysisChoice: (choice: PendingChoice) => void;
+  onOpenNestedAnalysis: OpenAnalysisHandler;
   onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
   scope: EventPublishedListScope;
   section: PublishedListSection;
@@ -304,15 +313,28 @@ function PublishedTableSection({
 
   const handleRowPress = React.useCallback(
     (row: PublishedListRow) => {
-      if (!row.organisationId) {
+      console.log('[PublishedListModal] row press', {
+        classLabel: row.classLabel ?? section.title,
+        kind,
+        organisationId: row.organisationId ?? null,
+        personId: row.personId ?? null,
+        primary: row.primary,
+        scope,
+      });
+
+      if (kind === 'results' && scope === 'organisation' && row.personId) {
+        console.log('[PublishedListModal] opening nested analysis from organisation results');
+        onOpenNestedAnalysis(eventId, row.classLabel ?? section.title, row.personId);
         return;
       }
 
-      const openOrganisation = () => {
-        void openPublishedListModal(kind, 'organisation', eventId, row.organisationId ?? null, row.organisation ?? null, onOpenOrganisation);
-      };
+      if (!row.organisationId) {
+        console.log('[PublishedListModal] row press ignored: missing organisationId');
+        return;
+      }
 
       if (kind === 'results' && onOpenAnalysis && row.personId) {
+        console.log('[PublishedListModal] opening choice overlay for public results');
         onOpenAnalysisChoice({
           classLabel: row.classLabel ?? section.title,
           eventId,
@@ -324,9 +346,10 @@ function PublishedTableSection({
         return;
       }
 
-      openOrganisation();
+      console.log('[PublishedListModal] opening organisation results');
+      void openPublishedListModal(kind, 'organisation', eventId, row.organisationId ?? null, row.organisation ?? null, onOpenOrganisation);
     },
-    [eventId, kind, onOpenAnalysis, onOpenOrganisation, section.title],
+    [eventId, kind, onOpenNestedAnalysis, onOpenAnalysis, onOpenOrganisation, scope, section.title],
   );
 
   return (
@@ -412,10 +435,29 @@ function PublishedTableSection({
           seenClassAnchors.current.add(classAnchorKey);
         }
 
+        const RowContainer = scope === 'organisation' && isOrganisationResults ? Pressable : View;
+        const rowContainerProps =
+          scope === 'organisation' && isOrganisationResults
+            ? {
+                disabled: !row.personId,
+                onPress: () => {
+                  console.log('[PublishedListModal] organisation row pressed', {
+                    classLabel: row.classLabel ?? section.title,
+                    courseLengthLabel: row.courseLengthLabel ?? null,
+                    kind,
+                    personId: row.personId ?? null,
+                    primary: row.primary,
+                  });
+                  handleRowPress(row);
+                },
+              }
+            : {};
+
         return (
-          <View
+          <RowContainer
             key={`${section.title}-${row.primary}-${rowIndex}`}
             onLayout={shouldAttachClassAnchor && classAnchorKey ? (event) => onAnchorLayout(classAnchorKey, event) : undefined}
+            {...rowContainerProps}
             style={[styles.tableRow, rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}
           >
             {kind === 'results' ? (
@@ -446,10 +488,10 @@ function PublishedTableSection({
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
               </Pressable>
             ) : (
-              <View style={styles.tableNameColumn}>
+              <Pressable disabled={!row.organisationId} onPress={() => handleRowPress(row)} style={styles.tableNameColumn}>
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
                 {isOrganisationResults ? (
-                  <View style={styles.nameMetaRow}>
+                  <View pointerEvents="none" style={styles.nameMetaRow}>
                     <Text numberOfLines={1} style={[styles.nameMetaText, styles.nameMetaClass, { width: columnWidths.class }]}>
                       {row.classLabel ?? '-'}
                     </Text>
@@ -458,7 +500,7 @@ function PublishedTableSection({
                     </Text>
                   </View>
                 ) : null}
-              </View>
+              </Pressable>
             )}
 
             {scope === 'public' && isEntries ? (
@@ -517,7 +559,7 @@ function PublishedTableSection({
                 {row.pace ?? '-'}
               </Text>
             ) : null}
-          </View>
+          </RowContainer>
         );
       })}
     </View>

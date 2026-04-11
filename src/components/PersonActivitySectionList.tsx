@@ -232,13 +232,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   row: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 14,
-    borderWidth: 1,
+    backgroundColor: 'transparent',
     gap: 3,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
+    paddingHorizontal: 2,
+    paddingVertical: 6,
   },
   rowPressed: {
     opacity: 0.88,
@@ -285,6 +282,7 @@ const styles = StyleSheet.create({
   },
   startCard: {
     gap: 6,
+    paddingVertical: 2,
   },
   startHeaderDate: {
     ...typography.captionStrong,
@@ -315,6 +313,7 @@ const styles = StyleSheet.create({
   },
   resultCard: {
     gap: 8,
+    paddingVertical: 2,
   },
   resultLineRow: {
     alignItems: 'center',

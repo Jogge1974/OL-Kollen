@@ -37,8 +37,8 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
 
 const styles = StyleSheet.create({
   panel: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: 'transparent',
+    borderColor: colors.primary,
     borderRadius: 24,
     borderWidth: 1,
     gap: spacing.sm,
@@ -49,5 +49,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 15,
     lineHeight: 19,
+    paddingTop: 2,
   },
 });

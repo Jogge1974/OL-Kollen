@@ -409,15 +409,16 @@ const styles = StyleSheet.create({
   },
   sectionCardFlat: {
     backgroundColor: 'transparent',
-    borderColor: 'transparent',
-    borderWidth: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
+    borderColor: colors.primary,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   sectionHeader: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingTop: 2,
   },
   sectionHeaderCopy: {
     flex: 1,
