@@ -76,7 +76,12 @@ export function PersonActivitySectionList({
   return (
     <View style={styles.list}>
       {sections.map((section) => (
-        <View key={section.eventId} style={styles.sectionCard}>
+        <Pressable
+          key={section.eventId}
+          disabled={!onPressEvent}
+          onPress={() => onPressEvent?.(section.eventId)}
+          style={({ pressed }) => [styles.sectionCard, onPressEvent && pressed ? styles.sectionCardPressed : null]}
+        >
           <View style={styles.sectionHeader}>
             <Text numberOfLines={1} style={styles.sectionTitle}>
               {section.title}
@@ -89,7 +94,10 @@ export function PersonActivitySectionList({
                 {section.rows[0]?.favouriteId ? (
                   <Pressable
                     hitSlop={6}
-                    onPress={() => void handleToggleFavorite(section.rows[0])}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      void handleToggleFavorite(section.rows[0]);
+                    }}
                     style={[styles.favoriteBadge, isFavorite(section.eventId) ? styles.favoriteBadgeActive : null]}
                   >
                     <Ionicons
@@ -109,10 +117,9 @@ export function PersonActivitySectionList({
 
           <View style={styles.rows}>
             {section.rows.map((row, rowIndex) => (
-              <Pressable
+              <View
                 key={`${section.eventId}-${row.personId ?? row.favouriteId ?? row.eventName ?? 'row'}-${row.classLabel}-${rowIndex}`}
-                onPress={onPressEvent ? () => onPressEvent(row.eventId) : undefined}
-                style={({ pressed }) => [styles.row, pressed && onPressEvent ? styles.rowPressed : null]}
+                style={styles.row}
               >
                 {kind === 'starts' ? (
                   <View style={styles.startCard}>
@@ -164,18 +171,30 @@ export function PersonActivitySectionList({
 
                     <View style={styles.resultActionRow}>
                       <Pressable
-                        onPress={() => onOpenResultList?.(row.eventId, row.classLabel, row.eventRaceId ?? null)}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          onOpenResultList?.(row.eventId, row.classLabel, row.eventRaceId ?? null);
+                        }}
                         style={[styles.resultActionButton, styles.resultActionButtonPrimary]}
                       >
                         <Ionicons color={colors.primaryDeep} name="trophy-outline" size={12} />
                         <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextPrimary]}>Resultatlista</Text>
                       </Pressable>
-                      <Pressable onPress={() => onOpenSplitTimes?.(row.eventId, row.classLabel)} style={[styles.resultActionButton, styles.resultActionButtonMuted]}>
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          onOpenSplitTimes?.(row.eventId, row.classLabel);
+                        }}
+                        style={[styles.resultActionButton, styles.resultActionButtonMuted]}
+                      >
                         <Ionicons color={colors.primaryDeep} name="time-outline" size={12} />
                         <Text style={styles.resultActionButtonText}>Sträcktider</Text>
                       </Pressable>
                       <Pressable
-                        onPress={() => onOpenAnalysis?.(row.eventId, row.classLabel, row.personId ?? null)}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          onOpenAnalysis?.(row.eventId, row.classLabel, row.personId ?? null);
+                        }}
                         style={[styles.resultActionButton, styles.resultActionButtonAnalysis]}
                       >
                         <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
@@ -184,10 +203,10 @@ export function PersonActivitySectionList({
                     </View>
                   </View>
                 )}
-              </Pressable>
+              </View>
             ))}
           </View>
-        </View>
+        </Pressable>
       ))}
     </View>
   );
@@ -237,9 +256,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     paddingVertical: 6,
   },
-  rowPressed: {
-    opacity: 0.88,
-  },
   rows: {
     gap: spacing.xs,
   },
@@ -250,6 +266,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 6,
     padding: 6,
+  },
+  sectionCardPressed: {
+    opacity: 0.92,
   },
   sectionHeader: {
     alignItems: 'center',
