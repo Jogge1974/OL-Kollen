@@ -90,8 +90,9 @@ function filterEvents(events: EventItem[], filters: EventFilterValues) {
   });
 }
 
-export async function fetchEventorEventById(eventId: string): Promise<EventDetail> {
-  const requestUrl = buildEventorUrl(`/event/${eventId}`);
+export async function fetchEventorEventById(eventId: string, selectedEventRaceId?: string | null): Promise<EventDetail> {
+  const normalizedEventId = normalizeEventId(eventId);
+  const requestUrl = buildEventorUrl(`/event/${normalizedEventId}`);
 
   const response = await fetch(requestUrl, {
     headers: {
@@ -105,19 +106,20 @@ export async function fetchEventorEventById(eventId: string): Promise<EventDetai
 
   if (!response.ok) {
     console.error('[Eventor] GET /event/{id} failed', {
-      eventId,
+      eventId: normalizedEventId,
       status: response.status,
       url: requestUrl,
     });
     throw new Error(mapEventorError(response.status, xml));
   }
 
-  return mapEventDetailXml(xml);
+  return mapEventDetailXml(xml, selectedEventRaceId);
 }
 
 export async function fetchEventDocumentsForEvent(eventId: string): Promise<EventDocument[]> {
+  const normalizedEventId = normalizeEventId(eventId);
   const searchParams = new URLSearchParams({
-    eventIds: eventId,
+    eventIds: normalizedEventId,
   });
   const requestUrl = buildEventorUrl(`/events/documents?${searchParams.toString()}`);
 
@@ -133,7 +135,7 @@ export async function fetchEventDocumentsForEvent(eventId: string): Promise<Even
 
   if (!response.ok) {
     console.error('[Eventor] GET /events/documents failed', {
-      eventId,
+      eventId: normalizedEventId,
       status: response.status,
       url: requestUrl,
     });
@@ -149,7 +151,8 @@ export async function fetchEventPublishedListXml(
   eventId: string,
   organisationId?: string,
 ) {
-  const request = buildPublishedListRequest(kind, scope, eventId, organisationId);
+  const normalizedEventId = normalizeEventId(eventId);
+  const request = buildPublishedListRequest(kind, scope, normalizedEventId, organisationId);
 
   const response = await fetch(request.endpoint, {
     headers: {
@@ -175,8 +178,9 @@ export async function fetchEventPublishedListXml(
 }
 
 export async function fetchEventSplitTimesXml(eventId: string) {
+  const normalizedEventId = normalizeEventId(eventId);
   const searchParams = new URLSearchParams({
-    eventId,
+    eventId: normalizedEventId,
     includeOrganisationElement: 'true',
     includePersonElement: 'true',
     includeSplitTimes: 'true',
@@ -195,7 +199,7 @@ export async function fetchEventSplitTimesXml(eventId: string) {
 
   if (!response.ok) {
     console.error('[Eventor] Split times failed', {
-      eventId,
+      eventId: normalizedEventId,
       status: response.status,
       url: requestUrl,
     });
@@ -206,7 +210,8 @@ export async function fetchEventSplitTimesXml(eventId: string) {
 }
 
 export async function fetchEventClassNameMap(eventId: string) {
-  const params = new URLSearchParams({ eventId });
+  const normalizedEventId = normalizeEventId(eventId);
+  const params = new URLSearchParams({ eventId: normalizedEventId });
   const requestUrl = buildEventorUrl(`/eventclasses?${params.toString()}`);
   const response = await fetch(requestUrl, {
     headers: {
@@ -243,7 +248,8 @@ export async function fetchOrganisationDirectory() {
 }
 
 export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null): Promise<EventCompetitorCount> {
-  const counts = await fetchSingleCompetitorCount(eventId, organisationId);
+  const normalizedEventId = normalizeEventId(eventId);
+  const counts = await fetchSingleCompetitorCount(normalizedEventId, organisationId);
 
   return {
     organisationEntries: counts.organisationNumberOfEntries,
@@ -251,6 +257,10 @@ export async function fetchEventCompetitorCount(eventId: string, organisationId:
     totalEntries: counts.numberOfEntries,
     totalStarts: counts.numberOfStarts,
   };
+}
+
+function normalizeEventId(eventId: string) {
+  return eventId.split('::')[0] ?? eventId;
 }
 
 export async function fetchPersonStartsXml(personId: string, fromDate: string, toDate: string) {

@@ -14,9 +14,11 @@ export type EventSplitTimesRow = {
   classLengthLabel?: string;
   familyName?: string;
   givenName?: string;
+  eventRaceId?: string;
   organisation: string;
   organisationId?: string;
   personId?: string;
+  raceNumber?: string;
   position?: string;
   primary: string;
   referencePercent?: number;

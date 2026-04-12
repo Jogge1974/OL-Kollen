@@ -85,7 +85,18 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
       {publicationIndicator ? (
         <Pressable
           hitSlop={6}
-          onPress={() => void openPublishedListModal(publicationIndicator === 'Resultatlista' ? 'results' : 'starts', 'public', item.id, null, null, onOpenList)}
+          onPress={() =>
+            void openPublishedListModal(
+              publicationIndicator === 'Resultatlista' ? 'results' : 'starts',
+              'public',
+              item.id,
+              null,
+              null,
+              onOpenList,
+              null,
+              item.eventRaceId,
+            )
+          }
           style={[
             styles.publicationBadge,
             mode === 'list' ? styles.publicationIndicatorList : styles.publicationIndicatorOverlay,

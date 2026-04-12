@@ -89,6 +89,7 @@ export function SplitTimesModal({
   const currentState = state;
   const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
   const { width: windowWidth } = useWindowDimensions();
+  const selectedEventRaceId = React.useMemo(() => extractSelectedEventRaceId(currentState?.eventId ?? ''), [currentState?.eventId]);
 
   const pickerAnchors = React.useMemo(
     () => buildPickerAnchors(currentState?.sections ?? [], favoriteClasses),
@@ -373,6 +374,7 @@ export function SplitTimesModal({
                           onOpenAnalysis={onOpenAnalysis}
                           onOpenAnalysisChoice={setPendingChoice}
                           onOpenOrganisation={setNestedState}
+                          selectedEventRaceId={selectedEventRaceId}
                           row={row}
                           rowIndex={rowIndex}
                         />
@@ -431,7 +433,16 @@ export function SplitTimesModal({
                   <Pressable
                     onPress={() => {
                       setPendingChoice(null);
-                      void openPublishedListModal('results', 'organisation', pendingChoice.eventId, pendingChoice.organisationId, pendingChoice.organisationLabel, setNestedState);
+                      void openPublishedListModal(
+                        'results',
+                        'organisation',
+                        pendingChoice.eventId,
+                        pendingChoice.organisationId,
+                        pendingChoice.organisationLabel,
+                        setNestedState,
+                        null,
+                        selectedEventRaceId,
+                      );
                     }}
                     style={[styles.choiceButton, styles.choiceButtonSecondary]}
                   >
@@ -534,6 +545,7 @@ const SplitTimesClassRow = React.memo(function SplitTimesClassRow({
   onOpenAnalysis,
   onOpenAnalysisChoice,
   onOpenOrganisation,
+  selectedEventRaceId,
   row,
   rowIndex,
 }: {
@@ -542,6 +554,7 @@ const SplitTimesClassRow = React.memo(function SplitTimesClassRow({
   onOpenAnalysis?: OpenAnalysisHandler;
   onOpenAnalysisChoice: (choice: PendingChoice) => void;
   onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
+  selectedEventRaceId: string | null;
   row: EventSplitTimesRow;
   rowIndex: number;
 }) {
@@ -559,9 +572,9 @@ const SplitTimesClassRow = React.memo(function SplitTimesClassRow({
     }
 
     if (row.organisationId) {
-      void openPublishedListModal('results', 'organisation', eventId, row.organisationId, row.organisation ?? null, onOpenOrganisation);
+      void openPublishedListModal('results', 'organisation', eventId, row.organisationId, row.organisation ?? null, onOpenOrganisation, null, selectedEventRaceId);
     }
-  }, [eventId, onOpenAnalysis, onOpenAnalysisChoice, onOpenOrganisation, row.classLabel, row.organisation, row.organisationId, row.personId, row.primary]);
+  }, [eventId, onOpenAnalysis, onOpenAnalysisChoice, onOpenOrganisation, row.classLabel, row.organisation, row.organisationId, row.personId, row.primary, selectedEventRaceId]);
 
   return (
     <View style={[styles.tableRow, rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
@@ -1005,6 +1018,7 @@ export async function openEventSplitTimesModal(
   initialClassLabel?: string | null,
   title = 'Sträcktider',
 ) {
+  const selectedEventRaceId = extractSelectedEventRaceId(eventId);
   setState({
     emptyMessage: 'Inga sträcktider hittades.',
     error: null,
@@ -1019,9 +1033,9 @@ export async function openEventSplitTimesModal(
   try {
     const [rawXml, eventDetail] = await Promise.all([
       fetchEventSplitTimesXml(eventId),
-      fetchEventorEventById(eventId).catch(() => null),
+      fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
-    const sections = parseEventSplitTimesXml(rawXml);
+    const sections = parseEventSplitTimesXml(rawXml, { selectedEventRaceId });
 
     setState({
       emptyMessage: 'Inga sträcktider hittades.',
@@ -1045,6 +1059,11 @@ export async function openEventSplitTimesModal(
       title,
     });
   }
+}
+
+function extractSelectedEventRaceId(eventId: string) {
+  const parts = eventId.split('::');
+  return parts.length > 1 ? parts.slice(1).join('::') || null : null;
 }
 
 const styles = StyleSheet.create({

@@ -9,23 +9,32 @@ const parser = new XMLParser({
   trimValues: true,
 });
 
-export function parseEventSplitTimesXml(xml: string): EventSplitTimesSection[] {
+export type EventSplitTimesParseOptions = {
+  selectedEventRaceId?: string | null;
+};
+
+export function parseEventSplitTimesXml(xml: string, options: EventSplitTimesParseOptions = {}): EventSplitTimesSection[] {
   const parsed = parser.parse(xml) as Record<string, unknown>;
+  const event = extractEventNode(parsed);
+  const raceLookup = buildEventRaceLookup(event);
+  const selectedRaceNumber = resolveSelectedRaceNumber(options.selectedEventRaceId ?? null, raceLookup);
   const classNodes = extractClassNodes(parsed);
   const sections: EventSplitTimesSection[] = [];
 
   classNodes.forEach((classNode, classIndex) => {
     const classInfo = getRecord(classNode.Class) ?? getRecord(classNode);
-    const classRaceInfo = getRecord(classNode.ClassRaceInfo);
+    const classRaceInfo = getRecord(classNode.ClassRaceInfo) ?? getRecord(classInfo?.ClassRaceInfo);
     const course = getRecord(classNode.Course);
     const courseLengthMeters = toNumber(course?.Length);
     const classLabel = getString(classInfo?.Name) ?? getString(classInfo?.ShortName) ?? getString(classNode.Name) ?? `Klass ${classIndex + 1}`;
     const classEntriesCount = toNullableNumber(classRaceInfo?.noOfStarts) ?? toNullableNumber(classRaceInfo?.numberOfStarts) ?? toNullableNumber(classInfo?.numberOfCompetitors);
-    const classLengthLabel = formatCourseLength(toNumber(course?.Length));
+    const classLengthLabel = formatCourseLength(courseLengthMeters);
     const personNodes = toArray<Record<string, unknown>>(classNode.PersonResult);
 
     const rows = enrichRowsWithLosses(
-      personNodes.map((personNode) => parsePersonResultNode(personNode, classLabel, classEntriesCount, classLengthLabel)),
+      personNodes.flatMap((personNode) =>
+        parsePersonResultNode(personNode, classLabel, classEntriesCount, classLengthLabel, options.selectedEventRaceId ?? null, selectedRaceNumber, raceLookup),
+      ),
     );
 
     if (rows.length === 0) {
@@ -52,13 +61,107 @@ function parsePersonResultNode(
   classLabel: string,
   classEntriesCount: number | null,
   classLengthLabel: string | null,
+  selectedEventRaceId: string | null,
+  selectedRaceNumber: string | null,
+  raceLookup: RaceLookup,
 ) {
   const person = getRecord(personNode.Person);
   const personName = getPersonNameParts(person);
   const organisation = getRecord(personNode.Organisation);
   const personRecord = getRecord(personNode.Person);
   const personId = getNodeText(personRecord?.PersonId) ?? getNodeText(personRecord?.Id) ?? getNodeText(personNode.PersonId) ?? getNodeText(getRecord(personNode.Person)?.PersonId);
-  const result = getRecord(personNode.Result) ?? getRecord(personNode);
+  const directResult = getRecord(personNode.Result) ?? getRecord(personNode);
+  const raceResults = toArray<Record<string, unknown>>(personNode.RaceResult);
+
+  if (raceResults.length > 0) {
+    const rows = raceResults
+      .map((raceResult) => {
+        const result = getRecord(raceResult.Result);
+        if (!result) {
+          return null;
+        }
+
+        const raceId = getNodeText(raceResult.EventRaceId) ?? getNodeText(result.EventRaceId) ?? undefined;
+        const raceNumber =
+          getRaceNumberValue(raceResult.raceNumber ?? raceResult.RaceNumber) ??
+          (raceId ? raceLookup.raceNumberById.get(raceId) ?? null : null);
+
+        if (selectedEventRaceId && !matchesSelectedRace(raceId, raceNumber, selectedEventRaceId, selectedRaceNumber)) {
+          return null;
+        }
+
+        return buildSplitTimesRow({
+          classEntriesCount,
+          classLabel,
+          classLengthLabel,
+          organisation,
+          personId: personId ?? undefined,
+          personName,
+          personNode,
+          raceId,
+          raceNumber,
+          result,
+        });
+      })
+      .filter((row): row is EventSplitTimesRow => Boolean(row));
+
+    if (rows.length > 0) {
+      return rows;
+    }
+
+    if (selectedEventRaceId) {
+      return [];
+    }
+  }
+
+  const raceId = getNodeText(personNode.EventRaceId) ?? getNodeText(directResult?.EventRaceId) ?? undefined;
+  const raceNumber =
+    getRaceNumberValue(personNode.raceNumber ?? personNode.RaceNumber ?? directResult?.raceNumber ?? directResult?.RaceNumber) ??
+    (raceId ? raceLookup.raceNumberById.get(raceId) ?? null : null);
+
+  if (selectedEventRaceId && !matchesSelectedRace(raceId, raceNumber, selectedEventRaceId, selectedRaceNumber)) {
+    return [];
+  }
+
+  return [
+    buildSplitTimesRow({
+      classEntriesCount,
+      classLabel,
+      classLengthLabel,
+      organisation,
+      personId: personId ?? undefined,
+      personName,
+      personNode,
+      raceId,
+      raceNumber,
+      result: directResult,
+    }),
+  ];
+}
+
+function buildSplitTimesRow({
+  classEntriesCount,
+  classLabel,
+  classLengthLabel,
+  organisation,
+  personId,
+  personName,
+  personNode,
+  raceId,
+  raceNumber,
+  result,
+}: {
+  classEntriesCount: number | null;
+  classLabel: string;
+  classLengthLabel: string | null;
+  organisation: Record<string, unknown> | null;
+  personId: string | undefined;
+  personName: { family: string | null; fullName: string; given: string | null };
+  personNode: Record<string, unknown>;
+  raceId?: string;
+  raceNumber?: string | null;
+  result: Record<string, unknown> | null;
+}): EventSplitTimesRow {
   const splitNodes = toArray<Record<string, unknown>>(result?.SplitTime);
   const validSplitNodes = splitNodes.filter((splitNode) => !isAdditionalSplitTime(splitNode));
   const splitCumulativeSeconds = validSplitNodes.map((splitNode) => parseSeconds(getTextValue(splitNode.Time)));
@@ -73,13 +176,15 @@ function parsePersonResultNode(
     classEntriesCount,
     classLabel,
     classLengthLabel: classLengthLabel ?? undefined,
-    personId: personId ?? undefined,
+    eventRaceId: raceId ?? undefined,
     familyName: personName.family ?? undefined,
     givenName: personName.given ?? undefined,
     organisation: getString(organisation?.Name) ?? '-',
     organisationId: getNodeText(organisation?.Id) ?? getNodeText(organisation?.OrganisationId) ?? undefined,
+    personId,
     position: position ?? '-',
-    primary: personName.fullName || getString(person?.Name) || getString(personNode.Name) || 'Okänd',
+    primary: personName.fullName || getString(personNode.Name) || 'Okänd',
+    raceNumber: raceNumber ?? undefined,
     splitCumulativeSeconds: splitCumulativeWithFinishSeconds,
     splitCount: splitCumulativeWithFinishSeconds.length,
     splitLossSeconds: [],
@@ -201,6 +306,29 @@ function getSplitTime(row: EventSplitTimesRow, splitIndex: number) {
   return current - previous;
 }
 
+function extractEventNode(parsed: Record<string, unknown>) {
+  const rootCandidates = [
+    getRecord(parsed.ResultListList),
+    getRecord(parsed.ResultList),
+    getRecord(getRecord(parsed.ResultListList)?.ResultList),
+    getRecord(getRecord(parsed.ResultList)?.ResultList),
+    parsed,
+  ];
+
+  for (const root of rootCandidates) {
+    if (!root) {
+      continue;
+    }
+
+    const event = getRecord(root.Event);
+    if (event) {
+      return event;
+    }
+  }
+
+  return null;
+}
+
 function extractClassNodes(parsed: Record<string, unknown>) {
   const rootCandidates = [
     getRecord(parsed.ResultListList),
@@ -222,6 +350,72 @@ function extractClassNodes(parsed: Record<string, unknown>) {
   }
 
   return [];
+}
+
+type RaceLookup = {
+  raceIdByNumber: Map<string, string>;
+  raceNumberById: Map<string, string>;
+};
+
+function buildEventRaceLookup(event: Record<string, unknown> | null): RaceLookup {
+  const lookup: RaceLookup = {
+    raceIdByNumber: new Map<string, string>(),
+    raceNumberById: new Map<string, string>(),
+  };
+
+  if (!event) {
+    return lookup;
+  }
+
+  toArray<Record<string, unknown>>(event.Race).forEach((race, index) => {
+    const raceNumber = getRaceNumberValue(race.RaceNumber) ?? `${index + 1}`;
+    const raceId =
+      getNodeText(getRecord(race.Extensions)?.['eventor:EventRaceId']) ??
+      getNodeText(getRecord(race.Extensions)?.EventRaceId) ??
+      getNodeText(race.EventRaceId);
+
+    if (!raceId) {
+      return;
+    }
+
+    lookup.raceIdByNumber.set(raceNumber, raceId);
+    lookup.raceNumberById.set(raceId, raceNumber);
+  });
+
+  return lookup;
+}
+
+function resolveSelectedRaceNumber(selectedEventRaceId: string | null, lookup: RaceLookup) {
+  if (!selectedEventRaceId) {
+    return null;
+  }
+
+  return lookup.raceNumberById.get(selectedEventRaceId) ?? null;
+}
+
+function matchesSelectedRace(
+  rowRaceId: string | null | undefined,
+  rowRaceNumber: string | null | undefined,
+  selectedEventRaceId: string | null,
+  selectedRaceNumber: string | null,
+) {
+  if (!selectedEventRaceId) {
+    return true;
+  }
+
+  const normalizedSelectedRaceId = normalizeRaceKey(selectedEventRaceId);
+  const normalizedRowRaceId = normalizeRaceKey(rowRaceId);
+  if (normalizedSelectedRaceId && normalizedRowRaceId && normalizedSelectedRaceId === normalizedRowRaceId) {
+    return true;
+  }
+
+  const normalizedSelectedRaceNumber = normalizeRaceKey(selectedRaceNumber);
+  const normalizedRowRaceNumber = normalizeRaceKey(rowRaceNumber);
+  if (normalizedSelectedRaceNumber && normalizedRowRaceNumber && normalizedSelectedRaceNumber === normalizedRowRaceNumber) {
+    return true;
+  }
+
+  return false;
 }
 
 function compareRows(left: EventSplitTimesRow, right: EventSplitTimesRow) {
@@ -281,6 +475,21 @@ function getPersonNameParts(person: Record<string, unknown> | null) {
     fullName: [given, family].filter(Boolean).join(' '),
     given,
   };
+}
+
+function getRaceNumberValue(value: unknown) {
+  const text = getNodeText(value) ?? getString(value);
+
+  if (!text) {
+    return null;
+  }
+
+  const trimmed = text.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeRaceKey(value: string | null | undefined) {
+  return value?.trim().replace(/^0+/, '') ?? null;
 }
 
 function getNodeText(value: unknown) {

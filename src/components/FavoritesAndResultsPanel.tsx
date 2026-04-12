@@ -16,7 +16,7 @@ type FavoritesAndResultsPanelProps = {
   favoriteEvents: FavoriteEventSummary[];
   onClearFavorites: () => Promise<void>;
   onOpenAnalysis?: (eventId: string, classLabel: string, personId?: string | null) => void;
-  onOpenResultList?: (eventId: string, classLabel: string) => void;
+  onOpenResultList?: (eventId: string, classLabel: string, eventRaceId?: string | null) => void;
   onOpenSplitTimes?: (eventId: string, classLabel: string) => void;
   onRemoveFavorite: (eventId: string) => Promise<void>;
   resultsError: string | null;

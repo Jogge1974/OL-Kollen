@@ -108,8 +108,8 @@ export default function ProfileScreen() {
   }, [hydratePreferences, hydrateSession, refetch, refetchPersonLists]);
 
   const handleOpenResultList = React.useCallback(
-    (eventId: string, classLabel: string) => {
-      void openPublishedListModal('results', 'public', eventId, null, null, setActiveResultListModal, classLabel);
+    (eventId: string, classLabel: string, eventRaceId?: string | null) => {
+      void openPublishedListModal('results', 'public', eventId, null, null, setActiveResultListModal, classLabel, eventRaceId ?? null);
     },
     [],
   );

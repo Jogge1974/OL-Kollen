@@ -41,7 +41,23 @@ function parsePersonActivityXml(xml: string, kind: 'results' | 'starts'): Person
     const eventName = getString(event?.Name) ?? getString(listNode.Name) ?? 'Tävling';
     const eventDate = extractDate(event?.StartDate) ?? extractDate(listNode.StartDate) ?? extractDate(event?.Date) ?? extractDate(listNode.Date) ?? '';
     const classificationId = toNumber(event?.EventClassificationId ?? listNode.EventClassificationId ?? event?.ClassificationId ?? listNode.ClassificationId);
+    const eventForm = getString(event?.eventForm) ?? '';
     const classNodes = extractClassNodes(listNode, kind);
+
+    if (eventForm === 'IndMultiDay') {
+      sections.push(
+        ...parseMultiDayPersonActivitySections({
+          classNodes,
+          classificationId,
+          event: event ?? {},
+          eventDate,
+          eventId,
+          eventName,
+          kind,
+        }),
+      );
+      return;
+    }
 
     const rows = classNodes.flatMap((classNode, classIndex) =>
       extractRowsFromClassNode(classNode, kind, {
@@ -110,6 +126,105 @@ function extractClassNodes(listNode: Record<string, unknown>, kind: 'results' | 
   return [];
 }
 
+function parseMultiDayPersonActivitySections({
+  classNodes,
+  classificationId,
+  event,
+  eventDate,
+  eventId,
+  eventName,
+  kind,
+}: {
+  classNodes: Record<string, unknown>[];
+  classificationId: number;
+  event: Record<string, unknown>;
+  eventDate: string;
+  eventId: string;
+  eventName: string;
+  kind: 'results' | 'starts';
+}): PersonActivitySection[] {
+  const eventRaces = toArray<Record<string, unknown>>(event.EventRace);
+  const raceNumberToRaceId = new Map<string, string>();
+  const raceById = new Map(
+    eventRaces
+      .map((race, index) => {
+        const raceId = getString(race.EventRaceId) ?? `${eventId}-${index + 1}`;
+        const raceNumber = getString(race.RaceNumber) ?? `${index + 1}`;
+        raceNumberToRaceId.set(raceNumber, raceId);
+        return [
+          raceId,
+          {
+            date: extractDate(race.RaceDate) ?? eventDate,
+            id: raceId,
+            name: getString(race.Name) ?? '',
+          },
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, { date: string; id: string; name: string }] => Boolean(entry[0])),
+  );
+  const sectionsByRace = new Map<
+    string,
+    {
+      eventDate: string;
+      eventId: string;
+      raceName: string;
+      rows: PersonActivityRow[];
+      sectionOrder: number;
+    }
+  >();
+
+  classNodes.forEach((classNode, classIndex) => {
+    const eventClass = getRecord(classNode.Class) ?? getRecord(classNode.EventClass);
+    const classRaceInfo = getRecord(eventClass?.ClassRaceInfo) ?? getRecord(classNode.ClassRaceInfo);
+    const classRaceId = getNodeText(classRaceInfo?.EventRaceId) ?? getNodeText(classNode.EventRaceId);
+    const baseRows = extractRowsFromClassNode(classNode, kind, {
+      classFallback: `Klass ${classIndex + 1}`,
+      eventDate,
+      eventId,
+      eventName,
+      classificationId,
+      raceNumberToRaceId,
+    });
+
+    if (baseRows.length === 0) {
+      return;
+    }
+
+    baseRows.forEach((row) => {
+      const rowRaceId = row.eventRaceId ?? classRaceId ?? eventId;
+      const raceInfo = raceById.get(rowRaceId) ?? (rowRaceId === eventId ? null : null);
+      const sectionKey = raceInfo?.id ?? rowRaceId ?? eventId;
+      const section = sectionsByRace.get(sectionKey) ?? {
+        eventDate: raceInfo?.date ?? eventDate,
+        eventId: raceInfo ? `${eventId}::${raceInfo.id}` : eventId,
+        raceName: raceInfo?.name ?? '',
+        rows: [],
+        sectionOrder: classIndex,
+      };
+
+      section.rows.push({
+        ...row,
+        eventDate: raceInfo?.date ?? row.eventDate,
+        eventId: raceInfo ? `${eventId}::${raceInfo.id}` : row.eventId,
+        eventName: raceInfo?.name ? `${eventName} - ${raceInfo.name}` : row.eventName,
+      });
+
+      sectionsByRace.set(sectionKey, section);
+    });
+  });
+
+  return Array.from(sectionsByRace.values())
+    .sort((left, right) => left.eventDate.localeCompare(right.eventDate) || left.sectionOrder - right.sectionOrder || left.raceName.localeCompare(right.raceName, 'sv'))
+    .map((section) => ({
+      classificationId,
+      eventDate: section.eventDate,
+      eventId: section.eventId,
+      meta: section.eventDate ? formatShortDisplayDate(section.eventDate) : null,
+      rows: section.rows.sort((left, right) => compareRows(left, right, kind)),
+      title: section.raceName ? `${eventName} - ${section.raceName}` : eventName,
+    }));
+}
+
 function extractRowsFromClassNode(
   classNode: Record<string, unknown>,
   kind: 'results' | 'starts',
@@ -119,10 +234,11 @@ function extractRowsFromClassNode(
     eventId: string;
     eventName: string;
     classificationId: number;
+    raceNumberToRaceId?: Map<string, string>;
   },
-) {
+): PersonActivityRow[] {
   const eventClass = getRecord(classNode.Class) ?? getRecord(classNode.EventClass);
-  const classRaceInfo = getRecord(classNode.ClassRaceInfo);
+  const classRaceInfo = getRecord(eventClass?.ClassRaceInfo) ?? getRecord(classNode.ClassRaceInfo);
   const course = getRecord(classNode.Course);
   const courseLengthMeters = toNumber(course?.Length);
   const classLabel = getString(eventClass?.Name) ?? getString(eventClass?.ClassShortName) ?? getString(classNode.Name) ?? context.classFallback;
@@ -144,7 +260,7 @@ function extractRowsFromClassNode(
     null;
   const personNodes = toArray<Record<string, unknown>>(kind === 'results' ? classNode.PersonResult : classNode.PersonStart);
 
-  return personNodes.map((personNode) => {
+  return personNodes.flatMap<PersonActivityRow>((personNode) => {
     const person = getRecord(personNode.Person);
     const personName = getPersonNameParts(person);
     const organisation = getRecord(personNode.Organisation);
@@ -152,52 +268,75 @@ function extractRowsFromClassNode(
     const personId = getNodeText(person?.PersonId) ?? getNodeText(person?.Id) ?? getNodeText(personNode.PersonId) ?? getNodeText(getRecord(personNode.Person)?.PersonId);
 
     if (kind === 'results') {
-      const result = getRecord(personNode.Result) ?? getRecord(personNode);
-      const timeText = getTextValue(result?.Time);
-      const timeBehindText = getTextValue(result?.TimeDiff) ?? getTextValue(result?.TimeBehind);
-      const timeSeconds = parseClockDurationToSeconds(timeText);
-      const timeBehindSeconds = parseClockDurationToSeconds(timeBehindText);
-      const position = getNodeText(result?.ResultPosition) ?? getNodeText(result?.Position);
-      const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
+      const raceResults = toArray<Record<string, unknown>>(personNode.RaceResult);
+      const resultNodes = raceResults.length > 0 ? raceResults : [personNode];
+
+      return resultNodes.map<PersonActivityRow>((resultNode) => {
+        const raceResult = getRecord(resultNode.RaceResult) ?? getRecord(personNode.RaceResult) ?? getRecord(resultNode);
+        const eventRaceId = getNodeText(raceResult?.EventRaceId) ?? getNodeText(resultNode.EventRaceId) ?? getNodeText(classRaceInfo?.EventRaceId) ?? getNodeText(classNode.EventRaceId) ?? undefined;
+        const result = getRecord(resultNode.Result) ?? getRecord(personNode.Result) ?? getRecord(resultNode);
+        const timeText = getTextValue(result?.Time);
+        const timeBehindText = getTextValue(result?.TimeDiff) ?? getTextValue(result?.TimeBehind);
+        const timeSeconds = parseClockDurationToSeconds(timeText);
+        const timeBehindSeconds = parseClockDurationToSeconds(timeBehindText);
+        const position = getNodeText(result?.ResultPosition) ?? getNodeText(result?.Position);
+        const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
+
+        return {
+          classLabel,
+          classEntriesCount,
+          courseLengthLabel: formatCourseLength(courseLengthMeters) ?? undefined,
+          diff: position ? `+${formatResultDuration(timeBehindSeconds)}` : formatResultStatus(status),
+          eventDate: context.eventDate,
+          eventId: context.eventId,
+          eventRaceId,
+          eventName: context.eventName,
+          organisation: getString(organisation?.Name) ?? '-',
+          organisationId,
+          personId: personId ?? undefined,
+          pace: calculatePace(timeSeconds, courseLengthMeters),
+          position: position ?? '-',
+          sortKey: position ? Number(position) : Number.MAX_SAFE_INTEGER,
+          status: status ?? undefined,
+          time: timeText ?? '-',
+        } satisfies PersonActivityRow;
+      });
+    }
+
+    const raceStarts = toArray<Record<string, unknown>>(personNode.RaceStart);
+    const startNodes = raceStarts.length > 0 ? raceStarts : [personNode];
+
+    return startNodes.map<PersonActivityRow>((startNode) => {
+      const raceStart = getRecord(startNode.RaceStart) ?? getRecord(personNode.RaceStart) ?? getRecord(startNode);
+      const startRaceNumber = getNodeText(raceStart?.raceNumber) ?? getNodeText(raceStart?.RaceNumber) ?? getNodeText(startNode.raceNumber) ?? getNodeText(startNode.RaceNumber);
+      const eventRaceId =
+        (startRaceNumber ? context.raceNumberToRaceId?.get(startRaceNumber) : undefined) ??
+        getNodeText(raceStart?.EventRaceId) ??
+        getNodeText(startNode.EventRaceId) ??
+        getNodeText(classRaceInfo?.EventRaceId) ??
+        getNodeText(classNode.EventRaceId) ??
+        undefined;
+      const start = getRecord(startNode.Start) ?? getRecord(personNode.Start) ?? getRecord(startNode);
+      const startTime = getEventorClockValue(start?.StartTime) ?? '-';
 
       return {
+        bibNumber: getNodeText(startNode.BibNumber) ?? getNodeText(personNode.BibNumber) ?? getNodeText(start?.BibNumber) ?? undefined,
         classLabel,
         classEntriesCount,
         courseLengthLabel: formatCourseLength(courseLengthMeters) ?? undefined,
-        diff: position ? `+${formatResultDuration(timeBehindSeconds)}` : formatResultStatus(status),
         eventDate: context.eventDate,
         eventId: context.eventId,
+        eventRaceId,
         eventName: context.eventName,
+        favouriteId: context.eventId,
         organisation: getString(organisation?.Name) ?? '-',
         organisationId,
         personId: personId ?? undefined,
-        pace: calculatePace(timeSeconds, courseLengthMeters),
-        position: position ?? '-',
-        sortKey: position ? Number(position) : Number.MAX_SAFE_INTEGER,
-        status: status ?? undefined,
-        time: timeText ?? '-',
+        sortKey: getSecondsFromClockValue(startTime) ?? Number.MAX_SAFE_INTEGER,
+        startTime,
+        time: startTime,
       } satisfies PersonActivityRow;
-    }
-
-    const start = getRecord(personNode.Start) ?? getRecord(personNode);
-    const startTime = getEventorClockValue(start?.StartTime) ?? '-';
-
-    return {
-      bibNumber: getNodeText(personNode.BibNumber) ?? getNodeText(start?.BibNumber) ?? undefined,
-      classLabel,
-      classEntriesCount,
-      courseLengthLabel: formatCourseLength(courseLengthMeters) ?? undefined,
-      eventDate: context.eventDate,
-      eventId: context.eventId,
-      eventName: context.eventName,
-      favouriteId: context.eventId,
-      organisation: getString(organisation?.Name) ?? '-',
-      organisationId,
-      personId: personId ?? undefined,
-      sortKey: getSecondsFromClockValue(startTime) ?? Number.MAX_SAFE_INTEGER,
-      startTime,
-      time: startTime,
-    } satisfies PersonActivityRow;
+    });
   });
 }
 

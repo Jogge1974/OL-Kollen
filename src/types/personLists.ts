@@ -15,6 +15,7 @@ export type PersonActivityRow = {
   diff?: string;
   eventDate: string;
   eventId: string;
+  eventRaceId?: string;
   eventName: string;
   favouriteId?: string;
   organisation: string;

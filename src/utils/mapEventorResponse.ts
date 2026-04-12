@@ -22,8 +22,7 @@ export function mapEventListXml(xml: string): EventItem[] {
   const items = toArray<Record<string, unknown>>(parsed.EventList?.Event);
 
   return items
-    .map((item) => mapEventItem(item))
-    .filter((item): item is EventItem => Boolean(item))
+    .flatMap((item) => mapEventItems(item))
     .sort((left, right) => `${left.startDate}${left.startClock ?? ''}`.localeCompare(`${right.startDate}${right.startClock ?? ''}`));
 }
 
@@ -54,12 +53,13 @@ export function mapPersonXml(xml: string, username: string): AuthenticatedUser {
   };
 }
 
-export function mapEventDetailXml(xml: string): EventDetail {
+export function mapEventDetailXml(xml: string, selectedEventRaceId?: string | null): EventDetail {
   const parsed = parser.parse(xml) as {
     Event?: Record<string, unknown>;
   };
 
-  const event = mapEventItem(parsed.Event ?? {});
+  const eventItems = mapEventItems(parsed.Event ?? {});
+  const event = selectedEventRaceId ? eventItems.find((item) => item.eventRaceId === selectedEventRaceId) ?? eventItems[0] : eventItems[0];
 
   if (!event) {
     throw new Error('Eventor returnerade en ofullständig tävlingsdetalj.');
@@ -112,15 +112,16 @@ export function mapEventDocumentsXml(xml: string): EventDocument[] {
     .filter((document): document is EventDocument => Boolean(document));
 }
 
-function mapEventItem(item: Record<string, unknown>): EventItem | null {
+function mapEventItems(item: Record<string, unknown>): EventItem[] {
   const id = getString(item.EventId);
   const name = getString(item.Name);
   const startDateNode = getRecord(item.StartDate);
-  const eventRace = getRecord(firstOf(item.EventRace));
+  const eventForm = getString(item.eventForm) ?? '';
+  const eventRaces = toArray<Record<string, unknown>>(item.EventRace);
   const organiser = getRecord(item.Organiser);
 
   if (!id || !name || !startDateNode) {
-    return null;
+    return [];
   }
 
   const classificationId = toNumber(item.EventClassificationId);
@@ -128,34 +129,46 @@ function mapEventItem(item: Record<string, unknown>): EventItem | null {
   const hashEntries = toArray<Record<string, unknown>>(item.HashTableEntry);
   const hashKeys = hashEntries.map((entry) => getString(entry.Key)).filter((key): key is string => Boolean(key));
   const statusId = toNumber(item.EventStatusId);
-  const startDate = getString(startDateNode.Date) ?? '';
-  const startClock = getString(startDateNode.Clock);
   const message = extractHashValue(item.HashTableEntry, 'Eventor_Message');
-  const distanceLabel =
-    getString(getRecord(eventRace?.WRSInfo)?.Distance) ??
-    getString(eventRace?.raceDistance) ??
-    'Ej angivet';
+  const organiserNames = extractOrganisationNames(item);
+  const organiserIds = toArray<string | Record<string, unknown>>(organiser?.OrganisationId).map((value) => `${value}`);
 
-  return {
-    centerPosition: extractCenterPosition(eventRace?.EventCenterPosition),
-    classificationId,
-    classificationLabel: getClassificationLabel(classificationId),
-    dateLabel: formatDisplayDate(startDate),
-    disciplineId,
-    disciplineLabel: mapDisciplineLabel(disciplineId),
-    distanceLabel,
-    hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult'),
-    hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
-    id,
-    message,
-    name,
-    organiserNames: extractOrganisationNames(item),
-    organiserIds: toArray<string | Record<string, unknown>>(organiser?.OrganisationId).map((value) => `${value}`),
-    startClock,
-    startDate,
-    statusId,
-    statusLabel: mapStatusLabel(statusId),
-  };
+  return eventRaces.map((eventRace, raceIndex) => {
+    const eventRaceId = getString(eventRace.EventRaceId) ?? `${id}-${raceIndex + 1}`;
+    const eventRaceName = getString(eventRace.Name) ?? '';
+    const eventRaceDate = getString(getRecord(eventRace.RaceDate)?.Date) ?? getString(startDateNode.Date) ?? '';
+    const eventRaceClock = getString(getRecord(eventRace.RaceDate)?.Clock) ?? getString(startDateNode.Clock);
+    const distanceLabel =
+      getString(getRecord(eventRace.WRSInfo)?.Distance) ??
+      getString(eventRace.raceDistance) ??
+      'Ej angivet';
+
+    return {
+      centerPosition: extractCenterPosition(eventRace.EventCenterPosition),
+      classificationId,
+      classificationLabel: getClassificationLabel(classificationId),
+      dateLabel: formatDisplayDate(eventRaceDate),
+      disciplineId,
+      disciplineLabel: mapDisciplineLabel(disciplineId),
+      distanceLabel,
+      eventForm,
+      eventRaceDate,
+      eventRaceId,
+      eventRaceName,
+      hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult'),
+      hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
+      id: `${id}::${eventRaceId}`,
+      message,
+      multiStage: eventForm === 'IndMultiStage',
+      name: eventRaceName ? `${name} - ${eventRaceName}` : name,
+      organiserNames,
+      organiserIds,
+      startClock: eventRaceClock,
+      startDate: eventRaceDate,
+      statusId,
+      statusLabel: mapStatusLabel(statusId),
+    };
+  });
 }
 
 function extractDate(value: unknown) {

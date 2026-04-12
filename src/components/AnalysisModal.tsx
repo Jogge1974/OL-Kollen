@@ -281,6 +281,7 @@ export async function openEventAnalysisModal(
   initialPersonId?: string | null,
   title = 'Analys',
 ) {
+  const selectedEventRaceId = extractSelectedEventRaceId(eventId);
   setState({
     emptyMessage: 'Ingen analys hittades.',
     error: null,
@@ -296,9 +297,9 @@ export async function openEventAnalysisModal(
   try {
     const [rawXml, eventDetail] = await Promise.all([
       fetchEventSplitTimesXml(eventId),
-      fetchEventorEventById(eventId).catch(() => null),
+      fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
-    const sections = parseEventSplitTimesXml(rawXml);
+    const sections = parseEventSplitTimesXml(rawXml, { selectedEventRaceId });
 
     setState({
       emptyMessage: 'Ingen analys hittades.',
@@ -324,6 +325,11 @@ export async function openEventAnalysisModal(
       title,
     });
   }
+}
+
+function extractSelectedEventRaceId(eventId: string) {
+  const parts = eventId.split('::');
+  return parts.length > 1 ? parts.slice(1).join('::') || null : null;
 }
 
 const styles = StyleSheet.create({

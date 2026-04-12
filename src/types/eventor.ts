@@ -16,11 +16,16 @@ export type EventItem = {
   disciplineId: number;
   disciplineLabel: string;
   distanceLabel: string;
+  eventForm: string;
+  eventRaceDate: string;
+  eventRaceId: string;
+  eventRaceName: string;
   hasPublishedResults: boolean;
   hasPublishedStarts: boolean;
   id: string;
   message: string | null;
   name: string;
+  multiStage: boolean;
   organiserNames: string[];
   organiserIds: string[];
   startClock: string | null;

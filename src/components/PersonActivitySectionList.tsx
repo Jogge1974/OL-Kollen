@@ -16,7 +16,7 @@ type PersonActivitySectionListProps = {
   kind: 'results' | 'starts';
   onOpenAnalysis?: (eventId: string, classLabel: string, personId?: string | null) => void;
   onOpenSplitTimes?: (eventId: string, classLabel: string) => void;
-  onOpenResultList?: (eventId: string, classLabel: string) => void;
+  onOpenResultList?: (eventId: string, classLabel: string, eventRaceId?: string | null) => void;
   onPressEvent?: (eventId: string) => void;
   sections: PersonActivitySection[];
 };
@@ -164,7 +164,7 @@ export function PersonActivitySectionList({
 
                     <View style={styles.resultActionRow}>
                       <Pressable
-                        onPress={() => onOpenResultList?.(row.eventId, row.classLabel)}
+                        onPress={() => onOpenResultList?.(row.eventId, row.classLabel, row.eventRaceId ?? null)}
                         style={[styles.resultActionButton, styles.resultActionButtonPrimary]}
                       >
                         <Ionicons color={colors.primaryDeep} name="trophy-outline" size={12} />

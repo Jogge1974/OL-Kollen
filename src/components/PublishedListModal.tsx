@@ -18,6 +18,7 @@ export type PublishedListModalState = {
   emptyMessage: string;
   error: string | null;
   eventId: string;
+  selectedEventRaceId?: string | null;
   eventSubtitle?: string | null;
   initialAnchorKey?: string | null;
   isLoading: boolean;
@@ -192,6 +193,7 @@ export function PublishedListModal({
                     onOpenAnalysis={onOpenAnalysis}
                     onOpenAnalysisChoice={setPendingChoice}
                     onOpenOrganisation={setNestedState}
+                    selectedEventRaceId={currentState.selectedEventRaceId ?? null}
                     scope={currentState.scope}
                     section={section}
                   />
@@ -209,7 +211,16 @@ export function PublishedListModal({
                   <Pressable
                     onPress={() => {
                       setPendingChoice(null);
-                      void openPublishedListModal('results', 'organisation', pendingChoice.eventId, pendingChoice.organisationId, pendingChoice.organisationLabel, setNestedState);
+                      void openPublishedListModal(
+                        'results',
+                        'organisation',
+                        pendingChoice.eventId,
+                        pendingChoice.organisationId,
+                        pendingChoice.organisationLabel,
+                        setNestedState,
+                        null,
+                        currentState?.selectedEventRaceId ?? null,
+                      );
                     }}
                     style={[styles.choiceButton, styles.choiceButtonSecondary]}
                   >
@@ -266,6 +277,7 @@ function PublishedTableSection({
   onOpenAnalysisChoice,
   onOpenNestedAnalysis,
   onOpenOrganisation,
+  selectedEventRaceId,
   scope,
   section,
 }: {
@@ -276,6 +288,7 @@ function PublishedTableSection({
   onOpenAnalysisChoice: (choice: PendingChoice) => void;
   onOpenNestedAnalysis: OpenAnalysisHandler;
   onOpenOrganisation: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
+  selectedEventRaceId: string | null;
   scope: EventPublishedListScope;
   section: PublishedListSection;
 }) {
@@ -347,9 +360,18 @@ function PublishedTableSection({
       }
 
       console.log('[PublishedListModal] opening organisation results');
-      void openPublishedListModal(kind, 'organisation', eventId, row.organisationId ?? null, row.organisation ?? null, onOpenOrganisation);
+      void openPublishedListModal(
+        kind,
+        'organisation',
+        eventId,
+        row.organisationId ?? null,
+        row.organisation ?? null,
+        onOpenOrganisation,
+        null,
+        selectedEventRaceId,
+      );
     },
-    [eventId, kind, onOpenNestedAnalysis, onOpenAnalysis, onOpenOrganisation, scope, section.title],
+    [eventId, kind, onOpenNestedAnalysis, onOpenAnalysis, onOpenOrganisation, scope, section.title, selectedEventRaceId],
   );
 
   return (
@@ -600,6 +622,7 @@ export async function openPublishedListModal(
   organisationLabel: string | null,
   setState: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>,
   initialAnchorLabel?: string | null,
+  selectedEventRaceId?: string | null,
 ) {
   const initialAnchorKey = initialAnchorLabel ? `section:${initialAnchorLabel}` : null;
 
@@ -611,6 +634,7 @@ export async function openPublishedListModal(
     initialAnchorKey,
     isLoading: true,
     kind,
+    selectedEventRaceId: selectedEventRaceId ?? null,
     scope,
     sections: [],
     title: getListTitle(kind, scope, organisationLabel),
@@ -620,12 +644,13 @@ export async function openPublishedListModal(
     const [rawXml, eventClassNameById, eventDetail] = await Promise.all([
       fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined),
       kind === 'entries' ? fetchEventClassNameMap(eventId).catch(() => ({})) : Promise.resolve<Record<string, string>>({}),
-      fetchEventorEventById(eventId).catch(() => null),
+      fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
 
     const formatted = formatPublishedListXml(kind, rawXml, {
       eventClassNameById,
       organisationId,
+      selectedEventRaceId,
       scope,
     });
 
@@ -644,6 +669,7 @@ export async function openPublishedListModal(
       initialAnchorKey,
       isLoading: false,
       kind,
+      selectedEventRaceId: selectedEventRaceId ?? null,
       scope,
       sections,
       eventSubtitle: eventDetail ? `${eventDetail.name} • ${eventDetail.dateLabel}` : null,
@@ -658,6 +684,7 @@ export async function openPublishedListModal(
       initialAnchorKey,
       isLoading: false,
       kind,
+      selectedEventRaceId: selectedEventRaceId ?? null,
       scope,
       sections: [],
       title: getListTitle(kind, scope, organisationLabel),

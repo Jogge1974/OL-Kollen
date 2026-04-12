@@ -4,6 +4,10 @@ import { fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorAp
 import { filterPersonResultSections, parsePersonResultsXml, parsePersonStartsXml } from '@/src/services/personEventorListParser';
 import { PersonActivitySection, PersonResultsFilter } from '@/src/types/personLists';
 
+const USE_TEMP_STARTS_RANGE = true;
+const TEMP_STARTS_FROM_DATE = '2026-01-31';
+const TEMP_STARTS_TO_DATE = '2026-02-01';
+
 type UsePersonEventorListsInput = {
   personId: string | null;
 };
@@ -57,7 +61,8 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
       setStartsError(null);
 
       try {
-        const startsXml = await fetchPersonStartsXml(personId, formatYesterdayBoundary(), formatFutureBoundary(30));
+        const { fromDate, toDate } = getStartsDateRange();
+        const startsXml = await fetchPersonStartsXml(personId, fromDate, toDate);
         const nextStarts = parsePersonStartsXml(startsXml);
 
         if (!isMounted) {
@@ -198,4 +203,18 @@ function formatLocalIsoDate(date: Date) {
   const day = `${date.getDate()}`.padStart(2, '0');
 
   return `${year}-${month}-${day}`;
+}
+
+function getStartsDateRange() {
+  if (USE_TEMP_STARTS_RANGE) {
+    return {
+      fromDate: TEMP_STARTS_FROM_DATE,
+      toDate: TEMP_STARTS_TO_DATE,
+    };
+  }
+
+  return {
+    fromDate: formatYesterdayBoundary(),
+    toDate: formatFutureBoundary(30),
+  };
 }

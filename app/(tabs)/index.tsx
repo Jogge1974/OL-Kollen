@@ -210,8 +210,8 @@ export default function HomeScreen() {
               isLoading={isLoadingResults}
               kind="results"
               onOpenAnalysis={handleOpenAnalysis}
-              onOpenResultList={(eventId: string, classLabel: string) =>
-                void openPublishedListModal('results', 'public', eventId, null, null, setActiveResultListModal, classLabel)
+              onOpenResultList={(eventId: string, classLabel: string, eventRaceId?: string | null) =>
+                void openPublishedListModal('results', 'public', eventId, null, null, setActiveResultListModal, classLabel, eventRaceId ?? null)
               }
               onOpenSplitTimes={(eventId: string, classLabel: string) => void openEventSplitTimesModal(eventId, setActiveSplitTimesModal, classLabel)}
               onPressEvent={(eventId: string) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}

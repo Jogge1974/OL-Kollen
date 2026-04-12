@@ -26,6 +26,14 @@ import { EventDocument, EventPublishedListKind } from '@/src/types/eventor';
 
 export default function EventDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
+  const selectedEventRaceId = React.useMemo(() => {
+    if (typeof id !== 'string' || id.length === 0) {
+      return null;
+    }
+
+    const parts = id.split('::');
+    return parts.length > 1 ? parts.slice(1).join('::') || null : null;
+  }, [id]);
   const { error, event, isLoading, reload } = useEventorEventDetail(id);
   const { documents, error: documentsError, isLoading: isLoadingDocuments, reload: reloadDocuments } = useEventDocuments(event?.id ?? null);
   const [activeDocument, setActiveDocument] = React.useState<EventDocument | null>(null);
@@ -90,7 +98,7 @@ export default function EventDetailScreen() {
   };
 
   const openList = async (kind: EventPublishedListKind, scope: 'public' | 'organisation') => {
-    await openPublishedListModal(kind, scope, event.id, organisationId, clubName, setActiveListModal);
+    await openPublishedListModal(kind, scope, event.id, organisationId, clubName, setActiveListModal, null, selectedEventRaceId ?? event.eventRaceId);
   };
 
   const openSplitTimes = async () => {
