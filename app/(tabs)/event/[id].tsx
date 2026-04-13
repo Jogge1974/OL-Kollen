@@ -233,9 +233,9 @@ export default function EventDetailScreen() {
               <MapView
                 initialRegion={{
                   latitude: event.centerPosition.latitude,
-                  latitudeDelta: 0.09,
+                  latitudeDelta: 0.27,
                   longitude: event.centerPosition.longitude,
-                  longitudeDelta: 0.09,
+                  longitudeDelta: 0.27,
                 }}
                 rotateEnabled={false}
                 scrollEnabled
