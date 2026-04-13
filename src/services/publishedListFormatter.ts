@@ -17,6 +17,26 @@ export type PublishedListFormatOptions = {
   selectedEventRaceId?: string | null;
 };
 
+export type PublishedListRelayMemberRow = {
+  bibNumber?: string;
+  controlCard?: string;
+  familyName?: string;
+  givenName?: string;
+  diff?: string;
+  leg?: string;
+  overallDiff?: string;
+  overallPosition?: string;
+  overallStatus?: string;
+  overallTime?: string;
+  position?: string;
+  primary: string;
+  status?: string;
+  startTime?: string;
+  time?: string;
+  timeSeconds?: number;
+  overallTimeSeconds?: number;
+};
+
 export type PublishedListRow = {
   bibNumber?: string;
   classLabel?: string;
@@ -30,6 +50,7 @@ export type PublishedListRow = {
   pace?: string;
   position?: string;
   primary: string;
+  relayMembers?: PublishedListRelayMemberRow[];
   status?: string;
   time?: string;
 };
@@ -152,6 +173,10 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
   };
 
   const event = getRecord(parsed.StartList?.Event);
+  if (isRelayEvent(event)) {
+    return formatRelayStartsXml(parsed.StartList?.ClassStart, event, options);
+  }
+
   const raceLookup = buildEventRaceLookup(event);
   const selectedRaceNumber = resolveSelectedRaceNumber(options.selectedEventRaceId, raceLookup);
   const classStarts = toArray<Record<string, unknown>>(parsed.StartList?.ClassStart).map((classStart) => {
@@ -254,6 +279,10 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
   };
 
   const event = getRecord(parsed.ResultList?.Event);
+  if (isRelayEvent(event)) {
+    return formatRelayResultsXml(parsed.ResultList?.ClassResult, event, options);
+  }
+
   const raceLookup = buildEventRaceLookup(event);
   const selectedRaceNumber = resolveSelectedRaceNumber(options.selectedEventRaceId, raceLookup);
   const classResults = toArray<Record<string, unknown>>(parsed.ResultList?.ClassResult).map((classResult) => {
@@ -347,6 +376,442 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
   };
 }
 
+function formatRelayStartsXml(
+  classStartNodes: unknown,
+  event: Record<string, unknown> | null,
+  options: PublishedListFormatOptions,
+): PublishedListViewData {
+  const raceLookup = buildEventRaceLookup(event);
+  const selectedRaceNumber = resolveSelectedRaceNumber(options.selectedEventRaceId, raceLookup);
+  const eventId = getString(getRecord(event)?.Id) ?? 'event';
+  const eventName = getString(event?.Name) ?? 'Tävling';
+  const eventDate = extractDate(event?.StartTime) ?? extractDate(event?.Date) ?? '';
+  const classStarts = toArray<Record<string, unknown>>(classStartNodes).map((classStart) => {
+    const eventClass = getRecord(classStart.Class);
+    const classLabel = getString(eventClass?.Name) ?? 'Klass';
+    const course = getRecord(classStart.Course);
+    const courseLengthLabel = formatCourseLength(toNumber(course?.Length));
+    const teamRows = toArray<Record<string, unknown>>(classStart.TeamStart)
+      .map((teamStart, teamIndex) =>
+        buildRelayStartTeamRow(teamStart, {
+          classLabel,
+          eventDate,
+          eventId,
+          eventName,
+          raceLookup,
+          selectedEventRaceId: options.selectedEventRaceId,
+          selectedRaceNumber,
+          teamIndex,
+        }),
+      )
+      .filter((row): row is PublishedListRow & { sortBibKey: number; sortKey: number } => Boolean(row));
+
+    return {
+      classLabel,
+      courseLengthLabel,
+      rows: teamRows,
+      startCount: `${teamRows.length}`,
+    };
+  });
+
+  if (options.scope === 'organisation') {
+    const rows = classStarts
+      .flatMap((section) => section.rows)
+      .filter((row) => row.organisationId === options.organisationId)
+      .sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey) || compareNullableNumbers(left.sortBibKey, right.sortBibKey));
+
+    return {
+      emptyMessage: 'Ingen startlista hittades.',
+      sections: [
+        {
+          meta: `Ant. lag: ${rows.length}`,
+          rows: rows.map(({ sortBibKey, sortKey, ...row }) => ({
+            bibNumber: row.bibNumber,
+            classLabel: row.classLabel,
+            courseLengthLabel: row.courseLengthLabel ?? undefined,
+            familyName: row.familyName,
+            givenName: row.givenName,
+            organisation: row.organisation,
+            organisationId: row.organisationId,
+            primary: row.primary,
+            relayMembers: row.relayMembers,
+            time: row.time,
+          })),
+          title: 'Min klubb',
+        },
+      ].filter((section) => section.rows.length > 0),
+    };
+  }
+
+  return {
+    emptyMessage: 'Ingen startlista hittades.',
+    sections: classStarts
+      .map((section) => ({
+        meta: [section.startCount ? `Ant. lag: ${section.startCount}` : null, section.courseLengthLabel ? `Bana: ${section.courseLengthLabel}` : null]
+          .filter(Boolean)
+          .join(' • '),
+        rows: section.rows
+          .sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey) || compareNullableNumbers(left.sortBibKey, right.sortBibKey))
+          .map(({ sortBibKey, sortKey, ...row }) => ({
+            bibNumber: row.bibNumber,
+            familyName: row.familyName,
+            givenName: row.givenName,
+            organisation: row.organisation,
+            organisationId: row.organisationId,
+            primary: row.primary,
+            relayMembers: row.relayMembers,
+            time: row.time,
+          })),
+        title: section.classLabel,
+      }))
+      .filter((section) => section.rows.length > 0),
+  };
+}
+
+function formatRelayResultsXml(
+  classResultNodes: unknown,
+  event: Record<string, unknown> | null,
+  options: PublishedListFormatOptions,
+): PublishedListViewData {
+  const raceLookup = buildEventRaceLookup(event);
+  const selectedRaceNumber = resolveSelectedRaceNumber(options.selectedEventRaceId, raceLookup);
+  const eventId = getString(getRecord(event)?.Id) ?? 'event';
+  const eventName = getString(event?.Name) ?? 'Tävling';
+  const eventDate = extractDate(event?.StartTime) ?? extractDate(event?.Date) ?? '';
+  const classResults = toArray<Record<string, unknown>>(classResultNodes).map((classResult) => {
+    const eventClass = getRecord(classResult.Class);
+    const classLabel = getString(eventClass?.Name) ?? 'Klass';
+    const course = getRecord(classResult.Course);
+    const courseLengthLabel = formatCourseLength(toNumber(course?.Length));
+    const teamRows = toArray<Record<string, unknown>>(classResult.TeamResult)
+      .map((teamResult, teamIndex) =>
+        buildRelayResultTeamRow(teamResult, {
+          classLabel,
+          courseLengthLabel,
+          courseLengthMeters: toNumber(course?.Length),
+          eventDate,
+          eventId,
+          eventName,
+          raceLookup,
+          selectedEventRaceId: options.selectedEventRaceId,
+          selectedRaceNumber,
+          teamIndex,
+        }),
+      )
+      .filter((row): row is PublishedListRow & { sortKey: number } => Boolean(row));
+
+    return {
+      classLabel,
+      courseLengthLabel,
+      rows: teamRows,
+      startCount: `${teamRows.length}`,
+    };
+  });
+
+  if (options.scope === 'organisation') {
+    const rows = classResults
+      .flatMap((section) => section.rows)
+      .filter((row) => row.organisationId === options.organisationId)
+      .sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey) || `${left.classLabel}${left.primary}`.localeCompare(`${right.classLabel}${right.primary}`, 'sv'));
+
+    return {
+      emptyMessage: 'Ingen resultatlista hittades.',
+      sections: [
+        {
+          meta: `Ant. lag: ${rows.length}`,
+          rows: rows.map(({ sortKey, ...row }) => ({
+            classLabel: row.classLabel,
+            courseLengthLabel: row.courseLengthLabel ?? undefined,
+            diff: row.diff,
+            familyName: row.familyName,
+            givenName: row.givenName,
+            organisation: row.organisation,
+            organisationId: row.organisationId,
+            pace: row.pace,
+            position: row.position,
+            primary: row.primary,
+            relayMembers: row.relayMembers,
+            status: row.status ?? undefined,
+            time: row.time,
+          })),
+          title: 'Min klubb',
+        },
+      ].filter((section) => section.rows.length > 0),
+    };
+  }
+
+  return {
+    emptyMessage: 'Ingen resultatlista hittades.',
+    sections: classResults
+      .map((section) => ({
+        meta: [section.startCount ? `Ant. lag: ${section.startCount}` : null, section.courseLengthLabel ? `Bana: ${section.courseLengthLabel}` : null]
+          .filter(Boolean)
+          .join(' • '),
+        rows: section.rows
+          .sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey))
+          .map(({ sortKey, ...row }) => ({
+            classLabel: row.classLabel,
+            courseLengthLabel: row.courseLengthLabel ?? undefined,
+            diff: row.diff,
+            familyName: row.familyName,
+            givenName: row.givenName,
+            organisation: row.organisation,
+            organisationId: row.organisationId,
+            pace: row.pace,
+            position: row.position,
+            primary: row.primary,
+            relayMembers: row.relayMembers,
+            status: row.status ?? undefined,
+            time: row.time,
+          })),
+        title: section.classLabel,
+      }))
+      .filter((section) => section.rows.length > 0),
+  };
+}
+
+function buildRelayStartTeamRow(
+  teamStart: Record<string, unknown>,
+  context: {
+    classLabel: string;
+    eventDate: string;
+    eventId: string;
+    eventName: string;
+    raceLookup: RaceLookup;
+    selectedEventRaceId: string | null | undefined;
+    selectedRaceNumber: string | null;
+    teamIndex: number;
+  },
+): (PublishedListRow & { sortBibKey: number; sortKey: number }) | null {
+  const organisation = getRecord(teamStart.Organisation);
+  const organisationId = getIdValue(organisation?.Id);
+  const teamName = getString(teamStart.Name) ?? 'Lag';
+  const memberRows = toArray<Record<string, unknown>>(teamStart.TeamMemberStart)
+    .map((memberStart, memberIndex) =>
+      buildRelayStartMemberRow(memberStart, context.raceLookup, context.selectedEventRaceId, context.selectedRaceNumber, memberIndex),
+    )
+    .filter((row): row is PublishedListRelayMemberRow & { sortKey: number } => Boolean(row));
+
+  if (memberRows.length === 0) {
+    return null;
+  }
+
+  const sortedMembers = memberRows.sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey));
+  const firstMember = sortedMembers[0];
+  const sortBibKey = toNumber(firstMember?.bibNumber) ?? Number.MAX_SAFE_INTEGER;
+
+  return {
+    bibNumber: firstMember?.bibNumber,
+    classLabel: context.classLabel,
+    familyName: undefined,
+    givenName: undefined,
+    organisation: getString(organisation?.Name) ?? '-',
+    organisationId: organisationId ?? undefined,
+    primary: teamName,
+    relayMembers: sortedMembers.map(({ sortKey, ...member }) => member),
+    sortBibKey,
+    sortKey: firstMember?.sortKey ?? Number.MAX_SAFE_INTEGER,
+    time: firstMember?.startTime ?? firstMember?.time ?? '-',
+  };
+}
+
+function buildRelayStartMemberRow(
+  memberStart: Record<string, unknown>,
+  raceLookup: RaceLookup,
+  selectedEventRaceId: string | null | undefined,
+  selectedRaceNumber: string | null,
+  memberIndex: number,
+): (PublishedListRelayMemberRow & { sortKey: number }) | null {
+  const person = getRecord(memberStart.Person);
+  const personName = getPersonNameParts(person);
+  const start = getRecord(memberStart.Start);
+  const raceNumber = getRaceNumberValue(start?.raceNumber ?? start?.RaceNumber);
+  const raceId = raceNumber ? raceLookup.raceIdByNumber.get(raceNumber) ?? getNodeText(start?.EventRaceId) ?? undefined : getNodeText(start?.EventRaceId) ?? undefined;
+  const startTime = getEventorClockValue(start?.StartTime) ?? null;
+  const bibNumber = getNodeText(start?.BibNumber) ?? getNodeText(memberStart.BibNumber) ?? undefined;
+  const controlCard = getNodeText(memberStart.ControlCard) ?? getNodeText(start?.ControlCard) ?? '';
+
+  if (!rowMatchesSelectedRace(raceNumber, raceId, selectedEventRaceId, selectedRaceNumber)) {
+    return null;
+  }
+
+  return {
+    bibNumber,
+    controlCard,
+    familyName: personName.family ?? undefined,
+    givenName: personName.given ?? undefined,
+    leg: getNodeText(start?.Leg) ?? getNodeText(start?.LegOrder) ?? `${memberIndex + 1}`,
+    primary: personName.fullName || 'Namn saknas',
+    sortKey: getSecondsFromClockValue(startTime) ?? Number.MAX_SAFE_INTEGER,
+    startTime: startTime ?? undefined,
+    time: startTime ?? '-',
+    timeSeconds: getSecondsFromClockValue(startTime) ?? undefined,
+  };
+}
+
+function buildRelayResultTeamRow(
+  teamResult: Record<string, unknown>,
+  context: {
+    classLabel: string;
+    courseLengthLabel: string | null;
+    courseLengthMeters: number;
+    eventDate: string;
+    eventId: string;
+    eventName: string;
+    raceLookup: RaceLookup;
+    selectedEventRaceId: string | null | undefined;
+    selectedRaceNumber: string | null;
+    teamIndex: number;
+  },
+): (PublishedListRow & { sortKey: number }) | null {
+  const organisation = getRecord(teamResult.Organisation);
+  const organisationId = getIdValue(organisation?.Id);
+  const teamName = getString(teamResult.Name) ?? 'Lag';
+  const memberRows = toArray<Record<string, unknown>>(teamResult.TeamMemberResult)
+    .map((memberResult, memberIndex) =>
+      buildRelayResultMemberRow(memberResult, context.raceLookup, context.selectedEventRaceId, context.selectedRaceNumber, memberIndex),
+    )
+    .filter((row): row is PublishedListRelayMemberRow & { sortKey: number } => Boolean(row));
+
+  if (memberRows.length === 0) {
+    return null;
+  }
+
+  const sortedMembers = memberRows.sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey));
+  const lastMember = sortedMembers[sortedMembers.length - 1];
+  const overallPosition = lastMember?.overallPosition ?? lastMember?.position;
+  const overallTime = lastMember?.overallTime ?? lastMember?.time;
+  const overallDiff = lastMember?.overallDiff ?? lastMember?.diff;
+  const overallStatus = lastMember?.overallStatus ?? lastMember?.status;
+  const sortKey = overallPosition ? Number(overallPosition) : lastMember?.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+
+  return {
+    classLabel: context.classLabel,
+    courseLengthLabel: context.courseLengthLabel ?? undefined,
+    diff: overallDiff ?? undefined,
+    familyName: undefined,
+    givenName: undefined,
+    organisation: getString(organisation?.Name) ?? '-',
+    organisationId: organisationId ?? undefined,
+    pace: calculatePace(lastMember?.overallTimeSeconds ?? 0, context.courseLengthMeters),
+    position: overallPosition ?? '-',
+    primary: teamName,
+    relayMembers: sortedMembers.map(({ sortKey: memberSortKey, ...member }) => member),
+    sortKey,
+    status: overallStatus ?? undefined,
+    time: overallTime ?? '-',
+  };
+}
+
+function buildRelayResultMemberRow(
+  memberResult: Record<string, unknown>,
+  raceLookup: RaceLookup,
+  selectedEventRaceId: string | null | undefined,
+  selectedRaceNumber: string | null,
+  memberIndex: number,
+): (PublishedListRelayMemberRow & { sortKey: number }) | null {
+  const person = getRecord(memberResult.Person);
+  const personName = getPersonNameParts(person);
+  const result = getRecord(memberResult.Result);
+  const raceNumber = getRaceNumberValue(result?.raceNumber ?? result?.RaceNumber);
+  const raceId = raceNumber ? raceLookup.raceIdByNumber.get(raceNumber) ?? getNodeText(result?.EventRaceId) ?? undefined : getNodeText(result?.EventRaceId) ?? undefined;
+  const leg = getNodeText(result?.Leg) ?? getNodeText(result?.LegOrder) ?? `${memberIndex + 1}`;
+  const legTimeText = getTextValue(result?.Time) ?? null;
+  const legDiffText = getTextValue(result?.TimeBehind) ?? getTextValue(result?.TimeDiff) ?? null;
+  const legPosition = getNodeText(result?.Position) ?? getNodeText(result?.ResultPosition) ?? null;
+  const overall = getRecord(result?.OverallResult) ?? getRecord(memberResult.OverallResult);
+  const overallTimeText = getTextValue(overall?.Time) ?? null;
+  const overallDiffText = getTextValue(overall?.TimeBehind) ?? getTextValue(overall?.TimeDiff) ?? null;
+  const overallPosition = getNodeText(overall?.Position) ?? getNodeText(overall?.ResultPosition) ?? null;
+  const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
+  const overallStatus = getStatusText(overall?.CompetitorStatus ?? overall?.Status);
+
+  if (!rowMatchesSelectedRace(raceNumber, raceId, selectedEventRaceId, selectedRaceNumber)) {
+    return null;
+  }
+
+  return {
+    bibNumber: getNodeText(result?.BibNumber) ?? getNodeText(memberResult.BibNumber) ?? undefined,
+    familyName: personName.family ?? undefined,
+    givenName: personName.given ?? undefined,
+    leg,
+    diff: formatRelayTimeBehind(legDiffText) ?? undefined,
+    overallDiff: formatRelayTimeBehind(overallDiffText) ?? undefined,
+    overallPosition: overallPosition ?? undefined,
+    overallStatus: overallStatus ?? undefined,
+    overallTime: formatRelayTime(overallTimeText) ?? undefined,
+    overallTimeSeconds: parseRelayDurationToSeconds(overallTimeText) ?? undefined,
+    position: legPosition ?? undefined,
+    primary: personName.fullName || 'Namn saknas',
+    sortKey: toNumber(leg) || memberIndex + 1,
+    status: status ?? undefined,
+    startTime: undefined,
+    time: formatRelayTime(legTimeText) ?? undefined,
+    timeSeconds: parseRelayDurationToSeconds(legTimeText) ?? undefined,
+  };
+}
+
+function formatRelayTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = parseRelayDurationToSeconds(value);
+  if (seconds === null) {
+    return value;
+  }
+
+  return formatSeconds(seconds);
+}
+
+function formatRelayTimeBehind(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = parseRelayDurationToSeconds(value);
+  if (seconds === null) {
+    return value;
+  }
+
+  if (seconds === 0) {
+    return null;
+  }
+
+  return `+${formatSeconds(seconds)}`;
+}
+
+function parseRelayDurationToSeconds(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':').map((part) => Number(part));
+
+    if (parts.some((part) => !Number.isFinite(part))) {
+      return null;
+    }
+
+    if (parts.length === 2) {
+      return parts[0] * 60 + parts[1];
+    }
+
+    if (parts.length === 3) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+
+  const seconds = Number(trimmed);
+  return Number.isFinite(seconds) ? seconds : null;
+}
+
 type RaceLookup = {
   raceIdByNumber: Map<string, string>;
   raceNumberById: Map<string, string>;
@@ -386,6 +851,13 @@ function resolveSelectedRaceNumber(selectedEventRaceId: string | null | undefine
   }
 
   return lookup.raceNumberById.get(selectedEventRaceId) ?? null;
+}
+
+function isRelayEvent(event: Record<string, unknown> | null) {
+  const eventForm = getString(event?.eventForm) ?? '';
+  const form = getString(event?.Form) ?? '';
+
+  return eventForm === 'RelaySingleDay' || form === 'Relay' || form === 'RelaySingleDay';
 }
 
 function rowMatchesSelectedRace(
@@ -559,6 +1031,30 @@ function compareNullableNumbers(left: number | null, right: number | null) {
   }
 
   return left - right;
+}
+
+function extractDate(value: unknown) {
+  const record = getRecord(value);
+
+  if (record) {
+    return getString(record.Date) ?? getNodeText(record.Date) ?? null;
+  }
+
+  return getString(value);
+}
+
+function getTextValue(value: unknown) {
+  return getNodeText(value) ?? getString(value);
+}
+
+function getStatusText(value: unknown) {
+  const record = getRecord(value);
+
+  if (record) {
+    return getString(record.value) ?? getString(record.Value) ?? getNodeText(record) ?? null;
+  }
+
+  return getString(value);
 }
 
 function formatCourseLength(lengthMeters: number) {

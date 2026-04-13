@@ -46,6 +46,7 @@ export default function EventDetailScreen() {
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
 
   const tone = getClassificationTone(event?.classificationId ?? 2);
+  const isRelayEvent = event?.eventForm === 'RelaySingleDay' || event?.eventForm === 'Relay';
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
   const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId);
@@ -204,7 +205,7 @@ export default function EventDetailScreen() {
                   tone="result"
                 />
               ) : null}
-              <ActionButton label="Sträcktider" onPress={() => void openSplitTimes()} tone="result" />
+              {!isRelayEvent ? <ActionButton label="Sträcktider" onPress={() => void openSplitTimes()} tone="result" /> : null}
             </View>
           ) : null}
 

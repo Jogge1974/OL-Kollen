@@ -297,9 +297,35 @@ function PublishedTableSection({
   const { width: windowWidth } = useWindowDimensions();
 
   const isEntries = kind === 'entries';
+  const isRelaySection = section.rows.some((row) => Boolean(row.relayMembers?.length));
   const isOrganisationResults = scope === 'organisation' && kind === 'results';
   const hasBibColumn = kind === 'starts' && section.rows.some((row) => Boolean(row.bibNumber));
+  const relayLabel = scope === 'organisation' ? 'Klass' : 'Klubb';
+  const relayStartWidths = React.useMemo(() => {
+    if (kind !== 'starts' || !isRelaySection) {
+      return null;
+    }
 
+    const bib = Math.max(42, estimateColumnWidth(['Bib', ...section.rows.map((row) => row.bibNumber ?? '-')], 42, 58));
+    const brick = Math.max(
+      72,
+      estimateColumnWidth(
+        ['Bricknr', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.controlCard ?? '') ?? [])],
+        72,
+        104,
+      ),
+    );
+    const time = Math.max(74, estimateColumnWidth(['Starttid', ...section.rows.map((row) => row.time ?? '-')], 74, 94));
+    const available = Math.max(windowWidth - spacing.sm * 2, 260);
+    const name = Math.max(available - bib - brick - time - 12, 120);
+
+    return {
+      bib,
+      brick,
+      name,
+      time,
+    };
+  }, [isRelaySection, kind, section.rows, windowWidth]);
   const columnWidths = React.useMemo(
     () => ({
       bib: hasBibColumn ? estimateColumnWidth(['Bib', ...section.rows.map((row) => row.bibNumber ?? '-')], 42, 54) : undefined,
@@ -384,67 +410,128 @@ function PublishedTableSection({
           {section.meta ? <Text style={styles.tableClassHeaderMeta}>{formatSectionMeta(section.meta)}</Text> : null}
         </View>
 
-        <View style={styles.tableColumnHeaderRow}>
-          {kind === 'results' ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tablePlacementColumn, { width: columnWidths.placement }]}>
-              #
-            </Text>
-          ) : null}
+        {isRelaySection ? (
+          <View style={styles.relaySectionHeaderWrap}>
+            <View style={styles.tableColumnHeaderRow}>
+              {kind === 'starts' ? (
+                <>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.tableColumnHeaderText,
+                    styles.relayStartBibCell,
+                    styles.relayHeaderStartBibCell,
+                    styles.relayStartFixedCell,
+                    relayStartWidths ? { width: relayStartWidths.bib } : null,
+                  ]}
+                >
+                  Bib
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.tableColumnHeaderText,
+                    styles.relayStartTeamCell,
+                    styles.relayHeaderStartTeamCell,
+                    styles.relayStartFixedCell,
+                    relayStartWidths ? { width: relayStartWidths.brick + relayStartWidths.name + 4 } : null,
+                  ]}
+                >
+                  Lag/Bricknr
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.tableColumnHeaderText,
+                    styles.relayStartTimeCell,
+                    styles.relayHeaderStartTimeCell,
+                    styles.relayStartFixedCell,
+                    styles.relayStartTimeHeaderText,
+                    relayStartWidths ? { width: relayStartWidths.time } : null,
+                  ]}
+                  >
+                    Starttid
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultPlacementCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultSpanCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                </>
+              )}
+            </View>
+          </View>
+        ) : null}
 
-          {hasBibColumn ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableBibColumn, { width: columnWidths.bib }]}>
-              Bib
-            </Text>
-          ) : null}
+        {isRelaySection ? null : (
+          <View style={styles.tableColumnHeaderRow}>
+            {kind === 'results' ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tablePlacementColumn, { width: columnWidths.placement }]}>
+                #
+              </Text>
+            ) : null}
 
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.tableColumnHeaderText,
-              scope === 'public' && !isEntries ? styles.tableNameClubColumn : null,
-              scope === 'public' && isEntries ? [styles.tableNameColumn, publicEntryNameColumnWidth ? { width: publicEntryNameColumnWidth } : null] : null,
-              scope !== 'public' || !isEntries ? styles.tableNameColumn : null,
-            ]}
-          >
-            {scope === 'public' && !isEntries ? 'Namn/Klubb' : 'Namn'}
-          </Text>
+            {hasBibColumn ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableBibColumn, { width: columnWidths.bib }]}>
+                Bib
+              </Text>
+            ) : null}
 
-          {scope === 'public' && isEntries ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableEntryClubColumn]}>
-              Klubb
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.tableColumnHeaderText,
+                scope === 'public' && !isEntries ? styles.tableNameClubColumn : null,
+                scope === 'public' && isEntries ? [styles.tableNameColumn, publicEntryNameColumnWidth ? { width: publicEntryNameColumnWidth } : null] : null,
+                scope !== 'public' || !isEntries ? styles.tableNameColumn : null,
+              ]}
+            >
+              {scope === 'public' && !isEntries ? 'Namn/Klubb' : 'Namn'}
             </Text>
-          ) : null}
 
-          {scope === 'organisation' && !isOrganisationResults ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableClassColumn, { width: columnWidths.class }]}>
-              Klass
-            </Text>
-          ) : null}
+            {scope === 'public' && isEntries ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableEntryClubColumn]}>
+                Klubb
+              </Text>
+            ) : null}
 
-          {scope === 'organisation' && !isEntries && !isOrganisationResults ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableCourseColumn, { width: columnWidths.course }]}>
-              Langd
-            </Text>
-          ) : null}
+            {scope === 'organisation' && !isOrganisationResults ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableClassColumn, { width: columnWidths.class }]}>
+                Klass
+              </Text>
+            ) : null}
 
-          {!isEntries ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.time }]}>
-              {kind === 'starts' ? 'Starttid' : 'Tid'}
-            </Text>
-          ) : null}
+            {scope === 'organisation' && !isEntries && !isOrganisationResults ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableCourseColumn, { width: columnWidths.course }]}>
+                Langd
+              </Text>
+            ) : null}
 
-          {kind === 'results' ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.diff }]}>
-              Diff
-            </Text>
-          ) : null}
+            {!isEntries ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.time }]}>
+                {kind === 'starts' ? 'Starttid' : 'Tid'}
+              </Text>
+            ) : null}
 
-          {kind === 'results' ? (
-            <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.pace }]}>
-              Km-tid
-            </Text>
-          ) : null}
-        </View>
+            {kind === 'results' ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.diff }]}>
+                Diff
+              </Text>
+            ) : null}
+
+            {kind === 'results' ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.pace }]}>
+                Km-tid
+              </Text>
+            ) : null}
+          </View>
+        )}
       </View>
 
       {section.rows.map((row, rowIndex) => {
@@ -457,7 +544,8 @@ function PublishedTableSection({
           seenClassAnchors.current.add(classAnchorKey);
         }
 
-        const RowContainer = scope === 'organisation' && isOrganisationResults ? Pressable : View;
+        const isRelayClickable = isRelaySection && scope === 'public';
+        const RowContainer = (scope === 'organisation' && isOrganisationResults) || isRelayClickable ? Pressable : View;
         const rowContainerProps =
           scope === 'organisation' && isOrganisationResults
             ? {
@@ -473,7 +561,248 @@ function PublishedTableSection({
                   handleRowPress(row);
                 },
               }
+            : isRelayClickable
+              ? {
+                  disabled: !row.organisationId,
+                  onPress: () => handleRowPress(row),
+                }
             : {};
+
+        if (isRelaySection) {
+          return (
+            <React.Fragment key={`${section.title}-${row.primary}-${rowIndex}`}>
+              <RowContainer
+                key={`${section.title}-${row.primary}-${rowIndex}`}
+                onLayout={shouldAttachClassAnchor && classAnchorKey ? (event) => onAnchorLayout(classAnchorKey, event) : undefined}
+                {...rowContainerProps}
+                style={[
+                  styles.tableRow,
+                  rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                  styles.relayRow,
+                  styles.relayRowSpacing,
+                ]}
+              >
+                <View style={styles.relayGrid}>
+                  <View style={styles.relayTeamRow}>
+                    {kind === 'starts' ? (
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayStartTopText,
+                          styles.relayStartBibCell,
+                          styles.relayStartFixedCell,
+                          relayStartWidths ? { width: relayStartWidths.bib } : null,
+                        ]}
+                      >
+                        {row.bibNumber ?? '-'}
+                      </Text>
+                    ) : (
+                      <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultPlacementCell]}>
+                        {row.position ?? '-'}
+                      </Text>
+                    )}
+
+                    {kind === 'starts' ? (
+                      <View
+                        style={[
+                          styles.relayStartTeamCell,
+                          styles.relayTeamNameCell,
+                          styles.relayStartTeamSpanCell,
+                          styles.relayStartFixedCell,
+                          relayStartWidths ? { width: relayStartWidths.brick + relayStartWidths.name + 4 } : null,
+                        ]}
+                      >
+                        <Text numberOfLines={1} style={styles.relayStartTeamNameText}>
+                          {scope === 'organisation' ? row.classLabel ?? row.organisation ?? row.primary : row.organisation ?? row.classLabel ?? row.primary}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.relayResultSpanCell, styles.relayTeamNameCell]}>
+                        <Text numberOfLines={1} style={styles.relayTeamNameText}>
+                          {scope === 'organisation' ? row.classLabel ?? row.organisation ?? row.primary : row.organisation ?? row.classLabel ?? row.primary}
+                        </Text>
+                      </View>
+                    )}
+
+                    {kind === 'starts' ? (
+                      <View
+                        style={[
+                          styles.relayStartTimeCell,
+                          styles.relayStartFixedCell,
+                          relayStartWidths ? { width: relayStartWidths.time } : null,
+                        ]}
+                      >
+                        <Text numberOfLines={1} style={styles.relayStartTopText}>
+                          {row.time ?? '-'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
+                          {row.time ?? '-'}
+                        </Text>
+                        <View style={styles.relayResultBlankCell} />
+                        <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
+                          {row.diff ?? ''}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+
+                  <View style={styles.relayMembersGrid}>
+                    {row.relayMembers?.map((member, memberIndex) => (
+                      <View key={`${section.title}-${row.primary}-member-${memberIndex}`} style={styles.relayMemberRow}>
+                        {kind === 'starts' ? (
+                          <>
+                            <View
+                              style={[
+                                styles.relayStartBibCell,
+                                styles.relayStartFixedCell,
+                                relayStartWidths ? { width: relayStartWidths.bib } : null,
+                              ]}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={[
+                                styles.relayMemberCellText,
+                                styles.relayStartBrickCell,
+                                styles.relayStartFixedCell,
+                                relayStartWidths ? { width: relayStartWidths.brick } : null,
+                              ]}
+                            >
+                              {member.controlCard ?? ''}
+                            </Text>
+                            <Text
+                              numberOfLines={1}
+                              style={[
+                                styles.relayMemberCellText,
+                                styles.relayStartTeamCell,
+                                styles.relayStartFixedCell,
+                                relayStartWidths ? { width: relayStartWidths.name } : null,
+                              ]}
+                            >
+                              {member.leg ? `${member.leg}. ` : ''}
+                              {member.primary}
+                            </Text>
+                            <View
+                              style={[
+                                styles.relayStartTimeCell,
+                                styles.relayStartFixedCell,
+                                relayStartWidths ? { width: relayStartWidths.time } : null,
+                              ]}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <View style={styles.relayResultPlacementCell} />
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultNameCell]}>
+                              {member.leg ? `${member.leg}. ` : ''}
+                              {member.primary}
+                            </Text>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                              {member.time ?? '-'}
+                            </Text>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                              {member.position ?? '-'}
+                            </Text>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                              {member.diff ?? ''}
+                            </Text>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                              {member.overallTime ?? '-'}
+                            </Text>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                              {member.overallPosition ?? '-'}
+                            </Text>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                              {member.overallDiff ?? ''}
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </RowContainer>
+            </React.Fragment>
+          );
+        }
+
+        if (isRelaySection) {
+          return (
+            <RowContainer
+              key={`${section.title}-${row.primary}-${rowIndex}`}
+              onLayout={shouldAttachClassAnchor && classAnchorKey ? (event) => onAnchorLayout(classAnchorKey, event) : undefined}
+              {...rowContainerProps}
+              style={[styles.tableRow, rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd, styles.relayRow]}
+            >
+              <View style={styles.relayCard}>
+                <View style={styles.relayTopRow}>
+                  {kind === 'results' ? <Text style={[styles.relayTopMetric, styles.relayPlacement]}>{row.position ?? '-'}</Text> : null}
+                  {kind === 'starts' ? <Text style={[styles.relayTopMetric, styles.relayBib]}>{row.bibNumber ?? '-'}</Text> : null}
+
+                  <View style={styles.relayMainColumn}>
+                    <Text numberOfLines={1} style={styles.relayTeamName}>
+                      {row.primary}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.relayClubName}>
+                      {row.organisation ?? '-'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.relayMetricColumn}>
+                    {kind === 'starts' ? (
+                      <Text numberOfLines={1} style={[styles.relayTopMetric, styles.relayTopMetricStrong]}>
+                        {row.time ?? '-'}
+                      </Text>
+                    ) : null}
+                      {kind === 'results' ? (
+                        <>
+                          <Text numberOfLines={1} style={[styles.relayTopMetric, styles.relayTopMetricStrong]}>
+                            {row.time ?? '-'}
+                          </Text>
+                          <Text numberOfLines={1} style={styles.relayTopDiff}>
+                          {row.diff ?? ''}
+                          </Text>
+                        </>
+                      ) : null}
+                  </View>
+                </View>
+
+                <View style={styles.relayMembersList}>
+                  {row.relayMembers?.map((member, memberIndex) => (
+                    <View key={`${section.title}-${row.primary}-member-${memberIndex}`} style={styles.relayMemberRow}>
+                      <View style={styles.relayMemberIdentity}>
+                        <Text numberOfLines={1} style={styles.relayMemberName}>
+                          {member.leg ? `${member.leg}. ` : ''}
+                          {member.primary}
+                        </Text>
+                        {kind === 'starts' ? (
+                          <Text numberOfLines={1} style={styles.relayMemberMeta}>
+                            Start {member.startTime ?? member.time ?? '-'}
+                          </Text>
+                        ) : (
+                          <Text numberOfLines={1} style={styles.relayMemberMeta}>
+                            {[
+                              formatRelayMetric('Str', member.time),
+                              formatRelayMetric('Strpl', member.position),
+                              formatRelayMetric('Diff', member.diff),
+                              formatRelayMetric('Tid', member.overallTime),
+                              formatRelayMetric('Vxlpl', member.overallPosition),
+                              formatRelayMetric('Diff', member.overallDiff),
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </RowContainer>
+          );
+        }
 
         return (
           <RowContainer
@@ -612,6 +941,14 @@ function PersonNameText({
       {[givenName, familyName].filter(Boolean).join(' ')}
     </Text>
   );
+}
+
+function formatRelayMetric(label: string, value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return `${label} ${value}`;
 }
 
 export async function openPublishedListModal(
@@ -1047,6 +1384,240 @@ const styles = StyleSheet.create({
   },
   tableRowOdd: {
     backgroundColor: '#F1F8EA',
+  },
+  relayRow: {
+    paddingBottom: 5,
+    paddingHorizontal: spacing.sm,
+    paddingTop: 5,
+  },
+  relayRowSpacing: {
+    marginBottom: 3,
+    marginTop: 3,
+  },
+  relayGrid: {
+    width: '100%',
+    flex: 1,
+    gap: 4,
+  },
+  relaySectionHeaderWrap: {
+    marginHorizontal: -(spacing.md - spacing.sm),
+  },
+  relayHeaderRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  relayHeaderCell: {
+    ...typography.caption,
+    color: colors.heroText,
+    fontSize: 11,
+    lineHeight: 13,
+    minWidth: 0,
+  },
+  relayTeamRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  relayMembersGrid: {
+    gap: 3,
+  },
+  relayTeamCellText: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 12,
+    lineHeight: 14,
+    minWidth: 0,
+  },
+  relayMemberCellText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 13,
+    minWidth: 0,
+  },
+  relayTeamNameCell: {
+    minWidth: 0,
+  },
+  relayTeamNameText: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 15,
+  },
+  relayStartTopText: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 16,
+    textAlign: 'right',
+  },
+  relayStartFixedCell: {
+    flex: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+  },
+  relayStartTeamNameText: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 16,
+    textAlign: 'left',
+  },
+  relayStartBibCell: {
+    flex: 0.8,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'left',
+  },
+  relayStartBlankCell: {
+    flex: 0.7,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'left',
+  },
+  relayStartBrickCell: {
+    flex: 0.95,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'left',
+  },
+  relayStartTeamCell: {
+    flex: 2.8,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'left',
+  },
+  relayStartTeamSpanCell: {
+    flex: 3.5,
+  },
+  relayStartTimeCell: {
+    flex: 1.15,
+    alignItems: 'flex-end',
+    minWidth: 0,
+    paddingRight: 0,
+    textAlign: 'right',
+  },
+  relayStartTimeHeaderText: {
+    textAlign: 'right',
+  },
+  relayHeaderStartBibCell: {
+    marginRight: 4,
+  },
+  relayHeaderStartTeamCell: {
+    marginRight: 4,
+  },
+  relayHeaderStartTimeCell: {
+    marginLeft: 0,
+  },
+  relayResultPlacementCell: {
+    flex: 0.75,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'left',
+  },
+  relayResultSpanCell: {
+    flex: 4.85,
+    minWidth: 0,
+    paddingRight: 4,
+  },
+  relayResultNameCell: {
+    flex: 2.85,
+    minWidth: 0,
+    paddingRight: 4,
+  },
+  relayResultValueCell: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'right',
+  },
+  relayResultBlankCell: {
+    flex: 0.85,
+    minWidth: 0,
+  },
+  relayCard: {
+    flex: 1,
+    gap: 6,
+  },
+  relayTopRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  relayPlacement: {
+    width: 28,
+  },
+  relayBib: {
+    width: 42,
+  },
+  relayMainColumn: {
+    flex: 1,
+    gap: 1,
+    minWidth: 0,
+  },
+  relayTeamName: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 19,
+  },
+  relayClubName: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  relayMetricColumn: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    gap: 2,
+  },
+  relayTopMetric: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 15,
+    textAlign: 'right',
+  },
+  relayTopMetricStrong: {
+    fontFamily: typography.bodyStrong.fontFamily,
+  },
+  relayTopDiff: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 14,
+    textAlign: 'right',
+  },
+  relayMembersList: {
+    borderLeftColor: colors.border,
+    borderLeftWidth: 1,
+    gap: 4,
+    marginLeft: 14,
+    paddingLeft: 10,
+  },
+  relayMemberRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'flex-start',
+  },
+  relayMemberIdentity: {
+    flex: 1,
+    gap: 1,
+    minWidth: 0,
+  },
+  relayMemberName: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 15,
+  },
+  relayMemberMeta: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 14,
   },
   tableCellText: {
     ...typography.caption,
