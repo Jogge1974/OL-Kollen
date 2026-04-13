@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
@@ -22,7 +22,10 @@ export default function SverigelistaScreen() {
   const [selectedClassLabel, setSelectedClassLabel] = React.useState<string | null>(null);
   const [selectedClubName, setSelectedClubName] = React.useState<string | null>(null);
   const [searchText, setSearchText] = React.useState('');
+  const [clubSearchVisible, setClubSearchVisible] = React.useState(false);
+  const [clubSearchText, setClubSearchText] = React.useState('');
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
+  const clubSearchListRef = React.useRef<FlatList<string> | null>(null);
   const { error, hasSupabase, isLoading, latestUpdated, refetch, rows } = useSverigelistanDirectory();
 
   React.useEffect(() => {
@@ -86,6 +89,48 @@ export default function SverigelistaScreen() {
     setSelectedClassLabel(null);
     setSelectedClubName(null);
   }, []);
+
+  const handleOpenClubSearch = React.useCallback(() => {
+    setClubSearchText(selectedClubName ?? '');
+    setClubSearchVisible(true);
+  }, [selectedClubName]);
+
+  const handleSelectClubFromSearch = React.useCallback((clubName: string) => {
+    setSelectedFilterMode('club');
+    setSelectedClubName(clubName);
+    setClubSearchVisible(false);
+  }, []);
+
+  const clubSearchResults = React.useMemo(() => {
+    const query = clubSearchText.trim().toLocaleLowerCase('sv');
+
+    if (!query) {
+      return clubLabels;
+    }
+
+    return clubLabels.filter((clubName) => clubName.toLocaleLowerCase('sv').includes(query));
+  }, [clubLabels, clubSearchText]);
+
+  React.useEffect(() => {
+    if (!clubSearchVisible || clubSearchResults.length === 0 || !selectedClubName) {
+      return;
+    }
+
+    const selectedIndex = clubSearchResults.indexOf(selectedClubName);
+    if (selectedIndex < 0) {
+      return;
+    }
+
+    const handle = requestAnimationFrame(() => {
+      clubSearchListRef.current?.scrollToIndex({
+        animated: false,
+        index: selectedIndex,
+        viewPosition: 0.35,
+      });
+    });
+
+    return () => cancelAnimationFrame(handle);
+  }, [clubSearchResults, clubSearchVisible, selectedClubName]);
 
   const handleOpenRunnerRanking = React.useCallback((row: SverigelistanRow) => {
     if (!row.RunnerId) {
@@ -177,18 +222,24 @@ export default function SverigelistaScreen() {
                     </Pressable>
                   ))}
                 </View>
-                <Pressable
-                  onPress={() => {
-                    if (selectedFilterMode === 'class') {
-                      setSelectedClassLabel(null);
-                    } else {
-                      setSelectedClubName(null);
-                    }
-                  }}
-                  style={({ pressed }) => [styles.clearFilterChip, pressed ? styles.clearFilterChipPressed : null]}
-                >
-                  <Text style={styles.clearFilterText}>{selectedFilterMode === 'class' ? 'Alla klasser' : 'Alla klubbar'}</Text>
-                </Pressable>
+                <View style={styles.classHeaderActions}>
+                  <Pressable onPress={handleOpenClubSearch} style={({ pressed }) => [styles.searchClubChip, pressed ? styles.searchClubChipPressed : null]}>
+                    <Ionicons color={colors.primaryDeep} name="search-outline" size={15} />
+                    <Text style={styles.searchClubText}>Sök klubb</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      if (selectedFilterMode === 'class') {
+                        setSelectedClassLabel(null);
+                      } else {
+                        setSelectedClubName(null);
+                      }
+                    }}
+                    style={({ pressed }) => [styles.clearFilterChip, pressed ? styles.clearFilterChipPressed : null]}
+                  >
+                    <Text style={styles.clearFilterText}>{selectedFilterMode === 'class' ? 'Alla klasser' : 'Alla klubbar'}</Text>
+                  </Pressable>
+                </View>
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.classChipRow}>
@@ -234,6 +285,54 @@ export default function SverigelistaScreen() {
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
+      <Modal animationType="fade" transparent visible={clubSearchVisible}>
+        <View style={styles.searchOverlay}>
+          <Pressable style={styles.searchBackdrop} onPress={() => setClubSearchVisible(false)} />
+          <View style={styles.searchSheet}>
+            <View style={styles.searchHeader}>
+              <Text style={styles.searchTitle}>Sök klubb</Text>
+              <Pressable onPress={() => setClubSearchVisible(false)} style={styles.searchCloseButton}>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+                <Text style={styles.searchCloseText}>Stäng</Text>
+              </Pressable>
+            </View>
+
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Sök"
+              onChangeText={setClubSearchText}
+              onClearText={() => setClubSearchText('')}
+              placeholder="Skriv klubbnamn"
+              value={clubSearchText}
+            />
+
+            <FlatList
+              ref={clubSearchListRef}
+              contentContainerStyle={styles.searchResults}
+              data={clubSearchResults}
+              initialNumToRender={12}
+              keyExtractor={(item) => item}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={<Text style={styles.searchEmptyText}>Inga klubbar matchar sökningen.</Text>}
+              renderItem={({ item }) => {
+                const isSelected = item === selectedClubName;
+
+                return (
+                  <Pressable
+                    onPress={() => handleSelectClubFromSearch(item)}
+                    style={({ pressed }) => [styles.searchResultItem, isSelected ? styles.searchResultItemSelected : null, pressed ? styles.searchResultItemPressed : null]}
+                  >
+                    <Text numberOfLines={1} style={[styles.searchResultText, isSelected ? styles.searchResultTextSelected : null]}>
+                      {item}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
       <RunnerRankingModal comparisonRows={genderRows} onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
     </SafeAreaView>
   );
@@ -401,6 +500,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     justifyContent: 'space-between',
   },
+  classHeaderActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
   modeRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -473,6 +577,99 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingTop: 0,
     zIndex: 2,
+  },
+  searchBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  searchCloseButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  searchCloseText: {
+    ...typography.captionStrong,
+    color: colors.primary,
+  },
+  searchEmptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    paddingVertical: spacing.md,
+    textAlign: 'center',
+  },
+  searchHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  searchOverlay: {
+    backgroundColor: 'rgba(20, 24, 30, 0.45)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  searchResultItem: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  searchResultItemPressed: {
+    opacity: 0.85,
+  },
+  searchResultItemSelected: {
+    backgroundColor: '#E7F4D8',
+    borderColor: colors.primary,
+  },
+  searchResultText: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+  },
+  searchResultTextSelected: {
+    color: colors.primaryDeep,
+  },
+  searchResults: {
+    gap: 8,
+    paddingTop: spacing.sm,
+  },
+  searchSheet: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: spacing.md,
+    maxHeight: '80%',
+    padding: spacing.lg,
+  },
+  searchTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+  },
+  searchClubChip: {
+    alignItems: 'center',
+    backgroundColor: '#EEF4FF',
+    borderColor: '#C8D6FF',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  searchClubChipPressed: {
+    opacity: 0.85,
+  },
+  searchClubText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
   },
   meBadge: {
     backgroundColor: colors.accentSoft,
