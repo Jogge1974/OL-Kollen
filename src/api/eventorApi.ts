@@ -247,8 +247,19 @@ export async function fetchOrganisationDirectory() {
   return organisationDirectoryPromise;
 }
 
-export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null): Promise<EventCompetitorCount> {
+export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null, eventForm?: string | null): Promise<EventCompetitorCount> {
   const normalizedEventId = normalizeEventId(eventId);
+  if (isRelayEventForm(eventForm)) {
+    const relayTotalCount = await fetchRelayTeamCount(normalizedEventId);
+
+    return {
+      organisationEntries: null,
+      organisationStarts: null,
+      totalEntries: relayTotalCount,
+      totalStarts: relayTotalCount,
+    };
+  }
+
   const counts = await fetchSingleCompetitorCount(normalizedEventId, organisationId);
 
   return {
@@ -493,6 +504,26 @@ function mapCompetitorCountXml(xml: string) {
     organisationNumberOfEntries: toNullableNumber(organisationNode.numberOfEntries),
     organisationNumberOfStarts: toNullableNumber(organisationNode.numberOfStarts),
   };
+}
+
+async function fetchRelayTeamCount(eventId: string) {
+  const xml = await fetchEventPublishedListXml('results', 'public', eventId);
+  const parsed = parser.parse(xml) as {
+    ResultList?: {
+      ClassResult?: unknown;
+    };
+  };
+  const classResults = toArray<Record<string, unknown>>(parsed.ResultList?.ClassResult);
+
+  return classResults.reduce((sum, classResult) => {
+    const classNode = getRecord(classResult.Class);
+    const count = toNullableNumber(classNode?.numberOfCompetitors) ?? toNullableNumber(classResult.numberOfCompetitors) ?? 0;
+    return sum + count;
+  }, 0);
+}
+
+function isRelayEventForm(eventForm?: string | null) {
+  return eventForm === 'RelaySingleDay' || eventForm === 'Relay';
 }
 
 function mapEventorError(status: number, body: string) {

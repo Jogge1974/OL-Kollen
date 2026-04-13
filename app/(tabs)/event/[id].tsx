@@ -49,11 +49,13 @@ export default function EventDetailScreen() {
   const isRelayEvent = event?.eventForm === 'RelaySingleDay' || event?.eventForm === 'Relay';
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
-  const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId);
+  const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId, event?.eventForm ?? null);
   const isLoggedIn = Boolean(user);
   const isFavorite = React.useMemo(() => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === event?.id), [event?.id, favoriteEvents]);
   const showResultActions = event?.hasPublishedResults ?? false;
   const secondaryKind: EventPublishedListKind = event?.hasPublishedStarts ? 'starts' : 'entries';
+  const resultCount = isRelayEvent ? counts.totalEntries : counts.totalStarts;
+  const clubResultCount = counts.organisationStarts;
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
   }, []);
@@ -197,10 +199,10 @@ export default function EventDetailScreen() {
         <View style={styles.actionGrid}>
           {showResultActions ? (
             <View style={styles.actionColumn}>
-              <ActionButton label={`Resultat${formatCountSuffix(counts.totalStarts)}`} onPress={() => void openList('results', 'public')} tone="result" />
+              <ActionButton label={`Resultat${formatCountSuffix(resultCount)}`} onPress={() => void openList('results', 'public')} tone="result" />
               {organisationId ? (
                 <ActionButton
-                  label={`Resultat ${clubName ?? 'klubb'}${formatCountSuffix(counts.organisationStarts)}`}
+                  label={`Resultat ${clubName ?? 'klubb'}${formatCountSuffix(clubResultCount)}`}
                   onPress={() => void openList('results', 'organisation')}
                   tone="result"
                 />

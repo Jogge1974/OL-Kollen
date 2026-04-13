@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser';
+﻿import { XMLParser } from 'fast-xml-parser';
 
 import { EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
 import { formatPacePerKmLabel } from '@/src/utils/pace';
@@ -678,12 +678,20 @@ function buildRelayResultTeamRow(
   }
 
   const sortedMembers = memberRows.sort((left, right) => compareNullableNumbers(left.sortKey, right.sortKey));
+  let teamStatus: string | null = null;
+  for (const member of sortedMembers) {
+    const memberStatus = member.status ?? member.overallStatus ?? null;
+    if (memberStatus && memberStatus !== 'OK') {
+      teamStatus = memberStatus;
+    }
+  }
+
   const lastMember = sortedMembers[sortedMembers.length - 1];
   const overallPosition = lastMember?.overallPosition ?? lastMember?.position;
   const overallTime = lastMember?.overallTime ?? lastMember?.time;
   const overallDiff = lastMember?.overallDiff ?? lastMember?.diff;
-  const overallStatus = lastMember?.overallStatus ?? lastMember?.status;
-  const sortKey = overallPosition ? Number(overallPosition) : lastMember?.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+  const overallStatus = teamStatus ?? lastMember?.overallStatus ?? lastMember?.status;
+  const sortKey = overallStatus && overallStatus !== 'OK' ? Number.MAX_SAFE_INTEGER : overallPosition ? Number(overallPosition) : lastMember?.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
 
   return {
     classLabel: context.classLabel,
@@ -720,11 +728,36 @@ function buildRelayResultMemberRow(
   const legDiffText = getTextValue(result?.TimeBehind) ?? getTextValue(result?.TimeDiff) ?? null;
   const legPosition = getNodeText(result?.Position) ?? getNodeText(result?.ResultPosition) ?? null;
   const overall = getRecord(result?.OverallResult) ?? getRecord(memberResult.OverallResult);
+  const nestedResult = getRecord(memberResult.Result);
+  const nestedOverall = getRecord(memberResult.OverallResult);
   const overallTimeText = getTextValue(overall?.Time) ?? null;
   const overallDiffText = getTextValue(overall?.TimeBehind) ?? getTextValue(overall?.TimeDiff) ?? null;
   const overallPosition = getNodeText(overall?.Position) ?? getNodeText(overall?.ResultPosition) ?? null;
-  const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
-  const overallStatus = getStatusText(overall?.CompetitorStatus ?? overall?.Status);
+  const status = getStatusText(
+    result?.CompetitorStatus ??
+      result?.Status ??
+      result?.ResultStatus ??
+      memberResult.CompetitorStatus ??
+      memberResult.Status ??
+      memberResult.ResultStatus ??
+      memberResult.LegStatus ??
+      memberResult.StatusText ??
+      nestedResult?.CompetitorStatus ??
+      nestedResult?.Status ??
+      nestedResult?.ResultStatus,
+  );
+  const overallStatus = getStatusText(
+    overall?.CompetitorStatus ??
+      overall?.Status ??
+      overall?.ResultStatus ??
+      memberResult.OverallCompetitorStatus ??
+      memberResult.OverallStatus ??
+      memberResult.OverallResultStatus ??
+      memberResult.OverallStatusText ??
+      nestedOverall?.CompetitorStatus ??
+      nestedOverall?.Status ??
+      nestedOverall?.ResultStatus,
+  );
 
   if (!rowMatchesSelectedRace(raceNumber, raceId, selectedEventRaceId, selectedRaceNumber)) {
     return null;
@@ -1099,11 +1132,11 @@ export function formatResultStatus(status: string | null) {
   }
 
   if (status === 'DidNotFinish') {
-    return 'Utgatt';
+    return 'Utgått';
   }
 
   if (status === 'Cancelled') {
-    return 'Aterb.';
+    return 'Återb.';
   }
 
   if (status === 'Disqualified') {

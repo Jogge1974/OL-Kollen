@@ -1,4 +1,4 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -13,6 +13,10 @@ import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
+
+function formatRelayStatusLabel(status: string | null) {
+  return formatResultStatus(status);
+}
 
 export type PublishedListModalState = {
   emptyMessage: string;
@@ -639,6 +643,12 @@ function PublishedTableSection({
         const shouldAttachClassAnchor = scope === 'organisation' && classAnchorKey && !seenClassAnchors.current.has(classAnchorKey);
         const resultStatus = kind === 'results' && row.status && row.status !== 'OK' ? formatResultStatus(row.status) : null;
         const resultMetricWidth = (columnWidths.time ?? 0) + (columnWidths.diff ?? 0) + (columnWidths.pace ?? 0);
+        const relayResultSplitStatusWidth = relayResultWidths
+          ? relayResultWidths.splitTime + relayResultWidths.splitPosition + relayResultWidths.splitDiff
+          : null;
+        const relayResultTotalStatusWidth = relayResultWidths
+          ? relayResultWidths.totalTime + relayResultWidths.totalPosition + relayResultWidths.totalDiff
+          : null;
 
         if (shouldAttachClassAnchor && classAnchorKey) {
           seenClassAnchors.current.add(classAnchorKey);
@@ -737,278 +747,169 @@ function PublishedTableSection({
                         </Text>
                       </View>
                     ) : (
-                      <>
-                        <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
-                          {row.time ?? '-'}
-                        </Text>
-                        <View style={styles.relayResultBlankCell} />
-                        <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
-                          {row.diff ?? ''}
-                        </Text>
-                      </>
-                    )}
-                  </View>
+                      (() => {
+                        const relayStatusMember = row.relayMembers?.find((member) => {
+                          const memberStatus = member.status ?? member.overallStatus ?? null;
+                          return Boolean(memberStatus && memberStatus !== 'OK');
+                        });
+                        const relayTeamStatusSource = row.status ?? relayStatusMember?.status ?? relayStatusMember?.overallStatus ?? null;
+                        const relayTeamStatusText = relayTeamStatusSource && relayTeamStatusSource !== 'OK'
+                          ? formatResultStatus(relayTeamStatusSource)
+                          : null;
 
-                  <View style={styles.relayMembersGrid}>
-                    {row.relayMembers?.map((member, memberIndex) => (
-                      <View key={`${section.title}-${row.primary}-member-${memberIndex}`} style={styles.relayMemberRow}>
-                        {kind === 'starts' ? (
+                        return relayTeamStatusText ? (
                           <>
-                            <View
-                              style={[
-                                styles.relayStartBibCell,
-                                styles.relayStartFixedCell,
-                                relayStartWidths ? { width: relayStartWidths.bib } : null,
-                              ]}
-                            />
-                            <Text
-                              numberOfLines={1}
-                              style={[
-                                styles.relayMemberCellText,
-                                styles.relayStartBrickCell,
-                                styles.relayStartFixedCell,
-                                relayStartWidths ? { width: relayStartWidths.brick } : null,
-                              ]}
-                            >
-                              {member.controlCard ?? ''}
+                            <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
+                              {' '}
                             </Text>
-                            <Text
-                              numberOfLines={1}
-                              style={[
-                                styles.relayMemberCellText,
-                                styles.relayStartTeamCell,
-                                styles.relayStartFixedCell,
-                                relayStartWidths ? { width: relayStartWidths.name } : null,
-                              ]}
-                            >
-                              {member.leg ? `${member.leg}. ` : ''}
-                              {member.primary}
+                            <View style={styles.relayResultBlankCell} />
+                            <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultStatusCell]}>
+                              {relayTeamStatusText}
                             </Text>
-                            <View
-                              style={[
-                                styles.relayStartTimeCell,
-                                styles.relayStartFixedCell,
-                                relayStartWidths ? { width: relayStartWidths.time } : null,
-                              ]}
-                            />
                           </>
                         ) : (
                           <>
-                            <View style={styles.relayResultPlacementCell} />
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultNameCell]}>
-                              {member.leg ? `${member.leg}. ` : ''}
-                              {member.primary}
+                            <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
+                              {row.time ?? '-'}
                             </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
-                              {member.time ?? '-'}
-                            </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
-                              {member.position ?? '-'}
-                            </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
-                              {member.diff ?? ''}
-                            </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
-                              {member.overallTime ?? '-'}
-                            </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
-                              {member.overallPosition ?? '-'}
-                            </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
-                              {member.overallDiff ?? ''}
+                            <View style={styles.relayResultBlankCell} />
+                            <Text numberOfLines={1} style={[styles.relayTeamCellText, styles.relayResultValueCell]}>
+                              {row.diff ?? ''}
                             </Text>
                           </>
-                        )}
-                      </View>
-                    ))}
-                  </View>
+                        );
+                      })()
+                    )}
                 </View>
-              </RowContainer>
+
+                <View style={styles.relayMembersGrid}>
+                  {(() => {
+                    let carriedRelayStatusText: string | null = null;
+
+                    return row.relayMembers?.map((member, memberIndex) => {
+                      const memberStatusSource = member.status ?? member.overallStatus ?? null;
+                      const splitStatusText = memberStatusSource && memberStatusSource !== 'OK'
+                        ? formatRelayStatusLabel(memberStatusSource)
+                        : null;
+                      const totalStatusText = splitStatusText ?? carriedRelayStatusText;
+
+                      if (splitStatusText) {
+                        carriedRelayStatusText = splitStatusText;
+                      }
+
+                      return (
+                        <View key={`${section.title}-${row.primary}-member-${memberIndex}`} style={styles.relayMemberRow}>
+                          {kind === 'starts' ? (
+                            <>
+                              <View
+                                style={[
+                                  styles.relayStartBibCell,
+                                  styles.relayStartFixedCell,
+                                  relayStartWidths ? { width: relayStartWidths.bib } : null,
+                                ]}
+                              />
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.relayMemberCellText,
+                                  styles.relayStartBrickCell,
+                                  styles.relayStartFixedCell,
+                                  relayStartWidths ? { width: relayStartWidths.brick } : null,
+                                ]}
+                              >
+                                {member.controlCard ?? ''}
+                              </Text>
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.relayMemberCellText,
+                                  styles.relayStartTeamCell,
+                                  styles.relayStartFixedCell,
+                                  relayStartWidths ? { width: relayStartWidths.name } : null,
+                                ]}
+                              >
+                                {member.leg ? `${member.leg}. ` : ''}
+                                {member.primary}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.relayStartTimeCell,
+                                  styles.relayStartFixedCell,
+                                  relayStartWidths ? { width: relayStartWidths.time } : null,
+                                ]}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <View style={styles.relayResultPlacementCell} />
+                              <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultNameCell]}>
+                                {member.leg ? `${member.leg}. ` : ''}
+                                {member.primary}
+                              </Text>
+                              {splitStatusText ? (
+                                <>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {' '}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
+                                    {' '}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultStatusCell]}>
+                                    {splitStatusText}
+                                  </Text>
+                                </>
+                              ) : (
+                                <>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {member.time ?? '-'}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
+                                    {member.position ?? '-'}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {member.diff ?? ''}
+                                  </Text>
+                                </>
+                              )}
+                              {totalStatusText ? (
+                                <>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {' '}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {' '}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultStatusCell]}>
+                                    {totalStatusText}
+                                  </Text>
+                                </>
+                              ) : (
+                                <>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {' '}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                                    {' '}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultStatusCell]}>
+                                    {' '}
+                                  </Text>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </View>
+                      );
+                    });
+                  })()}
+                </View>
+              </View>
+            </RowContainer>
             </React.Fragment>
           );
         }
 
-        if (isRelaySection && kind === 'results') {
-          return (
-            <RowContainer
-              key={`${section.title}-${row.primary}-${rowIndex}`}
-              onLayout={shouldAttachClassAnchor && classAnchorKey ? (event) => onAnchorLayout(classAnchorKey, event) : undefined}
-              {...rowContainerProps}
-              style={[
-                styles.tableRow,
-                rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
-                styles.relayRow,
-                styles.relayRowSpacing,
-              ]}
-            >
-              <View style={styles.relayGrid}>
-                <View style={styles.relayTeamRow}>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultPlacementCell,
-                      relayResultWidths ? { width: relayResultWidths.placement } : null,
-                    ]}
-                  >
-                    {row.position ?? '-'}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayTeamNameCell,
-                      relayResultWidths ? { width: relayResultWidths.name } : null,
-                    ]}
-                  >
-                    {scope === 'organisation' ? row.classLabel ?? row.organisation ?? row.primary : row.organisation ?? row.classLabel ?? row.primary}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultValueCell,
-                      relayResultWidths ? { width: relayResultWidths.splitTime } : null,
-                    ]}
-                  >
-                    {' '}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultValueCell,
-                      relayResultWidths ? { width: relayResultWidths.splitPosition } : null,
-                    ]}
-                  >
-                    {' '}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultValueCell,
-                      relayResultWidths ? { width: relayResultWidths.splitDiff } : null,
-                    ]}
-                  >
-                    {' '}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultValueCell,
-                      relayResultWidths ? { width: relayResultWidths.totalTime } : null,
-                    ]}
-                  >
-                    {row.time ?? '-'}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultValueCell,
-                      relayResultWidths ? { width: relayResultWidths.totalPosition } : null,
-                    ]}
-                  >
-                    {' '}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.relayTeamCellText,
-                      styles.relayResultValueCell,
-                      relayResultWidths ? { width: relayResultWidths.totalDiff } : null,
-                    ]}
-                  >
-                    {row.diff ?? ''}
-                  </Text>
-                </View>
-
-                <View style={styles.relayMembersGrid}>
-                  {row.relayMembers?.map((member, memberIndex) => (
-                    <View key={`${section.title}-${row.primary}-member-${memberIndex}`} style={styles.relayMemberRow}>
-                      <View style={relayResultWidths ? { width: relayResultWidths.placement } : styles.relayResultPlacementCell} />
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultNameCell,
-                          relayResultWidths ? { width: relayResultWidths.name } : null,
-                        ]}
-                      >
-                        {member.leg ? `${member.leg}. ` : ''}
-                        {member.primary}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultValueCell,
-                          relayResultWidths ? { width: relayResultWidths.splitTime } : null,
-                        ]}
-                      >
-                        {member.time ?? '-'}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultValueCell,
-                          relayResultWidths ? { width: relayResultWidths.splitPosition } : null,
-                        ]}
-                      >
-                        {member.position ?? '-'}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultValueCell,
-                          relayResultWidths ? { width: relayResultWidths.splitDiff } : null,
-                        ]}
-                      >
-                        {member.diff ?? ''}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultValueCell,
-                          relayResultWidths ? { width: relayResultWidths.totalTime } : null,
-                        ]}
-                      >
-                        {member.overallTime ?? '-'}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultValueCell,
-                          relayResultWidths ? { width: relayResultWidths.totalPosition } : null,
-                        ]}
-                      >
-                        {member.overallPosition ?? '-'}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relayMemberCellText,
-                          styles.relayResultValueCell,
-                          relayResultWidths ? { width: relayResultWidths.totalDiff } : null,
-                        ]}
-                      >
-                        {member.overallDiff ?? ''}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </RowContainer>
-          );
-        }
-
-        if (isRelaySection) {
+        if (isRelaySection && kind === 'starts') {
           return (
             <RowContainer
               key={`${section.title}-${row.primary}-${rowIndex}`}
@@ -1018,7 +919,6 @@ function PublishedTableSection({
             >
               <View style={styles.relayCard}>
                 <View style={styles.relayTopRow}>
-                  {kind === 'results' ? <Text style={[styles.relayTopMetric, styles.relayPlacement]}>{row.position ?? '-'}</Text> : null}
                   {kind === 'starts' ? <Text style={[styles.relayTopMetric, styles.relayBib]}>{row.bibNumber ?? '-'}</Text> : null}
 
                   <View style={styles.relayMainColumn}>
@@ -1036,16 +936,6 @@ function PublishedTableSection({
                         {row.time ?? '-'}
                       </Text>
                     ) : null}
-                      {kind === 'results' ? (
-                        <>
-                          <Text numberOfLines={1} style={[styles.relayTopMetric, styles.relayTopMetricStrong]}>
-                            {row.time ?? '-'}
-                          </Text>
-                          <Text numberOfLines={1} style={styles.relayTopDiff}>
-                          {row.diff ?? ''}
-                          </Text>
-                        </>
-                      ) : null}
                   </View>
                 </View>
 
@@ -1814,6 +1704,11 @@ const styles = StyleSheet.create({
   },
   relayResultValueCell: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'right',
+  },
+  relayResultStatusCell: {
     minWidth: 0,
     paddingRight: 4,
     textAlign: 'right',
