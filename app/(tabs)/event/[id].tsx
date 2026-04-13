@@ -50,6 +50,9 @@ export default function EventDetailScreen() {
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
   const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId, event?.eventForm ?? null);
+  const pmDocument = React.useMemo(() => {
+    return documents.find((document) => normalizeDocumentName(document.name) === 'pm') ?? null;
+  }, [documents]);
   const isLoggedIn = Boolean(user);
   const isFavorite = React.useMemo(() => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === event?.id), [event?.id, favoriteEvents]);
   const showResultActions = event?.hasPublishedResults ?? false;
@@ -218,11 +221,21 @@ export default function EventDetailScreen() {
               tone="start"
             />
             {organisationId ? (
-              <ActionButton
-                label={`${event.hasPublishedStarts ? 'Startlista' : 'Anmälningar'} ${clubName ?? 'klubb'}${formatCountSuffix(counts.organisationEntries)}`}
-                onPress={() => void openList(secondaryKind, 'organisation')}
-                tone="start"
-              />
+              <>
+                <ActionButton
+                  label={`${event.hasPublishedStarts ? 'Startlista' : 'Anmälningar'} ${clubName ?? 'klubb'}${formatCountSuffix(counts.organisationEntries)}`}
+                  onPress={() => void openList(secondaryKind, 'organisation')}
+                  tone="start"
+                />
+                {!showResultActions && pmDocument ? (
+                  <AppButton
+                    label="PM"
+                    onPress={() => setActiveDocument(pmDocument)}
+                    style={styles.pmButton}
+                    variant="secondary"
+                  />
+                ) : null}
+              </>
             ) : null}
           </View>
         </View>
@@ -358,6 +371,10 @@ function MapShortcutButton({ icon, label, onPress }: { icon: keyof typeof Ionico
 
 function formatCountSuffix(value: number | null) {
   return typeof value === 'number' && Number.isFinite(value) ? ` (${value})` : '';
+}
+
+function normalizeDocumentName(name: string) {
+  return name.trim().toLocaleLowerCase('sv').replace(/\.[^.]+$/, '');
 }
 
 function DocumentModal({ document, onClose }: { document: EventDocument | null; onClose: () => void }) {
@@ -573,6 +590,9 @@ const styles = StyleSheet.create({
   },
   actionColumnFull: {
     flex: 1,
+  },
+  pmButton: {
+    marginTop: spacing.xs,
   },
   resultButton: {
     borderColor: colors.primary,
