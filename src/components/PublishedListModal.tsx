@@ -326,6 +326,74 @@ function PublishedTableSection({
       time,
     };
   }, [isRelaySection, kind, section.rows, windowWidth]);
+  const relayResultWidths = React.useMemo(() => {
+    if (kind !== 'results' || !isRelaySection) {
+      return null;
+    }
+
+    const placement = Math.max(18, estimateColumnWidth(['#', ...section.rows.map((row) => row.position ?? '-')], 18, 26));
+    const splitTime = Math.max(
+      62,
+      estimateColumnWidth(
+        ['Str.tid', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.time ?? '') ?? [])],
+        62,
+        84,
+      ),
+    );
+    const splitPosition = Math.max(
+      44,
+      estimateColumnWidth(
+        ['Str.pl.', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.position ?? '') ?? [])],
+        44,
+        56,
+      ),
+    );
+    const splitDiff = Math.max(
+      54,
+      estimateColumnWidth(
+        ['Str.diff', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.diff ?? '') ?? [])],
+        54,
+        74,
+      ),
+    );
+    const totalTime = Math.max(
+      62,
+      estimateColumnWidth(
+        ['Tid', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.overallTime ?? '') ?? [])],
+        62,
+        84,
+      ),
+    );
+    const totalPosition = Math.max(
+      44,
+      estimateColumnWidth(
+        ['Växl.pl.', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.overallPosition ?? '') ?? [])],
+        44,
+        56,
+      ),
+    );
+    const totalDiff = Math.max(
+      54,
+      estimateColumnWidth(
+        ['Tidsdiff', ...section.rows.flatMap((row) => row.relayMembers?.map((member) => member.overallDiff ?? '') ?? [])],
+        54,
+        74,
+      ),
+    );
+    const available = Math.max(windowWidth - spacing.sm * 2, 320);
+    const name = Math.max(available - placement - splitTime - splitPosition - splitDiff - totalTime - totalPosition - totalDiff - 28, 150);
+
+    return {
+      name,
+      placement,
+      splitDiff,
+      splitPosition,
+      splitTime,
+      totalDiff,
+      totalPosition,
+      totalTime,
+    };
+  }, [isRelaySection, kind, section.rows, windowWidth]);
   const columnWidths = React.useMemo(
     () => ({
       bib: hasBibColumn ? estimateColumnWidth(['Bib', ...section.rows.map((row) => row.bibNumber ?? '-')], 42, 54) : undefined,
@@ -455,14 +523,46 @@ function PublishedTableSection({
                 </>
               ) : (
                 <>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultPlacementCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultSpanCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
-                  <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.relayResultValueCell]}></Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.tableColumnHeaderText,
+                      styles.relayResultPlacementCell,
+                      relayResultWidths ? { width: relayResultWidths.placement } : null,
+                    ]}
+                  >
+                    #
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.tableColumnHeaderText,
+                      styles.relayResultHeaderCell,
+                      relayResultWidths ? { width: relayResultWidths.name } : null,
+                    ]}
+                  >
+                    Lag
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.tableColumnHeaderText,
+                      styles.relayResultHeaderCell,
+                      relayResultWidths ? { width: relayResultWidths.splitTime + relayResultWidths.splitPosition + relayResultWidths.splitDiff } : null,
+                    ]}
+                  >
+                    Str.tid / Str.pl. / Str.diff
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.tableColumnHeaderText,
+                      styles.relayResultHeaderCell,
+                      relayResultWidths ? { width: relayResultWidths.totalTime + relayResultWidths.totalPosition + relayResultWidths.totalDiff } : null,
+                    ]}
+                  >
+                    Tid / Växl.pl. / Tid.diff
+                  </Text>
                 </>
               )}
             </View>
@@ -702,7 +802,7 @@ function PublishedTableSection({
                             <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
                               {member.time ?? '-'}
                             </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
                               {member.position ?? '-'}
                             </Text>
                             <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
@@ -711,7 +811,7 @@ function PublishedTableSection({
                             <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
                               {member.overallTime ?? '-'}
                             </Text>
-                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
+                            <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
                               {member.overallPosition ?? '-'}
                             </Text>
                             <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
@@ -725,6 +825,186 @@ function PublishedTableSection({
                 </View>
               </RowContainer>
             </React.Fragment>
+          );
+        }
+
+        if (isRelaySection && kind === 'results') {
+          return (
+            <RowContainer
+              key={`${section.title}-${row.primary}-${rowIndex}`}
+              onLayout={shouldAttachClassAnchor && classAnchorKey ? (event) => onAnchorLayout(classAnchorKey, event) : undefined}
+              {...rowContainerProps}
+              style={[
+                styles.tableRow,
+                rowIndex % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                styles.relayRow,
+                styles.relayRowSpacing,
+              ]}
+            >
+              <View style={styles.relayGrid}>
+                <View style={styles.relayTeamRow}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultPlacementCell,
+                      relayResultWidths ? { width: relayResultWidths.placement } : null,
+                    ]}
+                  >
+                    {row.position ?? '-'}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayTeamNameCell,
+                      relayResultWidths ? { width: relayResultWidths.name } : null,
+                    ]}
+                  >
+                    {scope === 'organisation' ? row.classLabel ?? row.organisation ?? row.primary : row.organisation ?? row.classLabel ?? row.primary}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultValueCell,
+                      relayResultWidths ? { width: relayResultWidths.splitTime } : null,
+                    ]}
+                  >
+                    {' '}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultValueCell,
+                      relayResultWidths ? { width: relayResultWidths.splitPosition } : null,
+                    ]}
+                  >
+                    {' '}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultValueCell,
+                      relayResultWidths ? { width: relayResultWidths.splitDiff } : null,
+                    ]}
+                  >
+                    {' '}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultValueCell,
+                      relayResultWidths ? { width: relayResultWidths.totalTime } : null,
+                    ]}
+                  >
+                    {row.time ?? '-'}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultValueCell,
+                      relayResultWidths ? { width: relayResultWidths.totalPosition } : null,
+                    ]}
+                  >
+                    {' '}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.relayTeamCellText,
+                      styles.relayResultValueCell,
+                      relayResultWidths ? { width: relayResultWidths.totalDiff } : null,
+                    ]}
+                  >
+                    {row.diff ?? ''}
+                  </Text>
+                </View>
+
+                <View style={styles.relayMembersGrid}>
+                  {row.relayMembers?.map((member, memberIndex) => (
+                    <View key={`${section.title}-${row.primary}-member-${memberIndex}`} style={styles.relayMemberRow}>
+                      <View style={relayResultWidths ? { width: relayResultWidths.placement } : styles.relayResultPlacementCell} />
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultNameCell,
+                          relayResultWidths ? { width: relayResultWidths.name } : null,
+                        ]}
+                      >
+                        {member.leg ? `${member.leg}. ` : ''}
+                        {member.primary}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultValueCell,
+                          relayResultWidths ? { width: relayResultWidths.splitTime } : null,
+                        ]}
+                      >
+                        {member.time ?? '-'}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultValueCell,
+                          relayResultWidths ? { width: relayResultWidths.splitPosition } : null,
+                        ]}
+                      >
+                        {member.position ?? '-'}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultValueCell,
+                          relayResultWidths ? { width: relayResultWidths.splitDiff } : null,
+                        ]}
+                      >
+                        {member.diff ?? ''}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultValueCell,
+                          relayResultWidths ? { width: relayResultWidths.totalTime } : null,
+                        ]}
+                      >
+                        {member.overallTime ?? '-'}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultValueCell,
+                          relayResultWidths ? { width: relayResultWidths.totalPosition } : null,
+                        ]}
+                      >
+                        {member.overallPosition ?? '-'}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.relayMemberCellText,
+                          styles.relayResultValueCell,
+                          relayResultWidths ? { width: relayResultWidths.totalDiff } : null,
+                        ]}
+                      >
+                        {member.overallDiff ?? ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </RowContainer>
           );
         }
 
@@ -1511,13 +1791,19 @@ const styles = StyleSheet.create({
     marginLeft: 0,
   },
   relayResultPlacementCell: {
-    flex: 0.75,
+    flex: 0,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'left',
+  },
+  relayResultHeaderCell: {
+    flex: 3,
     minWidth: 0,
     paddingRight: 4,
     textAlign: 'left',
   },
   relayResultSpanCell: {
-    flex: 4.85,
+    flex: 5.85,
     minWidth: 0,
     paddingRight: 4,
   },
@@ -1528,6 +1814,12 @@ const styles = StyleSheet.create({
   },
   relayResultValueCell: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
+    textAlign: 'right',
+  },
+  relayResultPositionCell: {
+    flex: 0,
     minWidth: 0,
     paddingRight: 4,
     textAlign: 'right',
