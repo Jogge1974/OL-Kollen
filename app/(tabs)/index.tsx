@@ -139,7 +139,7 @@ export default function HomeScreen() {
               <Text style={styles.heroEyebrow}>{user ? `Hej ${greetingName}` : 'Orientering'}</Text>
               <Text style={styles.heroTitle}>Kontrollen</Text>
               <Text style={styles.heroDescription}>
-                Ett alternativ till Eventor.
+                Ett komplement till Eventor.
               </Text>
             </View>
             {user?.accessLevel ? <View style={styles.accessPill}><Text style={styles.accessPillText}>{formatAccessLevel(user.accessLevel)}</Text></View> : null}

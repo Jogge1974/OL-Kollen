@@ -8,126 +8,84 @@ type UseSverigelistanDirectoryResult = {
   error: string | null;
   hasSupabase: boolean;
   isLoading: boolean;
+  isRefreshing: boolean;
   latestUpdated: string | null;
   refetch: () => Promise<void>;
   rows: SverigelistanRow[];
 };
 
-export function useSverigelistanDirectory() {
-  const [refreshKey, setRefreshKey] = React.useState(0);
-  const [state, setState] = React.useState<UseSverigelistanDirectoryResult>({
-    error: null,
-    hasSupabase: true,
-    isLoading: false,
-    latestUpdated: null,
-    refetch: async () => {
-      setRefreshKey((value) => value + 1);
-    },
-    rows: [],
-  });
+export function useSverigelistanDirectory(): UseSverigelistanDirectoryResult {
+  const [error, setError] = React.useState<string | null>(null);
+  const [hasSupabase, setHasSupabase] = React.useState(true);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [latestUpdated, setLatestUpdated] = React.useState<string | null>(null);
+  const [rows, setRows] = React.useState<SverigelistanRow[]>([]);
+
+  const load = React.useCallback(async (isPullRefresh = false) => {
+    if (isPullRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    setError(null);
+
+    try {
+      const client = getSupabaseClient();
+      if (!client) {
+        setHasSupabase(false);
+        setLatestUpdated(null);
+        setRows([]);
+        setError('Supabase är inte konfigurerat i appen.');
+        return;
+      }
+
+      setHasSupabase(true);
+
+      const latestResponse = await client
+        .from('Sverigelistan')
+        .select('Updated')
+        .order('Updated', { ascending: false })
+        .limit(1);
+
+      if (latestResponse.error) {
+        throw new Error(latestResponse.error.message || 'Det gick inte att hitta senaste Sverigelistan.');
+      }
+
+      const nextLatestUpdated = latestResponse.data?.[0]?.Updated ?? null;
+      setLatestUpdated(nextLatestUpdated);
+
+      if (!nextLatestUpdated) {
+        setRows([]);
+        return;
+      }
+
+      const nextRows = await fetchAllSverigelistanRows(client, nextLatestUpdated);
+      setRows(nextRows);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Det gick inte att hämta Sverigelistan.');
+      setLatestUpdated(null);
+      setRows([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
 
   React.useEffect(() => {
-    let isMounted = true;
+    void load(false);
+  }, [load]);
 
-    const load = async () => {
-      const client = getSupabaseClient();
-
-      if (!client) {
-        if (!isMounted) {
-          return;
-        }
-
-        setState({
-          error: 'Supabase är inte konfigurerat i appen.',
-          hasSupabase: false,
-          isLoading: false,
-          latestUpdated: null,
-          refetch: async () => {
-            setRefreshKey((value) => value + 1);
-          },
-          rows: [],
-        });
-        return;
-      }
-
-      if (!isMounted) {
-        return;
-      }
-
-      setState((previous) => ({
-        ...previous,
-        error: null,
-        hasSupabase: true,
-        isLoading: true,
-      }));
-
-      try {
-        const latestResponse = await client.from('Sverigelistan').select('Updated').order('Updated', { ascending: false }).limit(1);
-        if (!isMounted) {
-          return;
-        }
-
-        if (latestResponse.error) {
-          throw new Error(latestResponse.error.message || 'Det gick inte att hitta senaste Sverigelistan.');
-        }
-
-        const latestUpdated = latestResponse.data?.[0]?.Updated ?? null;
-        if (!latestUpdated) {
-          setState({
-            error: null,
-            hasSupabase: true,
-            isLoading: false,
-            latestUpdated: null,
-            refetch: async () => {
-              setRefreshKey((value) => value + 1);
-            },
-            rows: [],
-          });
-          return;
-        }
-
-        const rows = await fetchAllSverigelistanRows(client, latestUpdated);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setState({
-          error: null,
-          hasSupabase: true,
-          isLoading: false,
-          latestUpdated,
-          refetch: async () => {
-            setRefreshKey((value) => value + 1);
-          },
-          rows,
-        });
-      } catch (loadError) {
-        if (!isMounted) {
-          return;
-        }
-
-        setState({
-          error: loadError instanceof Error ? loadError.message : 'Det gick inte att hämta Sverigelistan.',
-          hasSupabase: true,
-          isLoading: false,
-          latestUpdated: null,
-          refetch: async () => {
-            setRefreshKey((value) => value + 1);
-          },
-          rows: [],
-        });
-      }
-    };
-
-    void load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [refreshKey]);
-
-  return state;
+  return {
+    error,
+    hasSupabase,
+    isLoading,
+    isRefreshing,
+    latestUpdated,
+    refetch: () => load(true),
+    rows,
+  };
 }
 
 async function fetchAllSverigelistanRows(client: NonNullable<ReturnType<typeof getSupabaseClient>>, latestUpdated: string) {

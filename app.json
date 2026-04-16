@@ -14,9 +14,15 @@
       "backgroundColor": "#F4F8EE"
     },
     "ios": {
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "se.mastol.kontrollen",
       "supportsTablet": true
     },
     "android": {
+      "package": "se.mastol.kontrollen",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F4F8EE"

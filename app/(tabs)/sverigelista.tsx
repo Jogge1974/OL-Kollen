@@ -26,7 +26,7 @@ export default function SverigelistaScreen() {
   const [clubSearchText, setClubSearchText] = React.useState('');
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const clubSearchListRef = React.useRef<FlatList<string> | null>(null);
-  const { error, hasSupabase, isLoading, latestUpdated, refetch, rows } = useSverigelistanDirectory();
+  const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory();
 
   React.useEffect(() => {
     if (user?.gender === 'D' || user?.gender === 'H') {
@@ -271,7 +271,7 @@ export default function SverigelistaScreen() {
         }
         ListHeaderComponentStyle={styles.listHeader}
         style={styles.list}
-        refreshControl={<RefreshControl colors={[colors.primary]} refreshing={isLoading} tintColor={colors.primary} onRefresh={refetch} />}
+        refreshControl={<RefreshControl colors={[colors.primary]} refreshing={isLoading || isRefreshing} tintColor={colors.primary} onRefresh={refetch} />}
           renderItem={({ item, index }) => (
             <SverigelistaRowCard
               filterLabel={selectedFilterMode === 'class' ? selectedClassLabel : selectedFilterMode === 'club' ? selectedClubName : null}

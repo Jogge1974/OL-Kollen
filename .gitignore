@@ -14,8 +14,12 @@ web-build/
 .env.*
 !.env.example
 
+# Credentials & service accounts
+Credentials.txt
+
 # Build output
 
 # Others
 *.log
 *.pdb
+/ol-kollen-firebase-adminsdk-fbsvc-a0644472f5.json

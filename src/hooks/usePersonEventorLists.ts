@@ -4,10 +4,6 @@ import { fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorAp
 import { filterPersonResultSections, parsePersonResultsXml, parsePersonStartsXml } from '@/src/services/personEventorListParser';
 import { PersonActivitySection, PersonResultsFilter } from '@/src/types/personLists';
 
-const USE_TEMP_STARTS_RANGE = true;
-const TEMP_STARTS_FROM_DATE = '2026-01-31';
-const TEMP_STARTS_TO_DATE = '2026-02-01';
-
 type UsePersonEventorListsInput = {
   personId: string | null;
 };
@@ -206,13 +202,6 @@ function formatLocalIsoDate(date: Date) {
 }
 
 function getStartsDateRange() {
-  if (USE_TEMP_STARTS_RANGE) {
-    return {
-      fromDate: TEMP_STARTS_FROM_DATE,
-      toDate: TEMP_STARTS_TO_DATE,
-    };
-  }
-
   return {
     fromDate: formatYesterdayBoundary(),
     toDate: formatFutureBoundary(30),
