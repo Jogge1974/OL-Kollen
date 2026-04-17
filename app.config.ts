@@ -2,7 +2,7 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'OL-Kollen',
+  name: 'Kontrollen',
   slug: 'ol-kollen',
   version: '1.0.0',
   orientation: 'portrait',
@@ -49,7 +49,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-location',
       {
         locationWhenInUsePermission:
-          'OL-Kollen använder din plats för att centrera kartvyn kring dig.',
+          'Kontrollen använder din plats för att centrera kartvyn kring dig.',
       },
     ],
   ],

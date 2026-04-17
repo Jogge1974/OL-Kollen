@@ -201,93 +201,95 @@ function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {
     return rows;
   }
 
-  const bestSplitTimes = getBestSplitTimes(rows);
+  const splitCount = rows.reduce((max, row) => Math.max(max, row.splitCount), 0);
+  const medianSplitTimes = getMedianSplitTimes(rows, splitCount);
 
-  return rows.map((row) => {
-    const referencePercent = calculateReferencePercent(row, bestSplitTimes);
-    const splitLossSeconds = bestSplitTimes.map((bestSplitTime, splitIndex) => calculateSplitLossSeconds(row, splitIndex + 1, bestSplitTime, referencePercent));
+  // Pass 1: compute initial speed factor & losses
+  const pass1 = rows.map((row) => {
+    const ratios = computeSplitRatios(row, medianSplitTimes);
+    const speedFactor = medianOfArray(ratios);
+    const splitLossSeconds = computeSplitLosses(row, medianSplitTimes, speedFactor);
+    return { row, ratios, speedFactor, splitLossSeconds };
+  });
+
+  // Pass 2: recompute speed factor excluding legs with significant loss (>15s),
+  // then recalculate losses with the refined factor
+  return pass1.map(({ row, ratios, speedFactor, splitLossSeconds }) => {
+    const cleanRatios = ratios.filter((_, index) => {
+      const loss = splitLossSeconds[index];
+      return loss === null || loss <= 15;
+    });
+    const refinedFactor = cleanRatios.length >= 2 ? medianOfArray(cleanRatios) : speedFactor;
+    const refinedLosses = computeSplitLosses(row, medianSplitTimes, refinedFactor);
     const totalLossSeconds =
       row.status && row.status !== 'OK'
         ? null
-        : splitLossSeconds.reduce((sum: number, value) => sum + (typeof value === 'number' && value > 0 ? value : 0), 0);
+        : refinedLosses.reduce((sum: number, value) => sum + (typeof value === 'number' && value > 0 ? value : 0), 0);
+
+    // Store speedFactor - 1 as referencePercent so downstream display stays compatible
+    // (a factor of 1.12 means 12% slower than median → referencePercent = 0.12)
+    // (a factor of 0.87 means 13% faster than median → referencePercent = -0.13)
+    const referencePercent = refinedFactor - 1;
 
     return {
       ...row,
       referencePercent,
-      splitLossSeconds,
+      splitLossSeconds: refinedLosses,
       totalLossSeconds,
     } satisfies EventSplitTimesRow;
   });
 }
 
-function getBestSplitTimes(rows: EventSplitTimesRow[]) {
-  const splitCount = rows.reduce((max, row) => Math.max(max, row.splitCount), 0);
-  const bestSplitTimes: Array<number | null> = Array.from({ length: splitCount }, () => null);
+function getMedianSplitTimes(rows: EventSplitTimesRow[], splitCount: number) {
+  const result: Array<number | null> = [];
 
   for (let splitIndex = 1; splitIndex <= splitCount; splitIndex += 1) {
-    let bestValue: number | null = null;
-
+    const times: number[] = [];
     for (const row of rows) {
+      if (row.status && row.status !== 'OK') continue;
       const splitTime = getSplitTime(row, splitIndex);
-      if (splitTime === null) {
-        continue;
-      }
-
-      if (bestValue === null || splitTime < bestValue) {
-        bestValue = splitTime;
+      if (splitTime !== null) {
+        times.push(splitTime);
       }
     }
-
-    bestSplitTimes[splitIndex - 1] = bestValue;
+    result.push(times.length > 0 ? medianOfArray(times) : null);
   }
 
-  return bestSplitTimes;
+  return result;
 }
 
-function calculateReferencePercent(row: EventSplitTimesRow, bestSplitTimes: Array<number | null>) {
-  const percentages = bestSplitTimes
-    .map((bestSplitTime, splitIndex) => {
-      if (bestSplitTime === null || bestSplitTime < 60) {
-        return null;
-      }
+function computeSplitRatios(row: EventSplitTimesRow, medianSplitTimes: Array<number | null>) {
+  const ratios: number[] = [];
 
-      const splitTime = getSplitTime(row, splitIndex + 1);
-      if (splitTime === null || splitTime <= 0) {
-        return null;
-      }
-
-      return splitTime / bestSplitTime - 1;
-    })
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-    .sort((left, right) => left - right)
-    .slice(0, 5);
-
-  if (percentages.length === 0) {
-    return 0;
+  for (let i = 0; i < medianSplitTimes.length; i += 1) {
+    const median = medianSplitTimes[i];
+    if (median === null || median <= 0) continue;
+    const splitTime = getSplitTime(row, i + 1);
+    if (splitTime === null || splitTime <= 0) continue;
+    ratios.push(splitTime / median);
   }
 
-  return percentages.reduce((sum, value) => sum + value, 0) / percentages.length;
+  return ratios;
 }
 
-function calculateSplitLossSeconds(row: EventSplitTimesRow, splitIndex: number, bestSplitTime: number | null, referencePercent: number) {
-  const currentSplit = getSplitTime(row, splitIndex);
-  if (currentSplit === null || bestSplitTime === null || bestSplitTime <= 0) {
-    return null;
-  }
+function computeSplitLosses(row: EventSplitTimesRow, medianSplitTimes: Array<number | null>, speedFactor: number) {
+  return medianSplitTimes.map((median, index) => {
+    const splitTime = getSplitTime(row, index + 1);
+    if (splitTime === null || median === null || median <= 0) {
+      return null;
+    }
 
-  const acceptedAlternative1 = Math.round(bestSplitTime * (Math.max(0.2, referencePercent) + 1));
-  const acceptedAlternative2 =
-    bestSplitTime +
-    30 +
-    Math.round(referencePercent * 100) +
-    Math.round(referencePercent * 100) * Math.max(1, Math.round(referencePercent * 10));
-  const acceptedTime = Math.min(acceptedAlternative1, acceptedAlternative2);
+    const expectedTime = Math.round(speedFactor * median);
+    const loss = splitTime - expectedTime;
+    return Math.max(0, loss);
+  });
+}
 
-  if (acceptedTime >= currentSplit) {
-    return 0;
-  }
-
-  return Math.max(0, currentSplit - Math.round(bestSplitTime + bestSplitTime * referencePercent));
+function medianOfArray(values: number[]): number {
+  if (values.length === 0) return 1;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
 function getSplitCumulative(row: EventSplitTimesRow, splitIndex: number) {

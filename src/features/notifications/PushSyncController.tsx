@@ -56,6 +56,7 @@ export function PushSyncController() {
         if (wantsPush) {
           try {
             const registration = await registerForPushNotificationsAsync();
+            console.log('[PushSync] Token registrerat:', registration.pushToken, 'Device:', registration.deviceId, 'Platform:', registration.platform);
 
             device = {
               deviceId: registration.deviceId,

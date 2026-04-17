@@ -79,6 +79,6 @@ function getCommonHeaders() {
   return {
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OL-Kollen/1.0',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Kontrollen/1.0',
   };
 }

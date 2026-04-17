@@ -126,7 +126,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                 </MetricSection>
 
                 <MetricSection title="Bana" icon="map-outline">
-                  <MetricLine label="Referensprocent" value={analysis.summary.referencePercentLabel} />
+                  <MetricLine label="Hastighetsfaktor" value={analysis.summary.speedFactorLabel} />
                   <MetricLine label="Optimal tid" value={analysis.summary.optimalRaceTimeLabel ?? '-'} />
                   <MetricLine label="Tid efter optimal tid" value={analysis.summary.optimalRaceTimeDeltaLabel ?? '-'} />
                 </MetricSection>
@@ -147,12 +147,12 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                       <View
                         style={[
                           styles.thirdBarFill,
-                          third.percent !== null && third.percent < 0 ? styles.thirdBarFillGood : styles.thirdBarFillLoss,
+                          third.percent !== null && third.percent > 5 ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
                           { width: `${Math.min(100, Math.max(12, Math.abs(third.percent ?? 0)))}%` },
                         ]}
                       />
                     </View>
-                    <Text style={[styles.thirdPercent, third.percent !== null && third.percent < 0 ? styles.thirdPercentGood : styles.thirdPercentLoss]}>
+                    <Text style={[styles.thirdPercent, third.percent !== null && third.percent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
                       {third.percent === null ? '-' : `${third.percent > 0 ? '+' : ''}${third.percent}%`}
                     </Text>
                   </View>

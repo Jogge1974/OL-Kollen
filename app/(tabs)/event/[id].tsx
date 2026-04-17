@@ -310,7 +310,7 @@ export default function EventDetailScreen() {
                     </Text>
                     <Text style={styles.documentMeta}>{[document.type, document.modifyDate].filter(Boolean).join(' • ') || 'Dokument'}</Text>
                   </View>
-                  <Ionicons color={colors.primary} name="open-outline" size={18} />
+                  <Ionicons color={colors.primary} name="document-text-outline" size={18} />
                 </Pressable>
               ))}
             </View>
@@ -325,6 +325,11 @@ export default function EventDetailScreen() {
             </View>
           ) : null}
         </View>
+
+        <Pressable onPress={() => void Linking.openURL(`https://eventor.orientering.se/Events/Show/${id}`)} style={styles.eventorLink}>
+          <Ionicons color="#fff" name="open-outline" size={16} />
+          <Text style={styles.eventorLinkText}>Visa i Eventor</Text>
+        </Pressable>
       </ScrollView>
 
       <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} />
@@ -733,6 +738,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     padding: spacing.md,
+  },
+  eventorLink: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: colors.primaryDeep,
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  eventorLinkText: {
+    ...typography.bodyStrong,
+    color: '#fff',
   },
   documentCopy: {
     flex: 1,

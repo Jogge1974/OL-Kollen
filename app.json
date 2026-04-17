@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "OL-Kollen",
+    "name": "Kontrollen",
     "slug": "ol-kollen",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -47,7 +47,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "OL-Kollen använder din plats för att centrera kartvyn kring dig."
+          "locationWhenInUsePermission": "Kontrollen använder din plats för att centrera kartvyn kring dig."
         }
       ]
     ],

@@ -34,7 +34,7 @@ export default function RootLayout() {
   }, [hydratePreferences]);
 
   if (!fontsLoaded || !isHydrated || !isPreferencesHydrated) {
-    return <LoadingState label="Startar OL-Kollen..." fullScreen />;
+    return <LoadingState label="Startar Kontrollen..." fullScreen />;
   }
 
   return (
@@ -71,10 +71,10 @@ function PushNotificationNavigator() {
         }
 
         try {
-          router.replace('/calendar');
+          router.replace('/(tabs)/calendar');
           router.push({
-            params: { id: eventId, returnTo: '/calendar' },
-            pathname: '/event/[id]',
+            params: { id: eventId, returnTo: '/(tabs)/calendar' },
+            pathname: '/(tabs)/event/[id]',
           });
         } catch {
           // Ignore navigation errors on startup; the app must not crash here.

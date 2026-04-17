@@ -104,7 +104,7 @@ function parsePersonActivityXml(xml: string, kind: 'results' | 'starts'): Person
   });
 
   return sections
-    .sort((left, right) => left.eventDate.localeCompare(right.eventDate) || left.title.localeCompare(right.title, 'sv'))
+    .sort((left, right) => right.eventDate.localeCompare(left.eventDate) || left.title.localeCompare(right.title, 'sv'))
     .filter((section) => section.rows.length > 0);
 }
 
@@ -175,7 +175,8 @@ function parseMultiDayPersonActivitySections({
 
   classNodes.forEach((classNode, classIndex) => {
     const eventClass = getRecord(classNode.Class) ?? getRecord(classNode.EventClass);
-    const classRaceInfo = getRecord(eventClass?.ClassRaceInfo) ?? getRecord(classNode.ClassRaceInfo);
+    const classRaceInfoRaw = eventClass?.ClassRaceInfo ?? classNode.ClassRaceInfo;
+    const classRaceInfo = getRecord(classRaceInfoRaw) ?? getRecord(Array.isArray(classRaceInfoRaw) ? classRaceInfoRaw[0] : null);
     const classRaceId = getNodeText(classRaceInfo?.EventRaceId) ?? getNodeText(classNode.EventRaceId);
     const baseRows = extractRowsFromClassNode(classNode, kind, {
       classFallback: `Klass ${classIndex + 1}`,
@@ -238,26 +239,30 @@ function extractRowsFromClassNode(
   },
 ): PersonActivityRow[] {
   const eventClass = getRecord(classNode.Class) ?? getRecord(classNode.EventClass);
-  const classRaceInfo = getRecord(eventClass?.ClassRaceInfo) ?? getRecord(classNode.ClassRaceInfo);
+  const classRaceInfoRaw = eventClass?.ClassRaceInfo ?? classNode.ClassRaceInfo;
+  const classRaceInfo = getRecord(classRaceInfoRaw) ?? getRecord(Array.isArray(classRaceInfoRaw) ? classRaceInfoRaw[0] : null);
   const course = getRecord(classNode.Course);
   const courseLengthMeters = toNumber(course?.Length);
   const classLabel = getString(eventClass?.Name) ?? getString(eventClass?.ClassShortName) ?? getString(classNode.Name) ?? context.classFallback;
-  const classEntriesCount =
-    toNullableNumber(classRaceInfo?.noOfStarts) ??
-    toNullableNumber(classRaceInfo?.NoOfStarts) ??
-    toNullableNumber(classRaceInfo?.numberOfStarts) ??
-    toNullableNumber(classRaceInfo?.NumberOfStarts) ??
-    toNullableNumber(classRaceInfo?.numberOfEntries) ??
-    toNullableNumber(classRaceInfo?.NumberOfEntries) ??
-    toNullableNumber(eventClass?.numberOfEntries) ??
-    toNullableNumber(eventClass?.NumberOfEntries) ??
-    toNullableNumber(eventClass?.numberOfCompetitors) ??
-    toNullableNumber(eventClass?.NumberOfCompetitors) ??
-    toNullableNumber(classNode.numberOfEntries) ??
-    toNullableNumber(classNode.NumberOfEntries) ??
-    toNullableNumber(classNode.numberOfCompetitors) ??
-    toNullableNumber(classNode.NumberOfCompetitors) ??
+  const classEntriesCountRaw =
+    toPositiveNumber(classRaceInfo?.noOfEntries) ??
+    toPositiveNumber(classRaceInfo?.NoOfEntries) ??
+    toPositiveNumber(classRaceInfo?.numberOfEntries) ??
+    toPositiveNumber(classRaceInfo?.NumberOfEntries) ??
+    toPositiveNumber(classRaceInfo?.noOfStarts) ??
+    toPositiveNumber(classRaceInfo?.NoOfStarts) ??
+    toPositiveNumber(classRaceInfo?.numberOfStarts) ??
+    toPositiveNumber(classRaceInfo?.NumberOfStarts) ??
+    toPositiveNumber(eventClass?.numberOfEntries) ??
+    toPositiveNumber(eventClass?.NumberOfEntries) ??
+    toPositiveNumber(eventClass?.numberOfCompetitors) ??
+    toPositiveNumber(eventClass?.NumberOfCompetitors) ??
+    toPositiveNumber(classNode.numberOfEntries) ??
+    toPositiveNumber(classNode.NumberOfEntries) ??
+    toPositiveNumber(classNode.numberOfCompetitors) ??
+    toPositiveNumber(classNode.NumberOfCompetitors) ??
     null;
+  const classEntriesCount = classEntriesCountRaw;
   const personNodes = toArray<Record<string, unknown>>(kind === 'results' ? classNode.PersonResult : classNode.PersonStart);
 
   return personNodes.flatMap<PersonActivityRow>((personNode) => {
@@ -581,6 +586,11 @@ function toNullableNumber(value: unknown) {
 
   const parsed = Number(getNodeText(value) ?? value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toPositiveNumber(value: unknown) {
+  const n = toNullableNumber(value);
+  return n !== null && n > 0 ? n : null;
 }
 
 function compareNullableNumbers(left: number | null, right: number | null) {

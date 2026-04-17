@@ -75,7 +75,7 @@ async function fetchRankingPage(sourceUrl: string, cookie?: string | null) {
     headers: {
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       ...(cookie ? { Cookie: cookie } : {}),
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OL-Kollen/1.0',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Kontrollen/1.0',
     },
     credentials: 'include',
     method: 'GET',

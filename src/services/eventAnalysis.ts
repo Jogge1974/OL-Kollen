@@ -37,7 +37,7 @@ export type EventAnalysisSummary = {
   pacePerKmLabel: string;
   pacePerKmWithoutLossLabel: string;
   placingLabel: string;
-  referencePercentLabel: string;
+  speedFactorLabel: string;
   statusLabel: string;
   totalDiffLabel: string | null;
   totalTimeLabel: string | null;
@@ -98,12 +98,12 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
   const bomFreeLegCount = legs.filter((leg) => leg.splitLossSeconds !== null && leg.splitLossSeconds <= 0).length;
   const validLossLegCount = legs.filter((leg) => leg.splitLossSeconds !== null).length;
   const optimalRaceTimeSeconds = bestSplitTimes.reduce<number>((sum, splitTime) => sum + (splitTime ?? 0), 0);
-  const referencePercent = target.referencePercent ?? 0;
+  const speedFactor = (target.referencePercent ?? 0) + 1;
   const classLengthLabel = section.classLengthLabel ?? null;
   const courseLengthLabel = section.classLengthLabel ?? null;
   const optimalRaceTimeDeltaSeconds = target.totalTimeSeconds !== null ? target.totalTimeSeconds - optimalRaceTimeSeconds : null;
 
-  const { firstThird, secondThird, thirdThird } = buildThirdProgress(rows, target);
+  const { firstThird, secondThird, thirdThird } = buildThirdProgress(rows, target, speedFactor);
 
   const winner = rows.find((row) => row.position === '1') ?? officialRows[0] ?? null;
   const winnerName = winner ? winner.primary : null;
@@ -134,7 +134,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
       pacePerKmLabel: formatPacePerKm(target.totalTimeSeconds, section.classLengthMeters ?? null),
       pacePerKmWithoutLossLabel,
       placingLabel,
-      referencePercentLabel: `${formatPercent(referencePercent * 100)}%`,
+      speedFactorLabel: formatSpeedFactor(speedFactor),
       runnerName: target.primary,
       organisation: target.organisation,
       statusLabel: formatStatus(target.status),
@@ -209,48 +209,55 @@ function ensureFinishSplitRow(row: EventSplitTimesRow) {
   return row;
 }
 
-function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesRow) {
-  const winner = rows.find((row) => row.position === '1') ?? rows.find((row) => row.totalTimeSeconds !== null && row.status === 'OK') ?? null;
-  if (!winner || winner.totalTimeSeconds === null) {
-    return {
-      firstThird: { controls: '', description: '', percent: null },
-      secondThird: { controls: '', description: '', percent: null },
-      thirdThird: { controls: '', description: '', percent: null },
-    };
+function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesRow, speedFactor: number) {
+  const empty = { controls: '', description: '', percent: null };
+  if (target.totalTimeSeconds === null || target.splitCount === 0) {
+    return { firstThird: empty, secondThird: empty, thirdThird: empty };
   }
 
-  const winnerTotals = buildTotalProgressValues(winner);
-  const targetTotals = buildTotalProgressValues(target);
-  if (winnerTotals.length === 0 || targetTotals.length === 0 || winnerTotals.some((value) => value === null) || targetTotals.some((value) => value === null)) {
-    return {
-      firstThird: { controls: '', description: '', percent: null },
-      secondThird: { controls: '', description: '', percent: null },
-      thirdThird: { controls: '', description: '', percent: null },
-    };
+  const splitCount = target.splitCount;
+  const okRows = rows.filter((row) => row.status === 'OK' && row.totalTimeSeconds !== null);
+  const medianSplitTimes = getMedianSplitTimesLocal(okRows, splitCount);
+
+  // Build cumulative expected times using speedFactor × median
+  const expectedCumulative: number[] = [];
+  let cumulative = 0;
+  for (let i = 0; i < splitCount; i += 1) {
+    cumulative += speedFactor * (medianSplitTimes[i] ?? 0);
+    expectedCumulative.push(cumulative);
   }
 
-  const firstThirdEndLeg = findThresholdIndex(winnerTotals, winner.totalTimeSeconds / 3);
-  const secondThirdEndLeg = findThresholdIndex(winnerTotals, (winner.totalTimeSeconds / 3) * 2);
+  const expectedTotal = expectedCumulative[splitCount - 1] ?? 0;
+  if (expectedTotal <= 0) {
+    return { firstThird: empty, secondThird: empty, thirdThird: empty };
+  }
+
+  // Divide into thirds based on expected cumulative time
+  const firstThirdEndLeg = findThresholdIndex(expectedCumulative.map((v) => v as number | null), expectedTotal / 3);
+  const secondThirdEndLeg = findThresholdIndex(expectedCumulative.map((v) => v as number | null), (expectedTotal / 3) * 2);
 
   if (firstThirdEndLeg < 0 || secondThirdEndLeg < 0) {
-    return {
-      firstThird: { controls: '', description: '', percent: null },
-      secondThird: { controls: '', description: '', percent: null },
-      thirdThird: { controls: '', description: '', percent: null },
-    };
+    return { firstThird: empty, secondThird: empty, thirdThird: empty };
   }
 
-  const firstWinnerTime = winnerTotals[firstThirdEndLeg] ?? 0;
-  const secondWinnerTime = (winnerTotals[secondThirdEndLeg] ?? 0) - firstWinnerTime;
-  const thirdWinnerTime = winner.totalTimeSeconds - (winnerTotals[secondThirdEndLeg] ?? 0);
+  const targetTotals = buildTotalProgressValues(target);
+  if (targetTotals.length === 0 || targetTotals.some((value) => value === null)) {
+    return { firstThird: empty, secondThird: empty, thirdThird: empty };
+  }
 
+  // Actual times per third
   const firstTargetTime = targetTotals[firstThirdEndLeg] ?? 0;
   const secondTargetTime = (targetTotals[secondThirdEndLeg] ?? 0) - firstTargetTime;
-  const thirdTargetTime = (target.totalTimeSeconds ?? (targetTotals[targetTotals.length - 1] ?? 0)) - (targetTotals[secondThirdEndLeg] ?? 0);
+  const thirdTargetTime = (target.totalTimeSeconds ?? 0) - (targetTotals[secondThirdEndLeg] ?? 0);
 
-  const firstPercent = calcThirdPercent(firstTargetTime, firstWinnerTime);
-  const secondPercent = calcThirdPercent(secondTargetTime, secondWinnerTime);
-  const thirdPercent = calcThirdPercent(thirdTargetTime, thirdWinnerTime);
+  // Expected times per third
+  const firstExpected = expectedCumulative[firstThirdEndLeg];
+  const secondExpected = expectedCumulative[secondThirdEndLeg] - expectedCumulative[firstThirdEndLeg];
+  const thirdExpected = expectedTotal - expectedCumulative[secondThirdEndLeg];
+
+  const firstPercent = calcThirdPercent(firstTargetTime, firstExpected);
+  const secondPercent = calcThirdPercent(secondTargetTime, secondExpected);
+  const thirdPercent = calcThirdPercent(thirdTargetTime, thirdExpected);
 
   return {
     firstThird: {
@@ -269,6 +276,25 @@ function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesR
       percent: thirdPercent,
     },
   };
+}
+
+function getMedianSplitTimesLocal(rows: EventSplitTimesRow[], splitCount: number) {
+  const result: Array<number | null> = [];
+  for (let i = 1; i <= splitCount; i += 1) {
+    const times: number[] = [];
+    for (const row of rows) {
+      const t = getSplitTime(row, i);
+      if (t !== null) times.push(t);
+    }
+    if (times.length === 0) {
+      result.push(null);
+    } else {
+      const sorted = [...times].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      result.push(sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]);
+    }
+  }
+  return result;
 }
 
 function buildTotalProgressValues(row: EventSplitTimesRow) {
@@ -455,6 +481,13 @@ function formatPercent(value: number) {
 
 function formatPacePerKm(totalTimeSeconds: number | null, courseLengthMeters: number | null) {
   return formatPacePerKmLabel(totalTimeSeconds, courseLengthMeters);
+}
+
+function formatSpeedFactor(factor: number) {
+  return factor.toLocaleString('sv-SE', {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
 }
 
 function formatTime(totalSeconds: number) {
