@@ -88,8 +88,8 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   {analysis.summary.statusLabel === 'OK' ? (
                     <>
                       <HeroPill icon="time-outline" label="Tid" value={analysis.summary.totalTimeLabel ?? '-'} />
-                      <HeroPill icon="ribbon-outline" label="Plac." value={analysis.summary.placingLabel} />
                       <HeroPill icon="trending-up-outline" label="Diff" value={analysis.summary.totalDiffLabel ?? '-'} />
+                      <HeroPill icon="ribbon-outline" label="Plac." value={analysis.summary.placingLabel} />
                     </>
                   ) : (
                     <>
@@ -112,6 +112,8 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   <MetricLine label="Antal sträckor" value={`${analysis.legCount}`} />
                   <MetricLine label="Banlängd" value={analysis.summary.courseLengthLabel ?? '-'} />
                   <MetricLine label="Km-tid" value={analysis.summary.pacePerKmLabel} />
+                  <MetricLine label="Segrare" value={analysis.summary.winnerName ?? '-'} />
+                  <MetricLine label="Segrartid" value={analysis.summary.winnerTimeLabel ?? '-'} />
                 </MetricSection>
 
                 <MetricSection title="Bom & form" icon="pulse-outline">
@@ -120,6 +122,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   <MetricLine label="Andel bommade sträckor" value={analysis.summary.bomMadeSplitShareLabel} />
                   <MetricLine label="Bomfri placering" value={analysis.summary.adjustedTotalPlaceWithoutLoss !== null ? `${analysis.summary.adjustedTotalPlaceWithoutLoss}` : '-'} />
                   <MetricLine label="Plac. om alla bomfria" value={analysis.summary.adjustedTotalPlaceIfAllAvoidLoss !== null ? `${analysis.summary.adjustedTotalPlaceIfAllAvoidLoss}` : '-'} />
+                  <MetricLine label="Km-tid bomfri" value={analysis.summary.pacePerKmWithoutLossLabel} />
                 </MetricSection>
 
                 <MetricSection title="Bana" icon="map-outline">
@@ -220,7 +223,7 @@ function HeroPill({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap
       <Ionicons color={colors.heroText} name={icon} size={16} />
       <View style={styles.heroPillCopy}>
         <Text style={styles.heroPillLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.heroPillValue}>
+        <Text style={styles.heroPillValue}>
           {value}
         </Text>
       </View>
@@ -376,12 +379,11 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: spacing.sm,
-    minWidth: 92,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   heroPillCopy: {
-    flex: 1,
+    flexShrink: 1,
   },
   heroPillLabel: {
     color: colors.heroTextMuted,

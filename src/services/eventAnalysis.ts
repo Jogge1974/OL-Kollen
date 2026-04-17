@@ -35,6 +35,7 @@ export type EventAnalysisSummary = {
   optimalRaceTimeLabel: string | null;
   optimalRaceTimeDeltaLabel: string | null;
   pacePerKmLabel: string;
+  pacePerKmWithoutLossLabel: string;
   placingLabel: string;
   referencePercentLabel: string;
   statusLabel: string;
@@ -45,6 +46,8 @@ export type EventAnalysisSummary = {
   thirdProgress: EventAnalysisThird[];
   runnerName: string;
   organisation: string;
+  winnerName: string | null;
+  winnerTimeLabel: string | null;
 };
 
 export type EventAnalysisView = {
@@ -69,7 +72,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
   const officialRows = rows.filter((row) => row.status === 'OK' && row.totalTimeSeconds !== null);
   const targetTotalLoss = target.status === 'OK' ? target.totalLossSeconds ?? 0 : null;
   const targetAdjustedTotal = target.totalTimeSeconds !== null && targetTotalLoss !== null ? target.totalTimeSeconds - targetTotalLoss : null;
-  const totalTimeLabel = target.totalTimeLabel && target.totalTimeLabel !== '-' ? target.totalTimeLabel : target.totalTimeSeconds !== null ? formatTime(target.totalTimeSeconds) : null;
+  const totalTimeLabel = target.totalTimeSeconds !== null ? formatTime(target.totalTimeSeconds) : null;
   const totalDiffLabel = buildGapLabel(target.totalTimeSeconds, officialRows.map((row) => row.totalTimeSeconds ?? null), true);
   const placingLabel = formatPlacement(target.position ?? null, target.totalTimeSeconds, officialRows);
   const timeLossLabel = targetTotalLoss !== null ? formatTimeDelta(targetTotalLoss) : null;
@@ -102,6 +105,11 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
 
   const { firstThird, secondThird, thirdThird } = buildThirdProgress(rows, target);
 
+  const winner = rows.find((row) => row.position === '1') ?? officialRows[0] ?? null;
+  const winnerName = winner ? winner.primary : null;
+  const winnerTimeLabel = winner?.totalTimeSeconds != null ? formatTime(winner.totalTimeSeconds) : null;
+  const pacePerKmWithoutLossLabel = formatPacePerKmLabel(targetAdjustedTotal, section.classLengthMeters ?? null);
+
   return {
     classEntriesCount: section.classEntriesCount ?? null,
     classLabel: section.classLabel,
@@ -124,6 +132,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
       optimalRaceTimeLabel: optimalRaceTimeSeconds > 0 ? formatTime(optimalRaceTimeSeconds) : null,
       optimalRaceTimeDeltaLabel: optimalRaceTimeDeltaSeconds !== null ? formatTimeDelta(optimalRaceTimeDeltaSeconds) : null,
       pacePerKmLabel: formatPacePerKm(target.totalTimeSeconds, section.classLengthMeters ?? null),
+      pacePerKmWithoutLossLabel,
       placingLabel,
       referencePercentLabel: `${formatPercent(referencePercent * 100)}%`,
       runnerName: target.primary,
@@ -134,6 +143,8 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
       timeWithoutLossLabel,
       totalDiffLabel,
       totalTimeLabel,
+      winnerName,
+      winnerTimeLabel,
     },
     targetPersonId: target.personId ?? null,
   };
