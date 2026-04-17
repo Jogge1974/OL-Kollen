@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     borderRadius: 24,
     gap: spacing.sm,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: '100%',
   },
   heroBadge: {

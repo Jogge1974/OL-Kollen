@@ -91,11 +91,14 @@ export default function ProfileScreen() {
     }
   };
 
+  const hasInitializedUsername = React.useRef(false);
+
   React.useEffect(() => {
-    if (!user && rememberedUsername && !username) {
+    if (!user && rememberedUsername && !hasInitializedUsername.current) {
+      hasInitializedUsername.current = true;
       setUsername(rememberedUsername);
     }
-  }, [rememberedUsername, user, username]);
+  }, [rememberedUsername, user]);
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
@@ -363,7 +366,7 @@ const styles = StyleSheet.create({
   container: {
     gap: spacing.lg,
     paddingBottom: spacing.xxl,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
   },
   headerCard: {

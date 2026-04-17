@@ -7,7 +7,9 @@ export async function fetchEventDetailXml(eventId: string) {
     throw new Error('Missing EVENTOR_API_KEY secret for Eventor polling.');
   }
 
-  const response = await fetch(`${EVENTOR_BASE_URL}/event/${eventId}`, {
+  const normalizedEventId = normalizeEventId(eventId);
+
+  const response = await fetch(`${EVENTOR_BASE_URL}/event/${normalizedEventId}`, {
     headers: {
       ApiKey: apiKey,
       accept: 'application/xml',
@@ -15,10 +17,14 @@ export async function fetchEventDetailXml(eventId: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`Eventor event/${eventId} failed with ${response.status}.`);
+    throw new Error(`Eventor event/${normalizedEventId} failed with ${response.status}.`);
   }
 
   return await response.text();
+}
+
+function normalizeEventId(eventId: string) {
+  return eventId.split('::')[0] ?? eventId;
 }
 
 export function extractPublicationFlags(xml: string) {

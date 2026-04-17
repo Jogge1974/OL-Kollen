@@ -271,18 +271,22 @@ function extractRowsFromClassNode(
       const raceResults = toArray<Record<string, unknown>>(personNode.RaceResult);
       const resultNodes = raceResults.length > 0 ? raceResults : [personNode];
 
-      return resultNodes.map<PersonActivityRow>((resultNode) => {
+      return resultNodes.flatMap<PersonActivityRow>((resultNode) => {
         const raceResult = getRecord(resultNode.RaceResult) ?? getRecord(personNode.RaceResult) ?? getRecord(resultNode);
         const eventRaceId = getNodeText(raceResult?.EventRaceId) ?? getNodeText(resultNode.EventRaceId) ?? getNodeText(classRaceInfo?.EventRaceId) ?? getNodeText(classNode.EventRaceId) ?? undefined;
-        const result = getRecord(resultNode.Result) ?? getRecord(personNode.Result) ?? getRecord(resultNode);
-        const timeText = getTextValue(result?.Time);
-        const timeBehindText = getTextValue(result?.TimeDiff) ?? getTextValue(result?.TimeBehind);
-        const timeSeconds = parseClockDurationToSeconds(timeText);
-        const timeBehindSeconds = parseClockDurationToSeconds(timeBehindText);
-        const position = getNodeText(result?.ResultPosition) ?? getNodeText(result?.Position);
-        const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
+      const result = getRecord(resultNode.Result) ?? getRecord(personNode.Result) ?? getRecord(resultNode);
+      const timeText = getTextValue(result?.Time);
+      const timeBehindText = getTextValue(result?.TimeDiff) ?? getTextValue(result?.TimeBehind);
+      const timeSeconds = parseClockDurationToSeconds(timeText);
+      const timeBehindSeconds = parseClockDurationToSeconds(timeBehindText);
+      const position = getNodeText(result?.ResultPosition) ?? getNodeText(result?.Position);
+      const status = getStatusText(result?.CompetitorStatus ?? result?.Status);
 
-        return {
+        if (status === 'Inactive') {
+          return [];
+        }
+
+        return [{
           classLabel,
           classEntriesCount,
           courseLengthLabel: formatCourseLength(courseLengthMeters) ?? undefined,
@@ -299,7 +303,7 @@ function extractRowsFromClassNode(
           sortKey: position ? Number(position) : Number.MAX_SAFE_INTEGER,
           status: status ?? undefined,
           time: timeText ?? '-',
-        } satisfies PersonActivityRow;
+        } satisfies PersonActivityRow];
       });
     }
 

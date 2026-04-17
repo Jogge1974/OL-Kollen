@@ -16,6 +16,9 @@ export function PushSyncController() {
   const user = useAuthStore((state) => state.user);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const notificationSettings = usePreferencesStore((state) => state.notificationSettings);
+  const favoriteClasses = usePreferencesStore((state) => state.favoriteClasses);
+  const calendarFilterPresets = usePreferencesStore((state) => state.calendarFilterPresets);
+  const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
   const lastFingerprintRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -31,6 +34,9 @@ export function PushSyncController() {
     }
 
     const fingerprint = JSON.stringify({
+      calendarDefaultFilterTemplate,
+      calendarFilterPresets,
+      favoriteClasses,
       favoriteEvents: favoriteEvents.map((event) => event.id),
       notificationSettings,
       personId: user.personId,
@@ -72,6 +78,11 @@ export function PushSyncController() {
           fullName: user.fullName,
           notificationSettings,
           personId,
+          preferences: {
+            calendarDefaultFilterTemplate,
+            calendarFilterPresets,
+            favoriteClasses,
+          },
           username: user.username,
         });
 
@@ -94,7 +105,7 @@ export function PushSyncController() {
     return () => {
       isCancelled = true;
     };
-  }, [favoriteEvents, notificationSettings, user]);
+  }, [calendarDefaultFilterTemplate, calendarFilterPresets, favoriteClasses, favoriteEvents, notificationSettings, user]);
 
   return null;
 }

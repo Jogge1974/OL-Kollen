@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     overflow: 'hidden',
     paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
   },
   backgroundWash: {

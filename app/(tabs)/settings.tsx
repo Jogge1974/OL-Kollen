@@ -124,7 +124,7 @@ export default function SettingsScreen() {
   const confirmLogout = () => {
     Alert.alert(
       'Logga ut?',
-      'Om du loggar ut raderas alla favoriter och alla favoritklasser från appen. Vill du gå vidare?',
+      'Dina inställningar sparas och kan hämtas tillbaka när du loggar in igen.',
       [
         {
           style: 'cancel',
@@ -142,9 +142,9 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = async () => {
-    await clearLogoutSensitivePreferences();
     await signOut();
-    Alert.alert('Utloggad', 'Din lokala session är rensad och favoriter/favoritklasser har tagits bort.');
+    await clearLogoutSensitivePreferences();
+    Alert.alert('Utloggad', 'Du är nu utloggad.');
   };
 
   return (
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     flexGrow: 1,
     paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
   },
   headerCard: {

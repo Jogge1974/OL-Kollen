@@ -14,7 +14,12 @@ type UseSverigelistanDirectoryResult = {
   rows: SverigelistanRow[];
 };
 
-export function useSverigelistanDirectory(): UseSverigelistanDirectoryResult {
+type UseSverigelistanDirectoryOptions = {
+  enabled?: boolean;
+};
+
+export function useSverigelistanDirectory(options: UseSverigelistanDirectoryOptions = {}): UseSverigelistanDirectoryResult {
+  const enabled = options.enabled ?? true;
   const [error, setError] = React.useState<string | null>(null);
   const [hasSupabase, setHasSupabase] = React.useState(true);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -23,6 +28,16 @@ export function useSverigelistanDirectory(): UseSverigelistanDirectoryResult {
   const [rows, setRows] = React.useState<SverigelistanRow[]>([]);
 
   const load = React.useCallback(async (isPullRefresh = false) => {
+    if (!enabled) {
+      setError(null);
+      setHasSupabase(true);
+      setIsLoading(false);
+      setIsRefreshing(false);
+      setLatestUpdated(null);
+      setRows([]);
+      return;
+    }
+
     if (isPullRefresh) {
       setIsRefreshing(true);
     } else {
@@ -71,7 +86,7 @@ export function useSverigelistanDirectory(): UseSverigelistanDirectoryResult {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [enabled]);
 
   React.useEffect(() => {
     void load(false);

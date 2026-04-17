@@ -2,9 +2,13 @@ import { create } from 'zustand';
 
 import { authenticateEventorPerson } from '@/src/api/authApi';
 import { resolveAccessLevel } from '@/src/features/auth/access';
+import { createFetchProfilePayload, createLogoutSyncPayload } from '@/src/features/notifications/pushSync';
 import { clearStoredEventorCredentials, getStoredEventorCredentials, saveStoredEventorCredentials } from '@/src/services/eventorCredentials';
 import { clearStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { registerForPushNotificationsAsync } from '@/src/services/pushNotifications';
 import { getStoredJson, removeStoredValue, setStoredJson } from '@/src/services/secureStorage';
+import { hasSupabaseRuntimeConfig, invokeSupabaseFunction } from '@/src/services/supabase';
+import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { AuthenticatedUser, EventorLoginInput, PersistedAuthSession } from '@/src/types/user';
 
 const AUTH_SESSION_KEY = 'olkollen.auth.session';
@@ -88,6 +92,55 @@ export const useAuthStore = create<AuthState>((set) => ({
       } else {
         await removeStoredValue(AUTH_SESSION_KEY);
       }
+
+      // Fetch server-side profile (favorites, preferences, notification settings) and restore
+      if (hasSupabaseRuntimeConfig() && enrichedUser.personId) {
+        try {
+          const response = await invokeSupabaseFunction<{
+            ok: boolean;
+            favorites?: Array<{
+              classificationId: number;
+              classificationLabel: string;
+              hasPublishedResults: boolean;
+              hasPublishedStarts: boolean;
+              id: string;
+              name: string;
+              startDate: string;
+            }>;
+            preferences?: {
+              calendarDefaultFilterTemplate?: unknown;
+              calendarFilterPresets?: unknown;
+              favoriteClasses?: string[];
+            } | null;
+            notificationSettings?: {
+              pushOnResultList: boolean;
+              pushOnStartList: boolean;
+            } | null;
+          }>('push-sync', createFetchProfilePayload(enrichedUser.personId));
+
+          if (response?.ok) {
+            const serverFavorites = (response.favorites ?? []).map((f) => ({
+              classificationId: f.classificationId,
+              classificationLabel: f.classificationLabel,
+              dateLabel: '',
+              hasPublishedResults: f.hasPublishedResults,
+              hasPublishedStarts: f.hasPublishedStarts,
+              id: f.id,
+              name: f.name,
+              organiserLabel: '',
+              startDate: f.startDate,
+            }));
+
+            await usePreferencesStore.getState().restoreFromServer({
+              favorites: serverFavorites,
+              notificationSettings: response.notificationSettings ?? null,
+              preferences: response.preferences ?? null,
+            });
+          }
+        } catch {
+          // Best-effort: don't block login if fetch fails
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Okänt fel vid inloggning.';
       set({
@@ -99,6 +152,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   signOut: async () => {
+    const currentUser = useAuthStore.getState().user;
+
+    // Deactivate push token for this device before clearing local state
+    if (currentUser?.personId && hasSupabaseRuntimeConfig()) {
+      try {
+        const registration = await registerForPushNotificationsAsync();
+        const payload = createLogoutSyncPayload(currentUser.personId, {
+          deviceId: registration.deviceId,
+          platform: registration.platform,
+          pushToken: null,
+        });
+        await invokeSupabaseFunction('push-sync', payload);
+      } catch {
+        // Best-effort: don't block logout if deactivation fails
+      }
+    }
+
     await removeStoredValue(AUTH_SESSION_KEY);
     await clearStoredEventorWebSessionCookie();
     await clearStoredEventorCredentials();

@@ -1,10 +1,13 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
+import { AppButton } from '@/src/components/AppButton';
+import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
@@ -17,6 +20,7 @@ import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export default function SverigelistaScreen() {
   const user = useAuthStore((state) => state.user);
+  const canViewSverigelistan = Boolean(user);
   const [selectedGender, setSelectedGender] = React.useState<'D' | 'H'>(user?.gender ?? 'H');
   const [selectedFilterMode, setSelectedFilterMode] = React.useState<'class' | 'club'>('class');
   const [selectedClassLabel, setSelectedClassLabel] = React.useState<string | null>(null);
@@ -26,7 +30,7 @@ export default function SverigelistaScreen() {
   const [clubSearchText, setClubSearchText] = React.useState('');
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const clubSearchListRef = React.useRef<FlatList<string> | null>(null);
-  const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory();
+  const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory({ enabled: canViewSverigelistan });
 
   React.useEffect(() => {
     if (user?.gender === 'D' || user?.gender === 'H') {
@@ -146,6 +150,20 @@ export default function SverigelistaScreen() {
       personId: row.RunnerId,
     });
   }, []);
+
+  if (!canViewSverigelistan) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.screen}>
+        <View style={styles.blockedContainer}>
+          <EmptyState
+            action={<AppButton label="Logga in" onPress={() => router.push('/profile')} />}
+            description="Logga in med Eventor för att se Sverigelistan."
+            title="Sverigelistan kräver inloggning"
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -524,7 +542,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 24,
     borderWidth: 1,
-    marginHorizontal: spacing.lg,
+    marginHorizontal: spacing.md,
     padding: spacing.lg,
   },
   emptyText: {
@@ -570,7 +588,7 @@ const styles = StyleSheet.create({
   listContent: {
     gap: 1,
     paddingBottom: spacing.md,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.sm,
   },
   listHeader: {
     paddingBottom: spacing.sm,
@@ -772,6 +790,11 @@ const styles = StyleSheet.create({
   screen: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  blockedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
   },
   list: {
     flex: 1,

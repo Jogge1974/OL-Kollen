@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 type SyncPayload = {
+  action?: 'sync' | 'logout' | 'fetch-profile';
   device: {
     deviceId: string;
     platform: string;
@@ -21,6 +22,11 @@ type SyncPayload = {
     pushOnResultList: boolean;
     pushOnStartList: boolean;
   };
+  preferences?: {
+    calendarDefaultFilterTemplate?: unknown;
+    calendarFilterPresets?: unknown;
+    favoriteClasses?: string[];
+  } | null;
   user: {
     clubId: string | null;
     clubName: string | null;
@@ -57,6 +63,76 @@ Deno.serve(async (request) => {
     });
 
     const personId = payload.user.personId;
+    const action = payload.action ?? 'sync';
+
+    // --- LOGOUT: deactivate device token for this person+device ---
+    if (action === 'logout') {
+      if (payload.device?.deviceId) {
+        await supabase
+          .from('device_push_tokens')
+          .update({ is_active: false, push_token: null, updated_at: new Date().toISOString() })
+          .eq('person_id', personId)
+          .eq('device_id', payload.device.deviceId);
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true, action: 'logout' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // --- FETCH PROFILE: return favorites + preferences for this person ---
+    if (action === 'fetch-profile') {
+      const [{ data: serverFavorites, error: fetchError }, { data: userRow, error: userError }, { data: notifRow, error: notifError }] =
+        await Promise.all([
+          supabase
+            .from('favorite_event_watches')
+            .select('event_id, event_name, event_date, classification_id, classification_label, has_published_results, has_published_starts')
+            .eq('person_id', personId),
+          supabase
+            .from('app_users')
+            .select('preferences_json')
+            .eq('person_id', personId)
+            .maybeSingle(),
+          supabase
+            .from('notification_preferences')
+            .select('push_on_start_list, push_on_result_list')
+            .eq('person_id', personId)
+            .maybeSingle(),
+        ]);
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      const preferencesJson = (userRow?.preferences_json ?? null) as Record<string, unknown> | null;
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          action: 'fetch-profile',
+          favorites: (serverFavorites ?? []).map((row) => ({
+            classificationId: row.classification_id,
+            classificationLabel: row.classification_label ?? '',
+            hasPublishedResults: Boolean(row.has_published_results),
+            hasPublishedStarts: Boolean(row.has_published_starts),
+            id: row.event_id,
+            name: row.event_name ?? '',
+            startDate: row.event_date ?? '',
+          })),
+          preferences: preferencesJson,
+          notificationSettings: notifRow
+            ? {
+                pushOnResultList: Boolean(notifRow.push_on_result_list),
+                pushOnStartList: Boolean(notifRow.push_on_start_list),
+              }
+            : null,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // --- SYNC (default): full sync of favorites, tokens, preferences ---
 
     const { data: existingWatches, error: existingWatchesError } = await supabase
       .from('favorite_event_watches')
@@ -85,6 +161,7 @@ Deno.serve(async (request) => {
       email: payload.user.email,
       full_name: payload.user.fullName,
       person_id: personId,
+      preferences_json: payload.preferences ?? null,
       updated_at: new Date().toISOString(),
       username: payload.user.username,
     });

@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -18,11 +18,13 @@ import { useEventCompetitorCount } from '@/src/hooks/useEventCompetitorCount';
 import { useEventDocuments } from '@/src/hooks/useEventDocuments';
 import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
 import { useAuthStore } from '@/src/store/authStore';
+import { canRenderNativeMap } from '@/src/services/nativeMaps';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors, getClassificationTone } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventDocument, EventPublishedListKind } from '@/src/types/eventor';
+import { normalizeEventId } from '@/src/utils/eventId';
 
 export default function EventDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -50,11 +52,16 @@ export default function EventDetailScreen() {
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
   const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId, event?.eventForm ?? null);
+  const canShowNativeMap = canRenderNativeMap();
+  const normalizedEventId = React.useMemo(() => normalizeEventId(event?.id ?? ''), [event?.id]);
   const pmDocument = React.useMemo(() => {
     return documents.find((document) => normalizeDocumentName(document.name) === 'pm') ?? null;
   }, [documents]);
   const isLoggedIn = Boolean(user);
-  const isFavorite = React.useMemo(() => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === event?.id), [event?.id, favoriteEvents]);
+  const isFavorite = React.useMemo(
+    () => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === normalizedEventId),
+    [favoriteEvents, normalizedEventId],
+  );
   const showResultActions = event?.hasPublishedResults ?? false;
   const secondaryKind: EventPublishedListKind = event?.hasPublishedStarts ? 'starts' : 'entries';
   const resultCount = isRelayEvent ? counts.totalEntries : counts.totalStarts;
@@ -96,7 +103,7 @@ export default function EventDetailScreen() {
       dateLabel: event.dateLabel,
       hasPublishedResults: event.hasPublishedResults,
       hasPublishedStarts: event.hasPublishedStarts,
-      id: event.id,
+      id: normalizedEventId,
       name: event.name,
       organiserLabel: event.organiserNames.join(', '),
       startDate: event.startDate,
@@ -243,20 +250,31 @@ export default function EventDetailScreen() {
         <View style={[styles.panel, styles.navigationPanel]}>
           {event.centerPosition ? (
             <View style={styles.navigationContent}>
-              <MapView
-                initialRegion={{
-                  latitude: event.centerPosition.latitude,
-                  latitudeDelta: 0.27,
-                  longitude: event.centerPosition.longitude,
-                  longitudeDelta: 0.27,
-                }}
-                rotateEnabled={false}
-                scrollEnabled
-                style={styles.navigationMap}
-                zoomEnabled
-              >
-                <Marker coordinate={event.centerPosition} pinColor={colors.accent} title={event.name} />
-              </MapView>
+              {canShowNativeMap ? (
+                <MapView
+                  provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                  initialRegion={{
+                    latitude: event.centerPosition.latitude,
+                    latitudeDelta: 0.27,
+                    longitude: event.centerPosition.longitude,
+                    longitudeDelta: 0.27,
+                  }}
+                  rotateEnabled={false}
+                  scrollEnabled
+                  style={styles.navigationMap}
+                  zoomEnabled
+                >
+                  <Marker coordinate={event.centerPosition} pinColor={colors.accent} title={event.name} />
+                </MapView>
+              ) : (
+                <View style={styles.navigationMapFallback}>
+                  <Ionicons color={colors.primary} name="map-outline" size={28} />
+                  <Text style={styles.navigationMapFallbackTitle}>Kartan kräver Google Maps för Android</Text>
+                  <Text style={styles.navigationMapFallbackText}>
+                    Appen är byggd för att visa kartan med Google Maps på Android. Utan den konfigurationen visas i stället denna information.
+                  </Text>
+                </View>
+              )}
 
               {Platform.OS === 'ios' ? (
                 <View style={styles.navigationButtonOverlayRow}>
@@ -618,6 +636,28 @@ const styles = StyleSheet.create({
   navigationMap: {
     height: 260,
     width: '100%',
+  },
+  navigationMapFallback: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceOverlay,
+    borderColor: colors.border,
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 260,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+  },
+  navigationMapFallbackTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  navigationMapFallbackText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   navigationPanel: {
     overflow: 'hidden',

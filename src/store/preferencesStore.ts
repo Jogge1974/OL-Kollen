@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { createDefaultCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
 import { getStoredJson, setStoredJson } from '@/src/services/secureStorage';
+import { normalizeEventId } from '@/src/utils/eventId';
 import {
   CalendarFilterPreset,
   CalendarFilterTemplate,
@@ -11,6 +12,16 @@ import {
 } from '@/src/types/preferences';
 
 const PREFERENCES_STORAGE_KEY = 'olkollen.preferences';
+
+export type ServerProfile = {
+  favorites: FavoriteEventSummary[];
+  notificationSettings: NotificationSettings | null;
+  preferences: {
+    calendarDefaultFilterTemplate?: unknown;
+    calendarFilterPresets?: unknown;
+    favoriteClasses?: string[];
+  } | null;
+};
 
 const defaultNotificationSettings: NotificationSettings = {
   pushOnResultList: false,
@@ -36,6 +47,8 @@ type PreferencesState = PreferencesData & {
   hydratePreferences: () => Promise<void>;
   isFavorite: (eventId: string) => boolean;
   isHydrated: boolean;
+  mergeServerFavorites: (serverFavorites: FavoriteEventSummary[]) => Promise<void>;
+  restoreFromServer: (profile: ServerProfile) => Promise<void>;
   moveCalendarFilterPreset: (presetId: string, direction: 'down' | 'up') => Promise<void>;
   moveFavoriteClass: (className: string, direction: 'down' | 'up') => Promise<void>;
   notificationSettings: NotificationSettings;
@@ -116,6 +129,40 @@ function sortFavorites(favorites: FavoriteEventSummary[]) {
 
 function normalizeFavoriteClassName(className: string) {
   return className.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeFavoriteEventSummary(event: FavoriteEventSummary): FavoriteEventSummary {
+  return {
+    ...event,
+    id: normalizeEventId(event.id),
+  };
+}
+
+function mergeFavoriteEventSummaries(existing: FavoriteEventSummary, incoming: FavoriteEventSummary): FavoriteEventSummary {
+  return {
+    classificationId: existing.classificationId || incoming.classificationId,
+    classificationLabel: existing.classificationLabel || incoming.classificationLabel,
+    dateLabel: existing.dateLabel || incoming.dateLabel,
+    hasPublishedResults: existing.hasPublishedResults || incoming.hasPublishedResults,
+    hasPublishedStarts: existing.hasPublishedStarts || incoming.hasPublishedStarts,
+    id: normalizeEventId(existing.id),
+    organiserLabel: existing.organiserLabel || incoming.organiserLabel,
+    name: existing.name || incoming.name,
+    startDate: existing.startDate || incoming.startDate,
+  };
+}
+
+function normalizeFavoriteEvents(favoriteEvents: FavoriteEventSummary[]) {
+  const favoritesById = new Map<string, FavoriteEventSummary>();
+
+  for (const favoriteEvent of favoriteEvents) {
+    const normalized = normalizeFavoriteEventSummary(favoriteEvent);
+    const existing = favoritesById.get(normalized.id);
+
+    favoritesById.set(normalized.id, existing ? mergeFavoriteEventSummaries(existing, normalized) : normalized);
+  }
+
+  return sortFavorites(Array.from(favoritesById.values()));
 }
 
 function buildPersistedPreferences(state: PreferencesData): PersistedPreferences {
@@ -219,16 +266,20 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     });
   },
   clearLogoutSensitivePreferences: async () => {
-    const current = get();
-    const favoriteEvents: FavoriteEventSummary[] = [];
+    const defaults = createDefaultPreferencesData();
 
-    set({ favoriteEvents });
+    set({
+      calendarFilterPresets: [],
+      favoriteClasses: [],
+      favoriteEvents: [],
+      notificationSettings: defaultNotificationSettings,
+    });
     await persistCurrentPreferences({
-      calendarDefaultFilterTemplate: current.calendarDefaultFilterTemplate,
-      calendarFilterPresets: current.calendarFilterPresets,
-      favoriteClasses: current.favoriteClasses,
-      favoriteEvents,
-      notificationSettings: current.notificationSettings,
+      calendarDefaultFilterTemplate: defaults.calendarDefaultFilterTemplate,
+      calendarFilterPresets: [],
+      favoriteClasses: [],
+      favoriteEvents: [],
+      notificationSettings: defaultNotificationSettings,
     });
   },
   hydratePreferences: async () => {
@@ -238,12 +289,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
 
       const calendarDefaultFilterTemplate = normalizeCalendarFilterTemplate(storedPreferences?.calendarDefaultFilterTemplate);
       const calendarFilterPresets = normalizeCalendarFilterPresets(storedPreferences?.calendarFilterPresets);
+      const favoriteEvents = normalizeFavoriteEvents(storedPreferences?.favoriteEvents ?? defaultPreferences.favoriteEvents);
 
       set({
         calendarDefaultFilterTemplate,
         calendarFilterPresets,
         favoriteClasses: storedPreferences?.favoriteClasses ?? defaultPreferences.favoriteClasses,
-        favoriteEvents: sortFavorites(storedPreferences?.favoriteEvents ?? defaultPreferences.favoriteEvents),
+        favoriteEvents,
         isHydrated: true,
         notificationSettings: storedPreferences?.notificationSettings ?? defaultPreferences.notificationSettings,
       });
@@ -256,8 +308,61 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       });
     }
   },
+  mergeServerFavorites: async (serverFavorites: FavoriteEventSummary[]) => {
+    const current = get();
+    const merged = normalizeFavoriteEvents([...current.favoriteEvents, ...serverFavorites]);
+
+    set({ favoriteEvents: merged });
+    await persistCurrentPreferences({
+      calendarDefaultFilterTemplate: current.calendarDefaultFilterTemplate,
+      calendarFilterPresets: current.calendarFilterPresets,
+      favoriteClasses: current.favoriteClasses,
+      favoriteEvents: merged,
+      notificationSettings: current.notificationSettings,
+    });
+  },
+  restoreFromServer: async (profile: ServerProfile) => {
+    const current = get();
+    const serverPrefs = profile.preferences;
+
+    const favoriteEvents = normalizeFavoriteEvents([
+      ...current.favoriteEvents,
+      ...profile.favorites,
+    ]);
+
+    const notificationSettings = profile.notificationSettings ?? current.notificationSettings;
+
+    const calendarDefaultFilterTemplate = serverPrefs?.calendarDefaultFilterTemplate
+      ? normalizeCalendarFilterTemplate(serverPrefs.calendarDefaultFilterTemplate as Partial<CalendarFilterTemplate>)
+      : current.calendarDefaultFilterTemplate;
+
+    const calendarFilterPresets = serverPrefs?.calendarFilterPresets
+      ? normalizeCalendarFilterPresets(serverPrefs.calendarFilterPresets)
+      : current.calendarFilterPresets;
+
+    const favoriteClasses = Array.isArray(serverPrefs?.favoriteClasses) && serverPrefs.favoriteClasses.length > 0
+      ? serverPrefs.favoriteClasses
+      : current.favoriteClasses;
+
+    set({
+      calendarDefaultFilterTemplate,
+      calendarFilterPresets,
+      favoriteClasses,
+      favoriteEvents,
+      notificationSettings,
+    });
+
+    await persistCurrentPreferences({
+      calendarDefaultFilterTemplate,
+      calendarFilterPresets,
+      favoriteClasses,
+      favoriteEvents,
+      notificationSettings,
+    });
+  },
   isFavorite: (eventId: string) => {
-    return get().favoriteEvents.some((event) => event.id === eventId);
+    const normalizedEventId = normalizeEventId(eventId);
+    return get().favoriteEvents.some((event) => event.id === normalizedEventId);
   },
   isHydrated: false,
   moveCalendarFilterPreset: async (presetId, direction) => {
@@ -328,7 +433,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   removeFavorite: async (eventId: string) => {
     const current = get();
-    const favoriteEvents = current.favoriteEvents.filter((event) => event.id !== eventId);
+    const normalizedEventId = normalizeEventId(eventId);
+    const favoriteEvents = current.favoriteEvents.filter((event) => event.id !== normalizedEventId);
 
     set({ favoriteEvents });
     await persistCurrentPreferences({
@@ -383,10 +489,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   toggleFavorite: async (event) => {
     const current = get();
-    const exists = current.favoriteEvents.some((favoriteEvent) => favoriteEvent.id === event.id);
+    const normalizedEvent = normalizeFavoriteEventSummary(event);
+    const exists = current.favoriteEvents.some((favoriteEvent) => favoriteEvent.id === normalizedEvent.id);
     const favoriteEvents = exists
-      ? current.favoriteEvents.filter((favoriteEvent) => favoriteEvent.id !== event.id)
-      : sortFavorites([event, ...current.favoriteEvents]);
+      ? current.favoriteEvents.filter((favoriteEvent) => favoriteEvent.id !== normalizedEvent.id)
+      : sortFavorites([normalizedEvent, ...current.favoriteEvents.map(normalizeFavoriteEventSummary)]);
 
     set({ favoriteEvents });
     await persistCurrentPreferences({

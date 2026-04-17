@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     overflow: 'hidden',
     paddingBottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
   },
   hero: {

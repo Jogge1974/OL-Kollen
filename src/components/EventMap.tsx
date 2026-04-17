@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
@@ -12,6 +12,7 @@ import { colors, getClassificationTone } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
+import { canRenderNativeMap } from '@/src/services/nativeMaps';
 
 type EventMapProps = {
   error: string | null;
@@ -35,6 +36,7 @@ export function EventMap({ error, events }: EventMapProps) {
   const markerGroups = React.useMemo(() => createMarkerGroups(events, currentRegion), [currentRegion, events]);
   const [initialRegion, setInitialRegion] = React.useState<Region>(() => getFallbackRegion(createMarkerGroups(events, DEFAULT_REGION)));
   const [locationHint, setLocationHint] = React.useState<string | null>(null);
+  const canShowMap = canRenderNativeMap();
 
   const selectedGroup = React.useMemo(() => markerGroups.find((group) => group.key === selectedMarkerKey) ?? null, [markerGroups, selectedMarkerKey]);
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
@@ -49,6 +51,11 @@ export function EventMap({ error, events }: EventMapProps) {
   }, [markerGroups]);
 
   React.useEffect(() => {
+    if (!canShowMap) {
+      setLocationHint(null);
+      return;
+    }
+
     let isMounted = true;
 
     async function loadPosition() {
@@ -94,7 +101,7 @@ export function EventMap({ error, events }: EventMapProps) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [canShowMap]);
 
   if (markerGroups.length === 0) {
     return (
@@ -108,56 +115,64 @@ export function EventMap({ error, events }: EventMapProps) {
   return (
     <>
       <View style={styles.container}>
-        <MapView
-          ref={mapRef}
-          initialRegion={initialRegion}
-          onRegionChangeComplete={(region) => setCurrentRegion(region)}
-          onPress={() => {
-            if (ignoreNextMapPressRef.current) {
-              ignoreNextMapPressRef.current = false;
-              return;
-            }
+        {canShowMap ? (
+          <MapView
+            provider={PROVIDER_GOOGLE}
+            ref={mapRef}
+            initialRegion={initialRegion}
+            onRegionChangeComplete={(region) => setCurrentRegion(region)}
+            onPress={() => {
+              if (ignoreNextMapPressRef.current) {
+                ignoreNextMapPressRef.current = false;
+                return;
+              }
 
-            setSelectedMarkerKey(null);
-          }}
-          showsCompass
-          showsMyLocationButton
-          showsUserLocation
-          style={styles.map}
-        >
-          {markerGroups.map((group) => {
-            const isSelected = selectedMarkerKey === group.key;
-            const tone = getClassificationTone(group.events[0]?.classificationId ?? 2);
-            const markerColor = isSelected ? colors.accent : tone.accent;
+              setSelectedMarkerKey(null);
+            }}
+            showsCompass
+            showsMyLocationButton
+            showsUserLocation
+            style={styles.map}
+          >
+            {markerGroups.map((group) => {
+              const isSelected = selectedMarkerKey === group.key;
+              const tone = getClassificationTone(group.events[0]?.classificationId ?? 2);
+              const markerColor = isSelected ? colors.accent : tone.accent;
 
-            return (
-              <Marker
-                coordinate={group.coordinate}
-                key={group.key}
-                onPress={() => {
-                  ignoreNextMapPressRef.current = true;
-                  setSelectedMarkerKey(group.key);
-                }}
-                tracksViewChanges
-              >
-                <View
-                  style={[
-                    styles.markerPin,
-                    {
-                      backgroundColor: markerColor,
-                      borderColor: isSelected ? colors.primaryDeep : colors.surface,
-                    },
-                    isSelected ? styles.markerPinActive : null,
-                  ]}
+              return (
+                <Marker
+                  coordinate={group.coordinate}
+                  key={group.key}
+                  onPress={() => {
+                    ignoreNextMapPressRef.current = true;
+                    setSelectedMarkerKey(group.key);
+                  }}
+                  tracksViewChanges
                 >
-                  <Ionicons color={isSelected ? colors.primaryDeep : colors.heroText} name="flag" size={group.events.length > 1 ? 11 : 13} />
-                  {group.events.length > 1 ? <Text style={[styles.markerCount, isSelected ? styles.markerCountActive : null]}>{group.events.length}</Text> : null}
-                </View>
-                <View style={[styles.markerTip, { borderTopColor: markerColor }]} />
-              </Marker>
-            );
-          })}
-        </MapView>
+                  <View
+                    style={[
+                      styles.markerPin,
+                      {
+                        backgroundColor: markerColor,
+                        borderColor: isSelected ? colors.primaryDeep : colors.surface,
+                      },
+                      isSelected ? styles.markerPinActive : null,
+                    ]}
+                  >
+                    <Ionicons color={isSelected ? colors.primaryDeep : colors.heroText} name="flag" size={group.events.length > 1 ? 11 : 13} />
+                    {group.events.length > 1 ? <Text style={[styles.markerCount, isSelected ? styles.markerCountActive : null]}>{group.events.length}</Text> : null}
+                  </View>
+                  <View style={[styles.markerTip, { borderTopColor: markerColor }]} />
+                </Marker>
+              );
+            })}
+          </MapView>
+        ) : (
+          <View style={styles.mapFallback}>
+            <Text style={styles.mapFallbackTitle}>Kartan stöds inte i den här Android-byggen ännu.</Text>
+            <Text style={styles.mapFallbackText}>Google Maps-nyckeln saknas i appkonfigurationen, så kartvyn kan inte visas säkert just nu.</Text>
+          </View>
+        )}
 
         {error ? (
           <View style={styles.inlineBanner}>
@@ -272,6 +287,29 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     flex: 1,
+  },
+  mapFallback: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceOverlay,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    flex: 1,
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 260,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  mapFallbackTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  mapFallbackText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   markerPin: {
     alignItems: 'center',

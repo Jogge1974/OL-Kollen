@@ -8,6 +8,7 @@ import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { PersonActivitySection } from '@/src/types/personLists';
+import { normalizeEventId } from '@/src/utils/eventId';
 
 type PersonActivitySectionListProps = {
   emptyLabel: string;
@@ -36,7 +37,10 @@ export function PersonActivitySectionList({
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
 
   const isFavorite = React.useCallback(
-    (eventId: string) => favoriteEvents.some((event) => event.id === eventId),
+    (eventId: string) => {
+      const normalizedEventId = normalizeEventId(eventId);
+      return favoriteEvents.some((event) => event.id === normalizedEventId);
+    },
     [favoriteEvents],
   );
 
@@ -52,7 +56,7 @@ export function PersonActivitySectionList({
         dateLabel: formatDisplayDate(row.eventDate),
         hasPublishedResults: false,
         hasPublishedStarts: false,
-        id: row.favouriteId,
+        id: normalizeEventId(row.favouriteId),
         name: row.eventName,
         organiserLabel: row.organisation !== '-' ? row.organisation : undefined,
         startDate: row.eventDate,

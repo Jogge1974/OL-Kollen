@@ -1,5 +1,6 @@
 import { FavoriteEventSummary, NotificationSettings } from '@/src/types/preferences';
 import { DevicePushTokenRecord, NotificationPreferenceRecord } from '@/src/types/user';
+import { normalizeEventId } from '@/src/utils/eventId';
 
 export type FavoriteWatchRecord = {
   clubId: string | null;
@@ -50,7 +51,7 @@ export function createFavoriteWatchSeed(
     classificationId: event.classificationId,
     classificationLabel: event.classificationLabel,
     eventDate: event.startDate,
-    eventId: event.id,
+    eventId: normalizeEventId(event.id),
     eventName: event.name,
     hasPublishedResults: event.hasPublishedResults,
     hasPublishedStarts: event.hasPublishedStarts,
@@ -76,12 +77,18 @@ export function createPushSyncPayload(args: {
   fullName: string | null;
   notificationSettings: NotificationSettings;
   personId: string;
+  preferences?: {
+    calendarDefaultFilterTemplate?: unknown;
+    calendarFilterPresets?: unknown;
+    favoriteClasses?: string[];
+  } | null;
   username: string;
-}): PushSyncPayload {
+}): Record<string, unknown> {
   return {
     device: args.device,
     favoriteEvents: args.favoriteEvents,
     notificationSettings: args.notificationSettings,
+    preferences: args.preferences ?? null,
     user: {
       clubId: args.clubId,
       clubName: args.clubName,
@@ -89,6 +96,40 @@ export function createPushSyncPayload(args: {
       fullName: args.fullName,
       personId: args.personId,
       username: args.username,
+    },
+  };
+}
+
+export function createLogoutSyncPayload(personId: string, device: PushSyncPayload['device']): Record<string, unknown> {
+  return {
+    action: 'logout',
+    device,
+    favoriteEvents: [],
+    notificationSettings: { pushOnResultList: false, pushOnStartList: false },
+    user: {
+      clubId: null,
+      clubName: null,
+      email: null,
+      fullName: null,
+      personId,
+      username: '',
+    },
+  };
+}
+
+export function createFetchProfilePayload(personId: string): Record<string, unknown> {
+  return {
+    action: 'fetch-profile',
+    device: null,
+    favoriteEvents: [],
+    notificationSettings: { pushOnResultList: false, pushOnStartList: false },
+    user: {
+      clubId: null,
+      clubName: null,
+      email: null,
+      fullName: null,
+      personId,
+      username: '',
     },
   };
 }
