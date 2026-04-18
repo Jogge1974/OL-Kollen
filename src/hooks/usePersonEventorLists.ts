@@ -59,7 +59,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
       try {
         const { fromDate, toDate } = getStartsDateRange();
         const startsXml = await fetchPersonStartsXml(personId, fromDate, toDate);
-        const nextStarts = parsePersonStartsXml(startsXml);
+        const nextStarts = filterPastStarts(parsePersonStartsXml(startsXml));
 
         if (!isMounted) {
           return;
@@ -206,4 +206,28 @@ function getStartsDateRange() {
     fromDate: formatYesterdayBoundary(),
     toDate: formatFutureBoundary(30),
   };
+}
+
+function filterPastStarts(sections: PersonActivitySection[]): PersonActivitySection[] {
+  const now = new Date();
+
+  return sections
+    .map((section) => {
+      const rows = section.rows.filter((row) => {
+        if (!row.startTime || row.startTime === '-') {
+          return true;
+        }
+
+        const match = row.startTime.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (!match) {
+          return true;
+        }
+
+        const startDate = new Date(`${row.eventDate}T${match[1]}:${match[2]}:${match[3] ?? '00'}`);
+        return startDate > now;
+      });
+
+      return { ...section, rows };
+    })
+    .filter((section) => section.rows.length > 0);
 }

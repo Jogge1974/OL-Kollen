@@ -732,8 +732,6 @@ function buildRowMetrics(page: SplitPage, row: EventSplitTimesRow, allRows: Even
 }
 
 function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[]): RowMetrics {
-  const firstInvalidSplitIndex = getFirstInvalidSplitIndex(row);
-
   const totalTime = row.totalTimeSeconds;
   const statusLabel = formatStatus(row.status);
 
@@ -751,7 +749,7 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
     };
   }
 
-  if (firstInvalidSplitIndex !== null || totalTime === null || totalTime <= 0) {
+  if (totalTime === null || totalTime <= 0) {
     return {
       leftPlacement: row.totalPosition ?? row.position ?? '-',
       loss: '-',
@@ -923,8 +921,14 @@ function formatDuration(totalSeconds: number) {
     return '-';
   }
 
+  const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 

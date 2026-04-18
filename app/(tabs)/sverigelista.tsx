@@ -94,6 +94,26 @@ export default function SverigelistaScreen() {
     setSelectedClubName(null);
   }, []);
 
+  const handleOpenMyPage = React.useCallback(() => {
+    if (!currentUserRunnerId) {
+      return;
+    }
+
+    const myRow = rows.find((row) => row.RunnerId === currentUserRunnerId);
+    if (!myRow) {
+      return;
+    }
+
+    setActiveRunnerRanking({
+      clubName: myRow.Club,
+      currentPoints: myRow.Points,
+      currentRank: myRow.Rank,
+      gender: myRow.Gender === 'D' ? 'D' : 'H',
+      name: myRow.Name,
+      personId: myRow.RunnerId,
+    });
+  }, [currentUserRunnerId, rows]);
+
   const handleOpenClubSearch = React.useCallback(() => {
     setClubSearchText(selectedClubName ?? '');
     setClubSearchVisible(true);
@@ -211,6 +231,12 @@ export default function SverigelistaScreen() {
                     </Text>
                   </Pressable>
                 ))}
+                {currentUserRunnerId ? (
+                  <Pressable onPress={handleOpenMyPage} style={({ pressed }) => [styles.myPageBadge, pressed ? styles.myPageBadgePressed : null]}>
+                    <Ionicons color={colors.primaryDeep} name="person-outline" size={14} />
+                    <Text style={styles.myPageBadgeText}>Min sida</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable onPress={handleResetFilters} style={({ pressed }) => [styles.resetAllButtonInline, pressed ? styles.resetAllButtonPressed : null]}>
                   <Ionicons color={colors.error} name="trash-outline" size={17} />
                 </Pressable>
@@ -484,11 +510,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 30,
     justifyContent: 'center',
-    marginLeft: 'auto',
     width: 30,
   },
   resetAllButtonPressed: {
     opacity: 0.85,
+  },
+  myPageBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.primaryDeep,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    height: 30,
+    justifyContent: 'center',
+    marginLeft: 'auto',
+    paddingHorizontal: 10,
+  },
+  myPageBadgePressed: {
+    opacity: 0.85,
+  },
+  myPageBadgeText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
   },
   classChip: {
     backgroundColor: colors.surfaceMuted,
