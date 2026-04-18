@@ -199,8 +199,22 @@ function buildSplitTimesRow({
 // WinSplits-style loss calculation.
 // Error thresholds: a leg counts as an error only when the loss exceeds
 // BOTH the time threshold (seconds) AND the percent threshold.
+// The percent threshold scales down for longer legs:
+//   ≤10 min → 20%, ≥20 min → 10%, linear in between.
 const ERROR_THRESHOLD_SECONDS = 20;
-const ERROR_THRESHOLD_PERCENT = 20;
+const ERROR_THRESHOLD_PERCENT_MAX = 20;
+const ERROR_THRESHOLD_PERCENT_MIN = 10;
+const ERROR_THRESHOLD_PERCENT_UPPER_MINUTES = 10;
+const ERROR_THRESHOLD_PERCENT_LOWER_MINUTES = 20;
+
+function getErrorThresholdPercent(expectedTimeSeconds: number) {
+  const minutes = expectedTimeSeconds / 60;
+  if (minutes <= ERROR_THRESHOLD_PERCENT_UPPER_MINUTES) return ERROR_THRESHOLD_PERCENT_MAX;
+  if (minutes >= ERROR_THRESHOLD_PERCENT_LOWER_MINUTES) return ERROR_THRESHOLD_PERCENT_MIN;
+  const range = ERROR_THRESHOLD_PERCENT_LOWER_MINUTES - ERROR_THRESHOLD_PERCENT_UPPER_MINUTES;
+  const fraction = (minutes - ERROR_THRESHOLD_PERCENT_UPPER_MINUTES) / range;
+  return ERROR_THRESHOLD_PERCENT_MAX - fraction * (ERROR_THRESHOLD_PERCENT_MAX - ERROR_THRESHOLD_PERCENT_MIN);
+}
 
 function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {
   if (rows.length === 0) {
@@ -236,9 +250,10 @@ function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {
       const expectedTime = reference / normalPerformance;
       const diffSeconds = splitTime - expectedTime;
       const diffPercent = (diffSeconds / expectedTime) * 100;
+      const percentThreshold = getErrorThresholdPercent(expectedTime);
 
       // Both thresholds must be exceeded for it to count as an error
-      if (diffSeconds > ERROR_THRESHOLD_SECONDS && diffPercent > ERROR_THRESHOLD_PERCENT) {
+      if (diffSeconds > ERROR_THRESHOLD_SECONDS && diffPercent > percentThreshold) {
         return Math.round(diffSeconds);
       }
 
