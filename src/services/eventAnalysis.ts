@@ -37,7 +37,7 @@ export type EventAnalysisSummary = {
   pacePerKmLabel: string;
   pacePerKmWithoutLossLabel: string;
   placingLabel: string;
-  speedFactorLabel: string;
+  referencePercentLabel: string;
   statusLabel: string;
   totalDiffLabel: string | null;
   totalTimeLabel: string | null;
@@ -134,7 +134,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
       pacePerKmLabel: formatPacePerKm(target.totalTimeSeconds, section.classLengthMeters ?? null),
       pacePerKmWithoutLossLabel,
       placingLabel,
-      speedFactorLabel: formatSpeedFactor(speedFactor),
+      referencePercentLabel: formatReferencePercent(speedFactor),
       runnerName: target.primary,
       organisation: target.organisation,
       statusLabel: formatStatus(target.status),
@@ -483,11 +483,10 @@ function formatPacePerKm(totalTimeSeconds: number | null, courseLengthMeters: nu
   return formatPacePerKmLabel(totalTimeSeconds, courseLengthMeters);
 }
 
-function formatSpeedFactor(factor: number) {
-  return factor.toLocaleString('sv-SE', {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-  });
+function formatReferencePercent(factor: number) {
+  const percent = (factor - 1) * 100;
+  const sign = percent > 0 ? '+' : '';
+  return `${sign}${percent.toLocaleString('sv-SE', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
 }
 
 function formatTime(totalSeconds: number) {

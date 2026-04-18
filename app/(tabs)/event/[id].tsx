@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -246,6 +246,16 @@ export default function EventDetailScreen() {
             ) : null}
           </View>
         </View>
+
+        {event.liveloxEventId ? (
+          <Pressable
+            onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
+            style={({ pressed }) => [styles.liveloxButton, pressed ? styles.liveloxButtonPressed : null]}
+          >
+            <Image source={require('@/assets/livelox-logo.png')} style={styles.liveloxLogo} resizeMode="contain" />
+            <Ionicons color="#F57C00" name="open-outline" size={14} style={styles.liveloxExternalIcon} />
+          </Pressable>
+        ) : null}
 
         <View style={[styles.panel, styles.navigationPanel]}>
           {event.centerPosition ? (
@@ -630,6 +640,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#E3F0D7',
     borderColor: '#8CAF7C',
     minHeight: 52,
+  },
+  liveloxButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    borderColor: '#F57C00',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  liveloxButtonPressed: {
+    opacity: 0.85,
+  },
+  liveloxLogo: {
+    flex: 1,
+    height: 36,
+  },
+  liveloxExternalIcon: {
+    marginLeft: spacing.xs,
   },
   navigationButtonRow: {
     flexDirection: 'row',

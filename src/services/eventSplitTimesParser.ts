@@ -196,51 +196,73 @@ function buildSplitTimesRow({
   } satisfies EventSplitTimesRow;
 }
 
+// WinSplits-style loss calculation.
+// Error thresholds: a leg counts as an error only when the loss exceeds
+// BOTH the time threshold (seconds) AND the percent threshold.
+const ERROR_THRESHOLD_SECONDS = 20;
+const ERROR_THRESHOLD_PERCENT = 20;
+
 function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {
   if (rows.length === 0) {
     return rows;
   }
 
   const splitCount = rows.reduce((max, row) => Math.max(max, row.splitCount), 0);
-  const medianSplitTimes = getMedianSplitTimes(rows, splitCount);
+  const referenceSplitTimes = getReferenceSplitTimes(rows, splitCount);
 
-  // Pass 1: compute initial speed factor & losses
-  const pass1 = rows.map((row) => {
-    const ratios = computeSplitRatios(row, medianSplitTimes);
-    const speedFactor = medianOfArray(ratios);
-    const splitLossSeconds = computeSplitLosses(row, medianSplitTimes, speedFactor);
-    return { row, ratios, speedFactor, splitLossSeconds };
-  });
+  return rows.map((row) => {
+    // Step 1: compute performance index per leg = referenceTime / actualTime
+    // A higher index means faster relative to the reference.
+    const indices: Array<{ index: number; weight: number }> = [];
+    for (let i = 0; i < referenceSplitTimes.length; i += 1) {
+      const reference = referenceSplitTimes[i];
+      const splitTime = getSplitTime(row, i + 1);
+      if (reference === null || reference <= 0 || splitTime === null || splitTime <= 0) continue;
+      indices.push({ index: reference / splitTime, weight: reference });
+    }
 
-  // Pass 2: recompute speed factor excluding legs with significant loss (>15s),
-  // then recalculate losses with the refined factor
-  return pass1.map(({ row, ratios, speedFactor, splitLossSeconds }) => {
-    const cleanRatios = ratios.filter((_, index) => {
-      const loss = splitLossSeconds[index];
-      return loss === null || loss <= 15;
+    // Step 2: weighted median of performance indices → "normal performance"
+    const normalPerformance = weightedMedian(indices);
+
+    // Step 3: for each leg compute expected time and loss
+    const splitLossSeconds = referenceSplitTimes.map((reference, i) => {
+      const splitTime = getSplitTime(row, i + 1);
+      if (reference === null || reference <= 0 || splitTime === null || splitTime <= 0) {
+        return null;
+      }
+
+      if (normalPerformance <= 0) return null;
+
+      const expectedTime = reference / normalPerformance;
+      const diffSeconds = splitTime - expectedTime;
+      const diffPercent = (diffSeconds / expectedTime) * 100;
+
+      // Both thresholds must be exceeded for it to count as an error
+      if (diffSeconds > ERROR_THRESHOLD_SECONDS && diffPercent > ERROR_THRESHOLD_PERCENT) {
+        return Math.round(diffSeconds);
+      }
+
+      return 0;
     });
-    const refinedFactor = cleanRatios.length >= 2 ? medianOfArray(cleanRatios) : speedFactor;
-    const refinedLosses = computeSplitLosses(row, medianSplitTimes, refinedFactor);
+
     const totalLossSeconds =
       row.status && row.status !== 'OK'
         ? null
-        : refinedLosses.reduce((sum: number, value) => sum + (typeof value === 'number' && value > 0 ? value : 0), 0);
+        : splitLossSeconds.reduce((sum: number, value) => sum + (typeof value === 'number' && value > 0 ? value : 0), 0);
 
-    // Store speedFactor - 1 as referencePercent so downstream display stays compatible
-    // (a factor of 1.12 means 12% slower than median → referencePercent = 0.12)
-    // (a factor of 0.87 means 13% faster than median → referencePercent = -0.13)
-    const referencePercent = refinedFactor - 1;
+    // referencePercent: how much slower/faster than reference (for display)
+    const referencePercent = normalPerformance > 0 ? (1 / normalPerformance) - 1 : 0;
 
     return {
       ...row,
       referencePercent,
-      splitLossSeconds: refinedLosses,
+      splitLossSeconds,
       totalLossSeconds,
     } satisfies EventSplitTimesRow;
   });
 }
 
-function getMedianSplitTimes(rows: EventSplitTimesRow[], splitCount: number) {
+function getReferenceSplitTimes(rows: EventSplitTimesRow[], splitCount: number) {
   const result: Array<number | null> = [];
 
   for (let splitIndex = 1; splitIndex <= splitCount; splitIndex += 1) {
@@ -252,37 +274,38 @@ function getMedianSplitTimes(rows: EventSplitTimesRow[], splitCount: number) {
         times.push(splitTime);
       }
     }
-    result.push(times.length > 0 ? medianOfArray(times) : null);
+    // Average of the top 25% fastest split times
+    result.push(times.length > 0 ? averageOfTopPercent(times, 25) : null);
   }
 
   return result;
 }
 
-function computeSplitRatios(row: EventSplitTimesRow, medianSplitTimes: Array<number | null>) {
-  const ratios: number[] = [];
+function weightedMedian(items: Array<{ index: number; weight: number }>): number {
+  if (items.length === 0) return 0;
+  if (items.length === 1) return items[0].index;
 
-  for (let i = 0; i < medianSplitTimes.length; i += 1) {
-    const median = medianSplitTimes[i];
-    if (median === null || median <= 0) continue;
-    const splitTime = getSplitTime(row, i + 1);
-    if (splitTime === null || splitTime <= 0) continue;
-    ratios.push(splitTime / median);
+  const sorted = [...items].sort((a, b) => a.index - b.index);
+  const totalWeight = sorted.reduce((sum, item) => sum + item.weight, 0);
+  const halfWeight = totalWeight / 2;
+
+  let cumulative = 0;
+  for (let i = 0; i < sorted.length; i += 1) {
+    cumulative += sorted[i].weight;
+    if (cumulative >= halfWeight) {
+      return sorted[i].index;
+    }
   }
 
-  return ratios;
+  return sorted[sorted.length - 1].index;
 }
 
-function computeSplitLosses(row: EventSplitTimesRow, medianSplitTimes: Array<number | null>, speedFactor: number) {
-  return medianSplitTimes.map((median, index) => {
-    const splitTime = getSplitTime(row, index + 1);
-    if (splitTime === null || median === null || median <= 0) {
-      return null;
-    }
-
-    const expectedTime = Math.round(speedFactor * median);
-    const loss = splitTime - expectedTime;
-    return Math.max(0, loss);
-  });
+function averageOfTopPercent(values: number[], percent: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const count = Math.max(1, Math.ceil(sorted.length * percent / 100));
+  const topSlice = sorted.slice(0, count);
+  return topSlice.reduce((sum, v) => sum + v, 0) / topSlice.length;
 }
 
 function medianOfArray(values: number[]): number {

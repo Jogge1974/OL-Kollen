@@ -126,9 +126,9 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                 </MetricSection>
 
                 <MetricSection title="Bana" icon="map-outline">
-                  <MetricLine label="Hastighetsfaktor" value={analysis.summary.speedFactorLabel} />
-                  <MetricLine label="Optimal tid" value={analysis.summary.optimalRaceTimeLabel ?? '-'} />
-                  <MetricLine label="Tid efter optimal tid" value={analysis.summary.optimalRaceTimeDeltaLabel ?? '-'} />
+                  <MetricLine label="Referens" value={analysis.summary.referencePercentLabel} />
+                  <MetricLine label="Idealtid" value={analysis.summary.optimalRaceTimeLabel ?? '-'} />
+                  <MetricLine label="Tid efter idealtid" value={analysis.summary.optimalRaceTimeDeltaLabel ?? '-'} />
                 </MetricSection>
               </View>
 

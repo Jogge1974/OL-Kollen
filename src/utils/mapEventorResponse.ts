@@ -75,6 +75,7 @@ export function mapEventDetailXml(xml: string, selectedEventRaceId?: string | nu
     finishDate: extractDate(rawEvent.FinishDate),
     hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult'),
     hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
+    liveloxEventId: extractLiveloxEventId(hashEntries),
     modifyDate: extractDate(rawEvent.ModifyDate),
     organiserNames: extractOrganisationNames(rawEvent),
     webUrl: getString(rawEvent.WebURL),
@@ -344,6 +345,18 @@ function normalizeModifyDate(value: string | null) {
 
 function hasHashKeyPrefix(keys: string[], prefix: string) {
   return keys.some((key) => key.startsWith(prefix));
+}
+
+function extractLiveloxEventId(hashEntries: Record<string, unknown>[]) {
+  const entry = hashEntries.find((e) => getString(e.Key) === 'Eventor_LiveloxEventConfigurations');
+  const value = getString(entry?.Value);
+
+  if (!value) {
+    return null;
+  }
+
+  const id = value.split(',')[0]?.trim();
+  return id && id.length > 0 ? id : null;
 }
 
 function mapPersonGender(value: string | null) {
