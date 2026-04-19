@@ -199,21 +199,34 @@ function buildSplitTimesRow({
 // WinSplits-style loss calculation.
 // Error thresholds: a leg counts as an error only when the loss exceeds
 // BOTH the time threshold (seconds) AND the percent threshold.
-// The percent threshold scales down for longer legs:
-//   ≤10 min → 20%, ≥20 min → 10%, linear in between.
+// The percent threshold scales down for longer legs (piecewise linear):
+//   ≤5 min → 20%, 7 min → 18%, 10 min → 15%, 12 min → 13%, ≥15 min → 10%
 const ERROR_THRESHOLD_SECONDS = 20;
-const ERROR_THRESHOLD_PERCENT_MAX = 20;
-const ERROR_THRESHOLD_PERCENT_MIN = 10;
-const ERROR_THRESHOLD_PERCENT_UPPER_MINUTES = 10;
-const ERROR_THRESHOLD_PERCENT_LOWER_MINUTES = 20;
+const ERROR_PERCENT_BREAKPOINTS: Array<[number, number]> = [
+  [5, 20],
+  [7, 18],
+  [10, 15],
+  [12, 13],
+  [15, 10],
+];
 
 function getErrorThresholdPercent(expectedTimeSeconds: number) {
   const minutes = expectedTimeSeconds / 60;
-  if (minutes <= ERROR_THRESHOLD_PERCENT_UPPER_MINUTES) return ERROR_THRESHOLD_PERCENT_MAX;
-  if (minutes >= ERROR_THRESHOLD_PERCENT_LOWER_MINUTES) return ERROR_THRESHOLD_PERCENT_MIN;
-  const range = ERROR_THRESHOLD_PERCENT_LOWER_MINUTES - ERROR_THRESHOLD_PERCENT_UPPER_MINUTES;
-  const fraction = (minutes - ERROR_THRESHOLD_PERCENT_UPPER_MINUTES) / range;
-  return ERROR_THRESHOLD_PERCENT_MAX - fraction * (ERROR_THRESHOLD_PERCENT_MAX - ERROR_THRESHOLD_PERCENT_MIN);
+  const bp = ERROR_PERCENT_BREAKPOINTS;
+
+  if (minutes <= bp[0][0]) return bp[0][1];
+  if (minutes >= bp[bp.length - 1][0]) return bp[bp.length - 1][1];
+
+  for (let i = 1; i < bp.length; i += 1) {
+    if (minutes <= bp[i][0]) {
+      const [minA, pctA] = bp[i - 1];
+      const [minB, pctB] = bp[i];
+      const fraction = (minutes - minA) / (minB - minA);
+      return pctA + fraction * (pctB - pctA);
+    }
+  }
+
+  return bp[bp.length - 1][1];
 }
 
 function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {

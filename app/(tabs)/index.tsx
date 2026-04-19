@@ -52,7 +52,7 @@ export default function HomeScreen() {
     () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
     [exactTodayEvents],
   );
-  const latestPastEvents = React.useMemo(() => [...resultsSections].slice(-2).reverse(), [resultsSections]);
+  const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
   const upcomingStartCount = React.useMemo(
     () => startsSections.reduce((sum, section) => sum + section.rows.length, 0),
     [startsSections],
