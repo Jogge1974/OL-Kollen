@@ -217,13 +217,13 @@ function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesR
 
   const splitCount = target.splitCount;
   const okRows = rows.filter((row) => row.status === 'OK' && row.totalTimeSeconds !== null);
-  const medianSplitTimes = getMedianSplitTimesLocal(okRows, splitCount);
+  const referenceSplitTimes = getReferenceSplitTimesLocal(okRows, splitCount);
 
-  // Build cumulative expected times using speedFactor × median
+  // Build cumulative expected times using speedFactor × reference
   const expectedCumulative: number[] = [];
   let cumulative = 0;
   for (let i = 0; i < splitCount; i += 1) {
-    cumulative += speedFactor * (medianSplitTimes[i] ?? 0);
+    cumulative += speedFactor * (referenceSplitTimes[i] ?? 0);
     expectedCumulative.push(cumulative);
   }
 
@@ -278,7 +278,7 @@ function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesR
   };
 }
 
-function getMedianSplitTimesLocal(rows: EventSplitTimesRow[], splitCount: number) {
+function getReferenceSplitTimesLocal(rows: EventSplitTimesRow[], splitCount: number) {
   const result: Array<number | null> = [];
   for (let i = 1; i <= splitCount; i += 1) {
     const times: number[] = [];
@@ -290,8 +290,9 @@ function getMedianSplitTimesLocal(rows: EventSplitTimesRow[], splitCount: number
       result.push(null);
     } else {
       const sorted = [...times].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      result.push(sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]);
+      const count = Math.max(1, Math.ceil(sorted.length * 0.25));
+      const topSlice = sorted.slice(0, count);
+      result.push(topSlice.reduce((sum, v) => sum + v, 0) / topSlice.length);
     }
   }
   return result;
@@ -324,23 +325,23 @@ function describeThird(percent: number | null) {
     return '';
   }
 
-  if (percent < -20) {
-    return 'Stor tidsvinst';
+  if (percent < -15) {
+    return 'Mycket bra';
   }
 
   if (percent < -5) {
-    return 'Tidsvinst';
+    return 'Bra';
   }
 
-  if (percent < 5) {
-    return 'Jämnt';
+  if (percent <= 5) {
+    return 'OK';
   }
 
-  if (percent < 20) {
-    return 'Tidsförlust';
+  if (percent <= 15) {
+    return 'Svag';
   }
 
-  return 'Stor tidsförlust';
+  return 'Mycket svag';
 }
 
 function findThresholdIndex(values: Array<number | null>, threshold: number) {

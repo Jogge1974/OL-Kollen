@@ -44,6 +44,7 @@ export default function RootLayout() {
       <PushSyncController />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="about" options={{ presentation: 'modal' }} />
       </Stack>
     </GestureHandlerRootView>
   );

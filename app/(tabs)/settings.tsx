@@ -2,6 +2,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
+import { router } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -344,9 +345,22 @@ export default function SettingsScreen() {
         </ExpandableCard>
         {user ? (
           <View style={styles.logoutFooter}>
+            <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
+              <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
+              <Text style={styles.aboutButtonText}>Om OL-Kollen</Text>
+              <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
+            </Pressable>
             <AppButton label="Logga ut" onPress={confirmLogout} variant="secondary" />
           </View>
-        ) : null}
+        ) : (
+          <View style={styles.logoutFooter}>
+            <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
+              <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
+              <Text style={styles.aboutButtonText}>Om OL-Kollen</Text>
+              <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -514,6 +528,23 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     lineHeight: 20,
+  },
+  aboutButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  aboutButtonText: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    flex: 1,
   },
   logoutFooter: {
     marginTop: 'auto',
