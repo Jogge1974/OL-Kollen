@@ -74,7 +74,9 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
   const targetAdjustedTotal = target.totalTimeSeconds !== null && targetTotalLoss !== null ? target.totalTimeSeconds - targetTotalLoss : null;
   const totalTimeLabel = target.totalTimeSeconds !== null ? formatTime(target.totalTimeSeconds) : null;
   const totalDiffLabel = buildGapLabel(target.totalTimeSeconds, officialRows.map((row) => row.totalTimeSeconds ?? null), true);
-  const placingLabel = formatPlacement(target.position ?? null, target.totalTimeSeconds, officialRows);
+  const placingLabel = target.status === 'OK'
+    ? formatPlacement(target.position ?? null, target.totalTimeSeconds, officialRows)
+    : '-';
   const timeLossLabel = targetTotalLoss !== null ? formatTimeDelta(targetTotalLoss) : null;
   const timeWithoutLossLabel = targetTotalLoss !== null && target.totalTimeSeconds !== null ? formatTime(target.totalTimeSeconds - targetTotalLoss) : null;
   const adjustedRows = officialRows

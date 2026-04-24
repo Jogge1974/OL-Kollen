@@ -51,18 +51,15 @@ export default function RootLayout() {
 }
 
 function PushNotificationNavigator() {
-  const lastHandledEventIdRef = React.useRef<string | null>(null);
-
   React.useEffect(() => {
     let isMounted = true;
 
     const navigateToEvent = (eventId: string) => {
-      if (!eventId || lastHandledEventIdRef.current === eventId) {
+      if (!eventId) {
         return;
       }
 
-      lastHandledEventIdRef.current = eventId;
-      if (typeof router.replace !== 'function' || typeof router.push !== 'function') {
+      if (typeof router.push !== 'function') {
         return;
       }
 
@@ -72,15 +69,14 @@ function PushNotificationNavigator() {
         }
 
         try {
-          router.replace('/(tabs)/calendar');
           router.push({
             params: { id: eventId, returnTo: '/(tabs)/calendar' },
-            pathname: '/(tabs)/event/[id]',
+            pathname: '/event/[id]',
           });
         } catch {
           // Ignore navigation errors on startup; the app must not crash here.
         }
-      }, 0);
+      }, 300);
     };
 
     void getLastNotificationEventId().then((eventId) => {
@@ -97,7 +93,7 @@ function PushNotificationNavigator() {
       isMounted = false;
       subscription.remove();
     };
-  }, [router]);
+  }, []);
 
   return null;
 }

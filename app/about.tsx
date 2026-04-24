@@ -68,7 +68,7 @@ export default function AboutScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Om OL-Kollen</Text>
+        <Text style={styles.headerTitle}>Om Kontrollen</Text>
         <Pressable onPress={() => router.back()} style={styles.closeChip}>
           <Ionicons color={colors.primary} name="close-circle-outline" size={16} />
           <Text style={styles.closeText}>Stäng</Text>
@@ -84,7 +84,7 @@ export default function AboutScreen() {
 
         <View style={styles.card}>
           <Text style={styles.bodyText}>
-            OL-Kollen är en app som ska vara ett komplement till Eventor. All data som visas i appen hämtas från Eventor.
+            Kontrollen är en app som ska vara ett komplement till Eventor. All data som visas i appen hämtas från Eventor.
           </Text>
           <Text style={styles.bodyText}>
             Vi kan inte garantera att alla uppgifter är fullständigt korrekta. Det kan finnas data som inte hämtas på rätt sätt eller information som ändras i Eventor utan att appen uppdateras.
