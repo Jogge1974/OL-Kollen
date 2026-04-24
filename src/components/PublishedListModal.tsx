@@ -1,7 +1,7 @@
 ﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -63,6 +63,9 @@ export function PublishedListModal({
   const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedAnchorKey, setSelectedAnchorKey] = React.useState<string | null>(null);
   const [pendingChoice, setPendingChoice] = React.useState<PendingChoice | null>(null);
+  const [sverigelistanRanks, setSverigelistanRanks] = React.useState<Record<string, number> | null>(null);
+  const [sverigelistanLoading, setSverigelistanLoading] = React.useState(false);
+  const [sverigelistanVisible, setSverigelistanVisible] = React.useState(false);
   const currentState = state;
   const favoriteClasses = usePreferencesStore((store) => store.favoriteClasses);
   const handleOpenNestedAnalysis = React.useCallback(
@@ -84,6 +87,12 @@ export function PublishedListModal({
     setSelectedAnchorKey(currentState?.initialAnchorKey ?? pickerAnchors[0]?.key ?? null);
     setPendingChoice(null);
   }, [currentState?.initialAnchorKey, currentState?.title, pickerAnchors]);
+
+  React.useEffect(() => {
+    setSverigelistanRanks(null);
+    setSverigelistanLoading(false);
+    setSverigelistanVisible(false);
+  }, [currentState?.eventId, currentState?.kind]);
 
   React.useEffect(() => {
     return () => {
@@ -141,6 +150,37 @@ export function PublishedListModal({
     setAnchorOffsets((current) => (current[anchorKey] === nextOffset ? current : { ...current, [anchorKey]: nextOffset }));
   }, []);
 
+  const handleSverigelistanPress = React.useCallback(async () => {
+    if (sverigelistanLoading) return;
+
+    if (sverigelistanRanks !== null) {
+      setSverigelistanVisible((prev) => !prev);
+      return;
+    }
+
+    setSverigelistanLoading(true);
+    try {
+      const response = await fetch('https://hvscmyudneihjbtitffy.supabase.co/functions/v1/sverigelistan-latest');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const json = (await response.json()) as { rows: Array<{ Rank: number; RunnerId: number | null }> };
+      const data = json.rows ?? [];
+      const rankMap: Record<string, number> = {};
+      for (const entry of data) {
+        if (entry.RunnerId != null) {
+          rankMap[String(entry.RunnerId)] = entry.Rank;
+        }
+      }
+      setSverigelistanRanks(rankMap);
+      setSverigelistanVisible(true);
+    } catch (error) {
+      console.error('[PublishedListModal] failed to fetch sverigelistan', error);
+    } finally {
+      setSverigelistanLoading(false);
+    }
+  }, [sverigelistanLoading, sverigelistanRanks]);
+
   return (
     <Modal animationType="slide" transparent visible={Boolean(state)}>
       <View style={styles.modalOverlay}>
@@ -151,10 +191,29 @@ export function PublishedListModal({
               <Text numberOfLines={2} style={styles.modalTitle}>
                 {currentState?.title}
               </Text>
-              <Pressable onPress={onClose} style={styles.modalCloseChip}>
-                <Ionicons color={colors.primaryDeep} name="close" size={14} />
-                <Text style={styles.modalCloseText}>Stäng</Text>
-              </Pressable>
+              <View style={styles.modalHeaderChips}>
+                {(currentState?.kind === 'starts' || currentState?.kind === 'entries') && !currentState?.isLoading ? (
+                  <Pressable onPress={handleSverigelistanPress} style={styles.sverigelistanChip} disabled={sverigelistanLoading}>
+                    {sverigelistanLoading ? (
+                      <>
+                        <ActivityIndicator color={colors.primaryDeep} size="small" />
+                        <Text style={styles.sverigelistanChipText}>Hämtar Sverigelistan</Text>
+                      </>
+                    ) : sverigelistanRanks !== null && sverigelistanVisible ? (
+                      <>
+                        <Text style={styles.sverigelistanChipText}>Sv.Plac.</Text>
+                        <Ionicons color={colors.primaryDeep} name="trash-outline" size={13} />
+                      </>
+                    ) : (
+                      <Text style={styles.sverigelistanChipText}>Sv.plac.</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+                <Pressable onPress={onClose} style={styles.modalCloseChip}>
+                  <Ionicons color={colors.primaryDeep} name="close" size={14} />
+                  <Text style={styles.modalCloseText}>Stäng</Text>
+                </Pressable>
+              </View>
             </View>
             {currentState?.eventSubtitle ? (
               <Text numberOfLines={2} style={styles.modalSubtitle}>
@@ -200,6 +259,8 @@ export function PublishedListModal({
                     selectedEventRaceId={currentState.selectedEventRaceId ?? null}
                     scope={currentState.scope}
                     section={section}
+                    sverigelistanRanks={sverigelistanRanks}
+                    sverigelistanVisible={sverigelistanVisible}
                   />
                 ))
               : null}
@@ -284,6 +345,8 @@ function PublishedTableSection({
   selectedEventRaceId,
   scope,
   section,
+  sverigelistanRanks,
+  sverigelistanVisible,
 }: {
   eventId: string;
   kind: EventPublishedListKind;
@@ -295,6 +358,8 @@ function PublishedTableSection({
   selectedEventRaceId: string | null;
   scope: EventPublishedListScope;
   section: PublishedListSection;
+  sverigelistanRanks: Record<string, number> | null;
+  sverigelistanVisible: boolean;
 }) {
   const seenClassAnchors = React.useRef<Set<string>>(new Set());
   seenClassAnchors.current.clear();
@@ -614,6 +679,12 @@ function PublishedTableSection({
             {scope === 'organisation' && !isEntries && !isOrganisationResults ? (
               <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableCourseColumn, { width: columnWidths.course }]}>
                 Langd
+              </Text>
+            ) : null}
+
+            {sverigelistanVisible && (kind === 'starts' || kind === 'entries') ? (
+              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.sverigelistanRankColumn, { textAlign: 'right' }]}>
+                Sv.pl.
               </Text>
             ) : null}
 
@@ -1045,6 +1116,12 @@ function PublishedTableSection({
             {scope === 'organisation' && !isEntries && !isOrganisationResults ? (
               <Text numberOfLines={1} style={[styles.tableCellText, styles.tableCourseColumn, { width: columnWidths.course }]}>
                 {row.courseLengthLabel ?? '-'}
+              </Text>
+            ) : null}
+
+            {sverigelistanVisible && sverigelistanRanks && (kind === 'starts' || kind === 'entries') ? (
+              <Text numberOfLines={1} style={[styles.tableCellText, styles.sverigelistanRankColumn, styles.sverigelistanRankCell]}>
+                {row.personId && sverigelistanRanks[row.personId] != null ? String(sverigelistanRanks[row.personId]) : ''}
               </Text>
             ) : null}
 
@@ -1887,6 +1964,7 @@ const styles = StyleSheet.create({
   },
   tableMetricColumn: {
     flexShrink: 0,
+    textAlign: 'right',
     width: 74,
   },
   tableMetricMergedStatus: {
@@ -1904,6 +1982,40 @@ const styles = StyleSheet.create({
   },
   tableMetricStrong: {
     fontFamily: typography.bodyStrong.fontFamily,
+  },
+  modalHeaderChips: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  sverigelistanChip: {
+    alignItems: 'center',
+    backgroundColor: '#E7F1FF',
+    borderColor: '#90B5E8',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  sverigelistanChipText: {
+    ...typography.buttonSmall,
+    color: colors.primaryDeep,
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  sverigelistanRankColumn: {
+    flexShrink: 0,
+    marginRight: 8,
+    paddingRight: 4,
+    textAlign: 'right',
+    width: 44,
+  },
+  sverigelistanRankCell: {
+    color: '#2F66A8',
+    fontFamily: typography.bodyStrong.fontFamily,
+    fontSize: 14,
   },
 });
 

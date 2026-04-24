@@ -91,6 +91,7 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
       const organisation = getRecord(competitor?.Organisation);
       const organisationId = getNodeText(competitor?.OrganisationId) ?? getNodeText(organisation?.OrganisationId);
       const person = getRecord(competitor?.Person);
+      const personId = getNodeText(person?.Id) ?? getNodeText(person?.PersonId) ?? getNodeText(competitor?.PersonId) ?? undefined;
       const personName = getPersonNameParts(person);
       const entryClass = getRecord(entry.EntryClass);
       const eventClass = getRecord(entryClass?.EventClass) ?? getRecord(entry.EventClass);
@@ -112,6 +113,7 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
         givenName: personName.given ?? undefined,
         organisation: getString(organisation?.Name) ?? `Klubb ${organisationId ?? 'okand'}`,
         organisationId: organisationId ?? undefined,
+        personId,
         primary: personName.fullName || `Person ${getNodeText(competitor?.PersonId) ?? 'okand'}`,
       };
     })
@@ -129,6 +131,7 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
               classLabel: row.classLabel,
               familyName: row.familyName,
               givenName: row.givenName,
+              personId: row.personId,
               primary: row.primary,
             })),
           title: 'Min klubb',
@@ -147,6 +150,7 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
         givenName: row.givenName,
         organisation: row.organisation,
         organisationId: row.organisationId,
+        personId: row.personId,
         primary: row.primary,
       },
     ]);
@@ -190,6 +194,7 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
         const person = getRecord(personStart.Person);
         const personName = getPersonNameParts(person);
         const organisation = getRecord(personStart.Organisation);
+        const personId = getNodeText(person?.Id) ?? getNodeText(person?.PersonId) ?? undefined;
         const start = getRecord(personStart.Start);
         const bibNumber = getNodeText(personStart.BibNumber) ?? getNodeText(start?.BibNumber) ?? undefined;
         const organisationId = getIdValue(organisation?.Id);
@@ -204,6 +209,7 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
           givenName: personName.given ?? undefined,
           organisation: getString(organisation?.Name) ?? '-',
           organisationId: organisationId ?? undefined,
+          personId,
           primary: personName.fullName || 'Namn saknas',
           sortStartSeconds: getSecondsFromClockValue(startTime),
           startRaceNumber,
@@ -237,6 +243,7 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
             courseLengthLabel: row.courseLengthLabel ?? undefined,
             familyName: row.familyName,
             givenName: row.givenName,
+            personId: row.personId,
             primary: row.primary,
             time: row.time,
           })),
@@ -261,6 +268,7 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
             givenName: row.givenName,
             organisation: row.organisation,
             organisationId: row.organisationId,
+            personId: row.personId,
             primary: row.primary,
             time: row.time,
           })),
