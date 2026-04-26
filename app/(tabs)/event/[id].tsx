@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -43,6 +43,7 @@ export default function EventDetailScreen() {
   const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [isInfoExpanded, setIsInfoExpanded] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
@@ -151,7 +152,23 @@ export default function EventDetailScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await Promise.all([reload(), reloadDocuments()]);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+            refreshing={isRefreshing}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <LinearGradient colors={tone.detailGradient} style={styles.hero}>
           <View style={styles.heroTopRow}>
             <Pressable onPress={handleClose} style={styles.backButton}>
@@ -657,8 +674,8 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   liveloxLogo: {
-    flex: 1,
     height: 36,
+    width: 120,
   },
   liveloxExternalIcon: {
     marginLeft: spacing.xs,
