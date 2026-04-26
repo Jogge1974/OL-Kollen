@@ -94,7 +94,9 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
       }));
 
       const oldestIncludedDate = getMonthStartOffset(11);
-      const currentClassName = birthYear && gender ? getRankingClassDefinition(gender, birthYear, new Date().getFullYear()).className : null;
+      const currentYear = new Date().getFullYear();
+      const previousYear = currentYear - 1;
+      const currentClassName = birthYear && gender ? getRankingClassDefinition(gender, birthYear, currentYear).className : null;
 
       const userRowsPromise = client
         .from('Sverigelistan')
@@ -102,18 +104,44 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
         .eq('RunnerId', numericRunnerId)
         .order('Updated', { ascending: true });
 
-      const classRowsPromise =
-        birthYear && gender
-          ? client
-              .from('Sverigelistan')
-              .select('BirthYear, Gender, Rank, RunnerId, Updated')
-              .eq('Gender', gender)
-              .gte('Updated', oldestIncludedDate)
-              .not('BirthYear', 'is', null)
-              .order('Updated', { ascending: true })
-          : Promise.resolve({ data: [], error: null });
+      let classRowsData: SverigelistanRow[] = [];
+      if (birthYear && gender) {
+        const currentClassDef = getRankingClassDefinition(gender, birthYear, currentYear);
+        const previousClassDef = getRankingClassDefinition(gender, birthYear, previousYear);
+        const widestMinBirthYear = Math.min(currentClassDef.minBirthYear, previousClassDef.minBirthYear);
+        const widestMaxBirthYear = Math.max(currentClassDef.maxBirthYear, previousClassDef.maxBirthYear);
 
-      const [userRowsResponse, classRowsResponse] = await Promise.all([userRowsPromise, classRowsPromise]);
+        const pageSize = 5000;
+        let offset = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const page = await client
+            .from('Sverigelistan')
+            .select('BirthYear, Gender, Rank, RunnerId, Updated')
+            .eq('Gender', gender)
+            .gte('Updated', oldestIncludedDate)
+            .gte('BirthYear', widestMinBirthYear)
+            .lte('BirthYear', widestMaxBirthYear)
+            .order('Updated', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+
+          if (page.error) {
+            if (!isMounted) return;
+            setState({
+              ...emptyState(setRefreshKey),
+              error: page.error.message || 'Det gick inte att läsa klassplaceringar från Sverigelistan.',
+            });
+            return;
+          }
+
+          const batch = (page.data ?? []) as SverigelistanRow[];
+          classRowsData.push(...batch);
+          hasMore = batch.length === pageSize;
+          offset += pageSize;
+        }
+      }
+
+      const userRowsResponse = await userRowsPromise;
 
       if (!isMounted) {
         return;
@@ -127,21 +155,13 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
         return;
       }
 
-      if (classRowsResponse.error) {
-        setState({
-          ...emptyState(setRefreshKey),
-          error: classRowsResponse.error.message || 'Det gick inte att läsa klassplaceringar från Sverigelistan.',
-        });
-        return;
-      }
-
       const rows = ((userRowsResponse.data ?? []) as SverigelistanRow[]).sort((left, right) => left.Updated.localeCompare(right.Updated));
       const currentEntry = rows.length > 0 ? rows[rows.length - 1] : null;
       const previousEntry = rows.length > 1 ? rows[rows.length - 2] : null;
       const monthlyTrend = buildMonthlyTrend(rows);
       const trendDirection = getTrendDirection(monthlyTrend);
       const classTrend =
-        birthYear && gender ? buildClassTrend(monthlyTrend, (classRowsResponse.data ?? []) as SverigelistanRow[], birthYear, gender, numericRunnerId) : buildMonthlyTrend([]);
+        birthYear && gender ? buildClassTrend(monthlyTrend, classRowsData, birthYear, gender, numericRunnerId) : buildMonthlyTrend([]);
       const currentClassRank = getLatestRank(classTrend);
       const previousClassRank = getPreviousRank(classTrend);
 
