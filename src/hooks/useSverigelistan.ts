@@ -67,7 +67,7 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
 
         setState({
           ...emptyState(setRefreshKey),
-          error: 'Löpar-id saknas eller har fel format.',
+          error: 'LöparId saknas eller har fel format.',
         });
         return;
       }
@@ -75,12 +75,12 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
       const client = getSupabaseClient();
       if (!client) {
         if (!isMounted) {
-          return;
+          return;m
         }
 
         setState({
           ...emptyState(setRefreshKey),
-          error: 'Supabase är inte konfigurerat i appen.',
+          error: 'Felkonfigurerat. Gå till Om Kontrollen och meddela felet i Synpunkter.',
           hasSupabase: false,
         });
         return;

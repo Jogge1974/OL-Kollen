@@ -219,7 +219,7 @@ export default function EventDetailScreen() {
 
         {isLoggedIn && !organisationId ? (
           <View style={styles.clubHint}>
-            <Text style={styles.clubHintText}>Inloggad, men inget klubb-id hittades i Eventor-svaret.</Text>
+            <Text style={styles.clubHintText}>Inloggad, men klubben hittades inte i Eventor.</Text>
           </View>
         ) : null}
 

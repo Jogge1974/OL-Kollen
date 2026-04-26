@@ -309,7 +309,7 @@ export default function SverigelistaScreen() {
               </ScrollView>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              {!hasSupabase ? <Text style={styles.helperText}>Supabase är inte konfigurerat, så Sverigelistan kan inte visas just nu.</Text> : null}
+              {!hasSupabase ? <Text style={styles.helperText}>Sverigelistan kan inte visas.</Text> : null}
             </View>
           </View>
         }

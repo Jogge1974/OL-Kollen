@@ -164,7 +164,7 @@ export default function ProfileScreen() {
             <AppTextField
               autoCapitalize="none"
               autoCorrect={false}
-              label="UserName"
+              label="Användarnamn"
               onChangeText={setUsername}
               placeholder="Ange ditt Eventor-användarnamn"
               value={username}
@@ -173,7 +173,7 @@ export default function ProfileScreen() {
             <AppTextField
               autoCapitalize="none"
               autoCorrect={false}
-              label="Password"
+              label="Lösenord"
               onChangeText={setPassword}
               placeholder="Ange ditt lösenord"
               secureTextEntry
@@ -230,13 +230,13 @@ export default function ProfileScreen() {
             </View>
 
             {!user.personId ? (
-              <Text style={styles.helperText}>PersonId saknas på den inloggade användaren, så Sverigelistan kan inte hämtas.</Text>
+              <Text style={styles.helperText}>PersonId är fel eller saknas, så Sverigelistan kan inte hämtas.</Text>
             ) : isSverigelistanLoading ? (
               <Text style={styles.helperText}>Hämtar Sverigelistan...</Text>
             ) : sverigelistanError ? (
               <Text style={styles.errorText}>{sverigelistanError}</Text>
             ) : !hasSupabase ? (
-              <Text style={styles.helperText}>Supabase är inte konfigurerat, så Sverigelistan kan inte visas just nu.</Text>
+              <Text style={styles.helperText}>Sverigelistan kan inte visas just nu.</Text>
             ) : !currentEntry ? (
               <Text style={styles.helperText}>Det finns ännu ingen Sverigelistan-post för den här löparen.</Text>
             ) : (

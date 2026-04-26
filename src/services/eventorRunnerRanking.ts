@@ -104,7 +104,7 @@ function buildSuccessResult(sourceUrl: string, result: Awaited<ReturnType<typeof
     headers: result.parsedTable.headers,
     hasResultsTable: true,
     loginRequired: false,
-    message: result.parsedTable.rows.length === 0 ? 'resultsTable hittades, men inga rader kunde läsas ut.' : null,
+    message: result.parsedTable.rows.length === 0 ? 'inga rader kunde läsas ut.' : null,
     overview: buildOverview(result.parsedTable.competitions),
     pageTitle: result.pageTitle,
     rows: result.parsedTable.rows,

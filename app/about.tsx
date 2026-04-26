@@ -39,7 +39,7 @@ export default function AboutScreen() {
     try {
       const client = getSupabaseClient();
       if (!client) {
-        Alert.alert('Inte tillgängligt', 'Supabase är inte konfigurerat. Försök igen senare.');
+        Alert.alert('Inte tillgängligt', 'Konfigurationen är felaktig. Meddela via Om Kontrollen / Synpunkter.');
         return;
       }
 

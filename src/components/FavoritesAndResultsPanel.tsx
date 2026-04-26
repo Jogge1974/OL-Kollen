@@ -48,7 +48,7 @@ export function FavoritesAndResultsPanel({
   const [selectedTab, setSelectedTab] = React.useState<'favorites' | 'results'>('favorites');
 
   const confirmClearFavorites = () => {
-    Alert.alert('Rensa alla favorittävlingar?', 'Alla favorittävlingar tas bort från appen och motsvarande bevakningar rensas från Supabase vid nästa synk.', [
+    Alert.alert('Rensa alla favorittävlingar?', 'Alla favorittävlingar tas bort från appen.', [
       {
         style: 'cancel',
         text: 'Avbryt',
