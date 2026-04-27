@@ -13,12 +13,14 @@ import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
 import { getSverigelistanClassLabel, useSverigelistanDirectory } from '@/src/hooks/useSverigelistanDirectory';
 import { useAuthStore } from '@/src/store/authStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export default function SverigelistaScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const user = useAuthStore((state) => state.user);
   const canViewSverigelistan = Boolean(user);
   const [selectedGender, setSelectedGender] = React.useState<'D' | 'H'>(user?.gender ?? 'H');
@@ -397,6 +399,8 @@ function SverigelistaRowCard({
   index: number;
   item: SverigelistanRow;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const isMe = currentUserRunnerId !== null && item.RunnerId === currentUserRunnerId;
   const filterPlacement = filterLabel ? index + 1 : null;
   const showRightRank = showFilterPlacement && filterPlacement !== null;
@@ -486,7 +490,8 @@ function formatPoints(points: number) {
   return Number.isInteger(points) ? `${points}` : points.toFixed(2);
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   clearFilterChip: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
@@ -504,8 +509,8 @@ const styles = StyleSheet.create({
   },
   resetAllButtonInline: {
     alignItems: 'center',
-    backgroundColor: '#FFF1F1',
-    borderColor: '#E7B5B5',
+    backgroundColor: isDark ? '#301717' : '#FFF1F1',
+    borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
     borderRadius: 999,
     borderWidth: 1,
     height: 30,
@@ -544,8 +549,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   classChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   classChipRow: {
     gap: 8,
@@ -612,8 +617,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   genderChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   genderChipText: {
     ...typography.captionStrong,
@@ -718,8 +723,8 @@ const styles = StyleSheet.create({
   },
   searchClubChip: {
     alignItems: 'center',
-    backgroundColor: '#EEF4FF',
-    borderColor: '#C8D6FF',
+    backgroundColor: isDark ? '#0F1E30' : '#EEF4FF',
+    borderColor: isDark ? '#2E4A6E' : '#C8D6FF',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
@@ -760,7 +765,7 @@ const styles = StyleSheet.create({
   },
   rankBadge: {
     alignItems: 'center',
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
     borderRadius: 999,
     height: 30,
     justifyContent: 'center',
@@ -819,8 +824,8 @@ const styles = StyleSheet.create({
   },
   filterPlacementBadge: {
     alignItems: 'center',
-    backgroundColor: '#E7F4D8',
-    borderColor: '#B7D2A0',
+    backgroundColor: isDark ? '#17301A' : '#E7F4D8',
+    borderColor: isDark ? '#2E5A30' : '#B7D2A0',
     borderRadius: 999,
     borderWidth: 1,
     height: 28,
@@ -860,8 +865,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   modeChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   modeChipText: {
     ...typography.captionStrong,
@@ -871,3 +876,4 @@ const styles = StyleSheet.create({
     color: colors.heroText,
   },
 });
+}

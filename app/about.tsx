@@ -9,11 +9,13 @@ import { AppButton } from '@/src/components/AppButton';
 import { AppTextField } from '@/src/components/AppTextField';
 import { useAuthStore } from '@/src/store/authStore';
 import { getSupabaseClient } from '@/src/services/supabase';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 export default function AboutScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
   const [feedbackName, setFeedbackName] = React.useState(user?.fullName ?? '');
   const [feedbackText, setFeedbackText] = React.useState('');
@@ -143,7 +145,8 @@ export default function AboutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
@@ -220,3 +223,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+}

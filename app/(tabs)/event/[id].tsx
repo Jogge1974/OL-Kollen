@@ -20,13 +20,16 @@ import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
 import { useAuthStore } from '@/src/store/authStore';
 import { canRenderNativeMap } from '@/src/services/nativeMaps';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors, getClassificationTone } from '@/src/theme/colors';
+import { getClassificationTone } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventDocument, EventPublishedListKind } from '@/src/types/eventor';
 import { normalizeEventId } from '@/src/utils/eventId';
 
 export default function EventDetailScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
   const selectedEventRaceId = React.useMemo(() => {
     if (typeof id !== 'string' || id.length === 0) {
@@ -177,7 +180,7 @@ export default function EventDetailScreen() {
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
-              <Ionicons color={isFavorite ? colors.primaryDeep : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
+              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
               <Text style={[styles.heroFavoriteBadgeText, isFavorite ? styles.heroFavoriteBadgeTextActive : null]}>Favorit</Text>
             </Pressable>
           </View>
@@ -269,8 +272,8 @@ export default function EventDetailScreen() {
             onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
             style={({ pressed }) => [styles.liveloxButton, pressed ? styles.liveloxButtonPressed : null]}
           >
-            <Image source={require('@/assets/livelox-logo.png')} style={styles.liveloxLogo} resizeMode="contain" />
-            <Ionicons color="#F57C00" name="open-outline" size={14} style={styles.liveloxExternalIcon} />
+            <Image source={isDark ? require('@/assets/livelox-logo-dark.png') : require('@/assets/livelox-logo.png')} style={styles.liveloxLogo} resizeMode="contain" />
+            <Ionicons color={isDark ? '#FF9D40' : '#F57C00'} name="open-outline" size={14} style={styles.liveloxExternalIcon} />
           </Pressable>
         ) : null}
 
@@ -368,6 +371,8 @@ export default function EventDetailScreen() {
 }
 
 function InfoMini({ label, value }: { label: string; value: string }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <View style={styles.infoMini}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -379,6 +384,8 @@ function InfoMini({ label, value }: { label: string; value: string }) {
 }
 
 function InfoTextBlock({ label, value }: { label: string; value: string }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <View style={styles.infoTextBlock}>
       <Text style={styles.infoBlockTitle}>{label}</Text>
@@ -398,6 +405,8 @@ function ActionButton({
   onPress: () => void;
   tone: 'result' | 'start';
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <AppButton
       disabled={disabled}
@@ -411,6 +420,8 @@ function ActionButton({
 }
 
 function MapShortcutButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.mapShortcutButton, pressed ? styles.mapShortcutButtonPressed : null]}>
       <Ionicons color={colors.primaryDeep} name={icon} size={18} />
@@ -428,6 +439,8 @@ function normalizeDocumentName(name: string) {
 }
 
 function DocumentModal({ document, onClose }: { document: EventDocument | null; onClose: () => void }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <Modal animationType="slide" transparent visible={Boolean(document)}>
       <View style={styles.modalOverlay}>
@@ -449,7 +462,8 @@ function DocumentModal({ document, onClose }: { document: EventDocument | null; 
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
@@ -537,14 +551,14 @@ const styles = StyleSheet.create({
   },
   heroFavoriteBadgeActive: {
     backgroundColor: colors.accentSoft,
-    borderColor: colors.primary,
+    borderColor: isDark ? '#8B7A20' : colors.primary,
   },
   heroFavoriteBadgeText: {
     ...typography.captionStrong,
     color: colors.textSecondary,
   },
   heroFavoriteBadgeTextActive: {
-    color: colors.primaryDeep,
+    color: isDark ? '#F3DA3E' : colors.primaryDeep,
   },
   panel: {
     backgroundColor: colors.surfaceOverlay,
@@ -555,8 +569,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   infoPanel: {
-    backgroundColor: '#EAF4E0',
-    borderColor: '#CEE0C1',
+    backgroundColor: isDark ? '#17301A' : '#EAF4E0',
+    borderColor: isDark ? '#2E5A30' : '#CEE0C1',
   },
   infoHeader: {
     alignItems: 'center',
@@ -654,14 +668,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   startButton: {
-    backgroundColor: '#E3F0D7',
-    borderColor: '#8CAF7C',
+    backgroundColor: isDark ? '#17301A' : '#E3F0D7',
+    borderColor: isDark ? '#2E5A32' : '#8CAF7C',
     minHeight: 52,
   },
   liveloxButton: {
     alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    borderColor: '#F57C00',
+    backgroundColor: isDark ? '#2E2010' : '#FFF3E0',
+    borderColor: isDark ? '#8B5A00' : '#F57C00',
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
@@ -726,8 +740,8 @@ const styles = StyleSheet.create({
   },
   mapShortcutButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(252, 253, 249, 0.94)',
-    borderColor: '#BED2B6',
+    backgroundColor: isDark ? colors.surfaceMuted : 'rgba(252, 253, 249, 0.94)',
+    borderColor: isDark ? colors.border : '#BED2B6',
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,
@@ -791,7 +805,7 @@ const styles = StyleSheet.create({
   eventorLink: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
     borderRadius: 16,
     flexDirection: 'row',
     gap: spacing.xs,
@@ -863,3 +877,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+}

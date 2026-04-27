@@ -5,7 +5,7 @@ import { FlatList, ListRenderItemInfo, RefreshControl, StyleSheet, Text } from '
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
@@ -22,6 +22,8 @@ const CARD_GAP = 7;
 const ITEM_HEIGHT = CARD_HEIGHT + CARD_GAP;
 
 export function EventList({ error, events, onRefresh, refreshing }: EventListProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const listRef = React.useRef<FlatList<EventItem>>(null);
   const targetIndex = React.useMemo(() => findFirstCurrentOrUpcomingIndex(events), [events]);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
@@ -94,14 +96,16 @@ function getLocalIsoDate() {
   return `${year}-${month}-${day}`;
 }
 
-const styles = StyleSheet.create({
-  content: {
-    paddingBottom: spacing.xxl,
-  },
-  footerError: {
-    ...typography.caption,
-    color: colors.error,
-    paddingTop: spacing.sm,
-    textAlign: 'center',
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    content: {
+      paddingBottom: spacing.xxl,
+    },
+    footerError: {
+      ...typography.caption,
+      color: colors.error,
+      paddingTop: spacing.sm,
+      textAlign: 'center',
+    },
+  });
+}

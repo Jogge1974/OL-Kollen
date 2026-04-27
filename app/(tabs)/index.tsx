@@ -19,13 +19,15 @@ import { fetchEventorEvents } from '@/src/api/eventorApi';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
 
 export default function HomeScreen() {
   const pathname = usePathname();
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
@@ -236,6 +238,9 @@ export default function HomeScreen() {
 }
 
 function HeroStat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.statPill}>
       <Ionicons color={colors.heroText} name={icon} size={16} />
@@ -250,6 +255,9 @@ function HeroStat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap
 }
 
 function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.shortcutCard, pressed ? styles.shortcutCardPressed : null]}>
       <View style={styles.shortcutIconWrap}>
@@ -261,6 +269,9 @@ function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.gl
 }
 
 function SectionCard({ children, flat = false, subtitle, title }: { children: React.ReactNode; flat?: boolean; subtitle?: string; title: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={[styles.sectionCard, flat ? styles.sectionCardFlat : null]}>
       <View style={styles.sectionHeader}>
@@ -307,7 +318,8 @@ function formatAccessLevel(level: string) {
   return 'Free';
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   accessPill: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -466,7 +478,7 @@ const styles = StyleSheet.create({
   },
   shortcutIconWrap: {
     alignItems: 'center',
-    backgroundColor: '#EAF6D9',
+    backgroundColor: colors.accentSoft,
     borderRadius: 999,
     height: 34,
     justifyContent: 'center',
@@ -519,3 +531,4 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 });
+}

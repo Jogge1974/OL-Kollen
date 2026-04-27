@@ -1,8 +1,9 @@
+import * as React from 'react';
 import { router, usePathname } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { PersonActivitySection } from '@/src/types/personLists';
@@ -15,6 +16,8 @@ type UpcomingStartsPanelProps = {
 
 export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStartsPanelProps) {
   const pathname = usePathname();
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   if (!error && sections.length === 0) {
     return null;
@@ -35,20 +38,22 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
   );
 }
 
-const styles = StyleSheet.create({
-  panel: {
-    backgroundColor: 'transparent',
-    borderColor: colors.primary,
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.sm,
-  },
-  title: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-    fontSize: 15,
-    lineHeight: 19,
-    paddingTop: 2,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    panel: {
+      backgroundColor: 'transparent',
+      borderColor: colors.primary,
+      borderRadius: 24,
+      borderWidth: 1,
+      gap: spacing.sm,
+      padding: spacing.sm,
+    },
+    title: {
+      ...typography.sectionTitle,
+      color: colors.textPrimary,
+      fontSize: 15,
+      lineHeight: 19,
+      paddingTop: 2,
+    },
+  });
+}

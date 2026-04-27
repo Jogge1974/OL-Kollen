@@ -10,6 +10,7 @@ import {
   NotificationSettings,
   PersistedPreferences,
 } from '@/src/types/preferences';
+import { ThemeName } from '@/src/theme/ThemeContext';
 
 const PREFERENCES_STORAGE_KEY = 'olkollen.preferences';
 
@@ -34,6 +35,7 @@ type PreferencesData = {
   favoriteClasses: string[];
   favoriteEvents: FavoriteEventSummary[];
   notificationSettings: NotificationSettings;
+  themeName: ThemeName;
 };
 
 type PreferencesState = PreferencesData & {
@@ -57,6 +59,7 @@ type PreferencesState = PreferencesData & {
   removeFavoriteClass: (className: string) => Promise<void>;
   setCalendarDefaultFilterTemplate: (template: CalendarFilterTemplate) => Promise<void>;
   setNotificationSetting: (key: keyof NotificationSettings, value: boolean) => Promise<void>;
+  setThemeName: (themeName: ThemeName) => Promise<void>;
   toggleFavorite: (event: FavoriteEventSummary) => Promise<boolean>;
 };
 
@@ -67,6 +70,7 @@ function createDefaultPreferencesData(): PreferencesData {
     favoriteClasses: [],
     favoriteEvents: [],
     notificationSettings: defaultNotificationSettings,
+    themeName: 'light',
   };
 }
 
@@ -172,6 +176,7 @@ function buildPersistedPreferences(state: PreferencesData): PersistedPreferences
     favoriteClasses: state.favoriteClasses,
     favoriteEvents: state.favoriteEvents,
     notificationSettings: state.notificationSettings,
+    themeName: state.themeName,
   };
 }
 
@@ -210,6 +215,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
 
     return { ok: true };
@@ -244,6 +250,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
 
     return { ok: true };
@@ -252,6 +259,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   calendarFilterPresets: [],
   favoriteClasses: [],
   favoriteEvents: [],
+  themeName: 'light',
   clearAllFavorites: async () => {
     const current = get();
     const favoriteEvents: FavoriteEventSummary[] = [];
@@ -263,9 +271,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   clearLogoutSensitivePreferences: async () => {
+    const current = get();
     const defaults = createDefaultPreferencesData();
 
     set({
@@ -280,6 +290,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: [],
       favoriteEvents: [],
       notificationSettings: defaultNotificationSettings,
+      themeName: current.themeName,
     });
   },
   hydratePreferences: async () => {
@@ -298,6 +309,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
         favoriteEvents,
         isHydrated: true,
         notificationSettings: storedPreferences?.notificationSettings ?? defaultPreferences.notificationSettings,
+        themeName: storedPreferences?.themeName ?? defaultPreferences.themeName,
       });
     } catch {
       const fallback = createDefaultPreferencesData();
@@ -319,6 +331,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents: merged,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   restoreFromServer: async (profile: ServerProfile) => {
@@ -358,6 +371,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses,
       favoriteEvents,
       notificationSettings,
+      themeName: current.themeName,
     });
   },
   isFavorite: (eventId: string) => {
@@ -389,6 +403,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   moveFavoriteClass: async (className, direction) => {
@@ -415,6 +430,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   notificationSettings: defaultNotificationSettings,
@@ -429,6 +445,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   removeFavorite: async (eventId: string) => {
@@ -443,6 +460,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   removeFavoriteClass: async (className) => {
@@ -456,6 +474,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   setCalendarDefaultFilterTemplate: async (template) => {
@@ -469,6 +488,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
   },
   setNotificationSetting: async (key, value) => {
@@ -485,6 +505,20 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents: current.favoriteEvents,
       notificationSettings,
+      themeName: current.themeName,
+    });
+  },
+  setThemeName: async (themeName) => {
+    const current = get();
+
+    set({ themeName });
+    await persistCurrentPreferences({
+      calendarDefaultFilterTemplate: current.calendarDefaultFilterTemplate,
+      calendarFilterPresets: current.calendarFilterPresets,
+      favoriteClasses: current.favoriteClasses,
+      favoriteEvents: current.favoriteEvents,
+      notificationSettings: current.notificationSettings,
+      themeName,
     });
   },
   toggleFavorite: async (event) => {
@@ -502,6 +536,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       favoriteClasses: current.favoriteClasses,
       favoriteEvents,
       notificationSettings: current.notificationSettings,
+      themeName: current.themeName,
     });
 
     // TODO: Sync favorites + push preferences + device push token to Supabase before enabling server-driven push notifications.

@@ -13,11 +13,13 @@ import { FilterModal } from '@/src/components/FilterModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { useEventorEvents } from '@/src/hooks/useEventorEvents';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 export default function CalendarScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [filterVisible, setFilterVisible] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'list' | 'map'>('list');
   const { applyFilters, error, events, filters, isLoading, isRefreshing, refresh } = useEventorEvents();
@@ -122,7 +124,8 @@ function getSelectedDistrictCountLabel(count: number) {
   return count === 1 ? '1 valt' : `${count} valda`;
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
@@ -208,7 +211,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   modeButtonActive: {
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   modeButtonText: {
     ...typography.buttonSmall,
@@ -233,4 +236,5 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
 });
+}
 

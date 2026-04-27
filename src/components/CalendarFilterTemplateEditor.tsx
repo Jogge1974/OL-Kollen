@@ -4,7 +4,7 @@ import Checkbox from 'expo-checkbox';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CLASSIFICATION_OPTIONS } from '@/src/features/calendar/calendarFilters';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { CalendarFilterTemplate } from '@/src/types/preferences';
@@ -18,6 +18,8 @@ type CalendarFilterTemplateEditorProps = {
 };
 
 export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption, onChange, template }: CalendarFilterTemplateEditorProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const visibleDistrictOptions = React.useMemo(
     () => (myDistrictOption ? districtOptions.filter((option) => option.id !== myDistrictOption.id) : districtOptions),
     [districtOptions, myDistrictOption],
@@ -148,6 +150,8 @@ function OffsetField({
   onToggleSign: () => void;
   value: number;
 }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.offsetField}>
       <Text style={styles.offsetLabel}>{label}</Text>
@@ -181,6 +185,8 @@ function ClassificationOption({
   label: string;
   onPress: () => void;
 }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable onPress={onPress} style={styles.classificationItem}>
       <View style={styles.classificationRow}>
@@ -195,6 +201,8 @@ function ClassificationOption({
 }
 
 function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; label: string; onPress: () => void }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <Pressable onPress={onPress} style={styles.districtItem}>
       <View style={styles.districtRow}>
@@ -207,7 +215,8 @@ function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; labe
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   wrapper: {
     gap: spacing.sm,
   },
@@ -326,3 +335,4 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 });
+}

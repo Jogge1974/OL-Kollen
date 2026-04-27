@@ -10,7 +10,7 @@ import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListRow, PublishedListSection, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
 import { calculateClassPoints, fetchSverigelistanForPoints } from '@/src/services/sverigelistanPointsCalculator';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
@@ -57,6 +57,8 @@ export function PublishedListModal({
   onOpenAnalysis?: OpenAnalysisHandler;
   state: PublishedListModalState | null;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorOffsets, setAnchorOffsets] = React.useState<Record<string, number>>({});
@@ -362,6 +364,8 @@ function PublishedTableSection({
   sverigelistanRanks: Record<string, number> | null;
   sverigelistanVisible: boolean;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const seenClassAnchors = React.useRef<Set<string>>(new Set());
   seenClassAnchors.current.clear();
   const { width: windowWidth } = useWindowDimensions();
@@ -1431,7 +1435,8 @@ function normalizeClassLabel(label: string) {
   return label.replace(/\s+/g, ' ').trim().toLocaleLowerCase('sv');
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   modalOverlay: {
     backgroundColor: colors.overlay,
     flex: 1,
@@ -1514,8 +1519,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   classChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   classChipText: {
     color: colors.textPrimary,
@@ -1554,11 +1559,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   choiceButtonPrimary: {
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   choiceButtonAnalysis: {
-    backgroundColor: '#E7F1FF',
-    borderColor: '#90B5E8',
+    backgroundColor: isDark ? '#0F1E30' : '#E7F1FF',
+    borderColor: isDark ? '#2E4A6E' : '#90B5E8',
     borderWidth: 1,
   },
   choiceButtonLabel: {
@@ -1570,7 +1575,7 @@ const styles = StyleSheet.create({
   },
   choiceButtonLabelAnalysis: {
     ...typography.buttonSmall,
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontSize: 14,
     lineHeight: 17,
     textAlign: 'center',
@@ -1647,7 +1652,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tableClassHeader: {
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -2123,6 +2128,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 });
+}
 
 function estimateNameWidth(value: string) {
   return Math.max(110, Math.round(value.length * 9.2));

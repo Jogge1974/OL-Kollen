@@ -8,7 +8,8 @@ import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/evento
 import { LoadingState } from '@/src/components/LoadingState';
 import { buildEventAnalysis } from '@/src/services/eventAnalysis';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
-import { colors, getClassificationTone } from '@/src/theme/colors';
+import { getClassificationTone } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventSplitTimesSection } from '@/src/types/eventSplitTimes';
@@ -26,6 +27,8 @@ export type AnalysisModalState = {
 };
 
 export function AnalysisModal({ onClose, state }: { onClose: () => void; state: AnalysisModalState | null }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const currentState = state;
 
   const selectedSection = React.useMemo(
@@ -179,7 +182,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     </View>
 
                     <View style={[styles.legCell, styles.legCellMetric]}>
-                      <Text style={[styles.legPrimary, getPlacementToneStyle(row.splitPlace)]}>
+                      <Text style={[styles.legPrimary, getPlacementToneStyle(row.splitPlace, styles)]}>
                         {row.splitTimeLabel ?? '-'}
                         {row.splitPlace !== null ? ` (${row.splitPlace})` : ''}
                       </Text>
@@ -190,7 +193,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     </View>
 
                     <View style={[styles.legCell, styles.legCellMetric]}>
-                      <Text style={[styles.legPrimary, getPlacementToneStyle(row.totalPlace)]}>
+                      <Text style={[styles.legPrimary, getPlacementToneStyle(row.totalPlace, styles)]}>
                         {row.totalTimeLabel ?? '-'}
                         {row.totalPlace !== null ? ` (${row.totalPlace})` : ''}
                       </Text>
@@ -218,6 +221,8 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
 }
 
 function HeroPill({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.heroPill}>
       <Ionicons color={colors.heroText} name={icon} size={16} />
@@ -232,6 +237,8 @@ function HeroPill({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap
 }
 
 function HeroStatusChip({ label }: { label: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.heroStatusChip}>
       <Ionicons color={colors.heroText} name="alert-circle" size={16} />
@@ -241,6 +248,8 @@ function HeroStatusChip({ label }: { label: string }) {
 }
 
 function MetricSection({ title, icon, children }: { children: React.ReactNode; icon: keyof typeof Ionicons.glyphMap; title: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.metricSection}>
       <View style={styles.sectionHeaderRow}>
@@ -255,6 +264,8 @@ function MetricSection({ title, icon, children }: { children: React.ReactNode; i
 }
 
 function MetricLine({ label, value }: { label: string; value: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.metricLine}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -265,7 +276,7 @@ function MetricLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getPlacementToneStyle(place: number | null) {
+function getPlacementToneStyle(place: number | null, styles: ReturnType<typeof createStyles>) {
   if (place === 1) {
     return styles.placementToneLeader;
   }
@@ -335,7 +346,8 @@ function extractSelectedEventRaceId(eventId: string) {
   return parts.length > 1 ? parts.slice(1).join('::') || null : null;
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   content: {
     gap: spacing.md,
     padding: spacing.lg,
@@ -689,3 +701,4 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 });
+}

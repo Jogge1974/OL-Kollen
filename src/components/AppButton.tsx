@@ -1,6 +1,7 @@
+import * as React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextStyle, ViewStyle } from 'react-native';
 
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
@@ -15,6 +16,8 @@ type AppButtonProps = {
 };
 
 export function AppButton({ disabled = false, label, loading = false, onPress, style, textStyle, variant = 'primary' }: AppButtonProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
 
   return (
@@ -37,39 +40,41 @@ export function AppButton({ disabled = false, label, loading = false, onPress, s
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    alignItems: 'center',
-    borderRadius: 18,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    minHeight: 54,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  primary: {
-    backgroundColor: colors.accent,
-  },
-  secondary: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-  },
-  pressed: {
-    opacity: 0.88,
-  },
-  disabled: {
-    opacity: 0.55,
-  },
-  label: {
-    ...typography.button,
-    color: colors.buttonText,
-  },
-  secondaryLabel: {
-    color: colors.textPrimary,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    base: {
+      alignItems: 'center',
+      borderRadius: 18,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      justifyContent: 'center',
+      minHeight: 54,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+    },
+    primary: {
+      backgroundColor: colors.accent,
+    },
+    secondary: {
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderWidth: 1,
+    },
+    ghost: {
+      backgroundColor: 'transparent',
+    },
+    pressed: {
+      opacity: 0.88,
+    },
+    disabled: {
+      opacity: 0.55,
+    },
+    label: {
+      ...typography.button,
+      color: colors.buttonText,
+    },
+    secondaryLabel: {
+      color: colors.textPrimary,
+    },
+  });
+}

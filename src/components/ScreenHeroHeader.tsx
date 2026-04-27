@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
@@ -28,6 +28,9 @@ type ScreenHeroHeaderProps = {
 };
 
 export function ScreenHeroHeader({ badge, chips, eyebrow, subtitle, title, topRightText }: ScreenHeroHeaderProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <LinearGradient colors={[colors.heroTop, colors.heroBottom]} style={styles.hero}>
       <View style={styles.heroTopRow}>
@@ -68,6 +71,9 @@ export function ScreenHeroHeader({ badge, chips, eyebrow, subtitle, title, topRi
 }
 
 function HeroChipView({ icon, label, value, flex }: HeroChip) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={[styles.heroChip, flex ? { flex } : null]}>
       <Ionicons color={colors.heroText} name={icon} size={14} />
@@ -81,7 +87,8 @@ function HeroChipView({ icon, label, value, flex }: HeroChip) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   hero: {
     alignSelf: 'stretch',
     borderRadius: 24,
@@ -171,3 +178,4 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 });
+}

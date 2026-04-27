@@ -10,7 +10,7 @@ import { PushSyncController } from '@/src/features/notifications/PushSyncControl
 import { addNotificationEventListener, getLastNotificationEventId } from '@/src/services/pushNotifications';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ThemeProvider, useColors, useTheme } from '@/src/theme/ThemeContext';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -24,6 +24,7 @@ export default function RootLayout() {
   const hydrateSession = useAuthStore((state) => state.hydrateSession);
   const isPreferencesHydrated = usePreferencesStore((state) => state.isHydrated);
   const hydratePreferences = usePreferencesStore((state) => state.hydratePreferences);
+  const themeName = usePreferencesStore((state) => state.themeName);
 
   React.useEffect(() => {
     void hydrateSession();
@@ -38,8 +39,19 @@ export default function RootLayout() {
   }
 
   return (
+    <ThemeProvider themeName={themeName}>
+      <RootContent />
+    </ThemeProvider>
+  );
+}
+
+function RootContent() {
+  const colors = useColors();
+  const { isDark } = useTheme();
+
+  return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <PushNotificationNavigator />
       <PushSyncController />
       <Stack screenOptions={{ headerShown: false }}>

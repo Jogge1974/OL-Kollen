@@ -5,7 +5,7 @@ import { router, usePathname } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { FavoriteEventSummary } from '@/src/types/preferences';
@@ -44,6 +44,8 @@ export function FavoritesAndResultsPanel({
   setResultsFilter,
   setResultsYear,
 }: FavoritesAndResultsPanelProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const pathname = usePathname();
   const [selectedTab, setSelectedTab] = React.useState<'favorites' | 'results'>('favorites');
 
@@ -164,11 +166,12 @@ export function FavoritesAndResultsPanel({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   deleteButton: {
     alignItems: 'center',
-    backgroundColor: '#FFF1F1',
-    borderColor: '#E7B5B5',
+    backgroundColor: isDark ? '#301717' : '#FFF1F1',
+    borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
     borderRadius: 999,
     borderWidth: 1,
     height: 32,
@@ -228,8 +231,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   filterChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   filterChipText: {
     color: colors.textPrimary,
@@ -285,7 +288,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabButtonActive: {
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   tabButtonText: {
     ...typography.bodyStrong,
@@ -309,8 +312,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   yearChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   yearChipText: {
     color: colors.textPrimary,
@@ -327,3 +330,4 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
 });
+}

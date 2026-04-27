@@ -10,7 +10,7 @@ import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { formatApiDate, formatDisplayDate, isValidIsoDate } from '@/src/services/dateService';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { DistrictOption, EventFilterValues } from '@/src/types/eventor';
@@ -25,6 +25,8 @@ type FilterModalProps = {
 type DateField = 'fromDate' | 'toDate' | null;
 
 export function FilterModal({ onApply, onClose, value, visible }: FilterModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [draft, setDraft] = React.useState<EventFilterValues>(value);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [activeDateField, setActiveDateField] = React.useState<DateField>(null);
@@ -301,6 +303,8 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
 }
 
 function DateFieldCard({ label, onPress, value }: { label: string; onPress: () => void; value: string }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <Pressable onPress={onPress} style={styles.dateCard}>
       <Text style={styles.dateLabel}>{label}</Text>
@@ -320,6 +324,8 @@ function ClassificationOption({
   label: string;
   onPress: () => void;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <Pressable onPress={onPress} style={styles.checkboxItem}>
       <View style={styles.checkboxRow}>
@@ -334,6 +340,8 @@ function ClassificationOption({
 }
 
 function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; label: string; onPress: () => void }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <Pressable onPress={onPress} style={styles.districtItem}>
       <View style={styles.districtRow}>
@@ -347,6 +355,8 @@ function DistrictOptionRow({ checked, label, onPress }: { checked: boolean; labe
 }
 
 function PresetOptionRow({ active, label, onPress }: { active?: boolean; label: string; onPress: () => void }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <Pressable onPress={onPress} style={[styles.presetItem, active ? styles.presetItemActive : null]}>
       <View style={styles.presetRow}>
@@ -363,7 +373,8 @@ function parseIsoDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   overlay: {
     backgroundColor: colors.overlay,
     flex: 1,
@@ -509,8 +520,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   presetItemActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   presetRow: {
     alignItems: 'center',
@@ -593,6 +604,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 });
+}
 
 
 

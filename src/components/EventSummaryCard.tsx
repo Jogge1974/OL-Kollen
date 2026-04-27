@@ -6,7 +6,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors, getClassificationTone } from '@/src/theme/colors';
+import { getClassificationTone } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
@@ -20,8 +21,10 @@ type EventSummaryCardProps = {
 
 export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSummaryCardProps) {
   const pathname = usePathname();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const tone = getClassificationTone(item.classificationId);
-  const accentStyle = getAccentStyle(item.startDate);
+  const accentStyle = getAccentStyle(item.startDate, colors);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
   const normalizedItemId = React.useMemo(() => normalizeEventId(item.id), [item.id]);
@@ -131,7 +134,7 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
   );
 }
 
-function getAccentStyle(startDate: string) {
+function getAccentStyle(startDate: string, colors: ColorPalette) {
   const today = getLocalIsoDate();
   const isPast = startDate < today;
   const isToday = startDate === today;
@@ -202,7 +205,8 @@ function getShortClassificationLabel(classificationId: number) {
   return `Typ ${classificationId}`;
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -225,8 +229,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   cardFavorite: {
-    backgroundColor: '#FFF6CF',
-    borderColor: '#E7D98B',
+    backgroundColor: isDark ? '#2E2A0A' : '#FFF6CF',
+    borderColor: isDark ? '#5C5420' : '#E7D98B',
   },
   cardPressable: {
     flex: 1,
@@ -312,13 +316,13 @@ const styles = StyleSheet.create({
     bottom: 10,
   },
   publicationBadgeStart: {
-    backgroundColor: '#E4F4D5',
-    borderColor: '#86AD73',
+    backgroundColor: isDark ? '#1A3520' : '#E4F4D5',
+    borderColor: isDark ? '#2E5A32' : '#86AD73',
     borderWidth: 1,
   },
   publicationBadgeResult: {
-    backgroundColor: '#F6D94B',
-    borderColor: '#C9A700',
+    backgroundColor: isDark ? '#332D0A' : '#F6D94B',
+    borderColor: isDark ? '#665A15' : '#C9A700',
     borderWidth: 1,
   },
   publicationBadgeText: {
@@ -365,3 +369,4 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
 });
+}

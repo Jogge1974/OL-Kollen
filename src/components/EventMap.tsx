@@ -8,7 +8,8 @@ import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
-import { colors, getClassificationTone } from '@/src/theme/colors';
+import { getClassificationTone } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
@@ -27,6 +28,8 @@ const DEFAULT_REGION: Region = {
 };
 
 export function EventMap({ error, events }: EventMapProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const mapRef = React.useRef<MapView>(null);
   const ignoreNextMapPressRef = React.useRef(false);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
@@ -277,7 +280,8 @@ function getFallbackRegion(groups: Array<{ coordinate: { latitude: number; longi
   };
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     overflow: 'hidden',
@@ -393,3 +397,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+}

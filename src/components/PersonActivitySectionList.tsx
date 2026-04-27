@@ -2,7 +2,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { formatDisplayDate } from '@/src/services/dateService';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -33,6 +33,8 @@ export function PersonActivitySectionList({
   onPressEvent,
   sections,
 }: PersonActivitySectionListProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
 
@@ -241,7 +243,8 @@ function buildResultRight(row: PersonActivitySection['rows'][number]) {
   return `Tid: ${row.time ?? '-'} ${row.diff ?? '-'}, Plac: ${row.position ?? '-'}`;
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
@@ -385,28 +388,28 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   resultActionButtonPrimary: {
-    backgroundColor: '#E9F2E1',
-    borderColor: '#86AD73',
+    backgroundColor: isDark ? '#17301A' : '#E9F2E1',
+    borderColor: isDark ? '#2E5A32' : '#86AD73',
   },
   resultActionButtonMuted: {
-    backgroundColor: '#F6D94B',
-    borderColor: '#C9A700',
+    backgroundColor: isDark ? '#332D0A' : '#F6D94B',
+    borderColor: isDark ? '#665A15' : '#C9A700',
   },
   resultActionButtonAnalysis: {
-    backgroundColor: '#E7F1FF',
-    borderColor: '#90B5E8',
+    backgroundColor: isDark ? '#0F1E30' : '#E7F1FF',
+    borderColor: isDark ? '#2E4A6E' : '#90B5E8',
   },
   resultActionButtonText: {
     ...typography.captionStrong,
-    color: '#6B5300',
+    color: isDark ? '#F3DA3E' : '#6B5300',
     fontSize: 11,
     lineHeight: 13,
   },
   resultActionButtonTextPrimary: {
-    color: '#355F2A',
+    color: isDark ? '#A8D49A' : '#355F2A',
   },
   resultActionButtonTextAnalysis: {
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
   },
   favoriteBadge: {
     alignItems: 'center',
@@ -423,3 +426,4 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
 });
+}

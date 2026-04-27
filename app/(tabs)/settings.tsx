@@ -14,17 +14,20 @@ import { createDefaultCalendarFilterTemplate, describeCalendarFilterTemplate } f
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 export default function SettingsScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [className, setClassName] = React.useState('');
   const [presetName, setPresetName] = React.useState('');
   const [calendarDefaultDraft, setCalendarDefaultDraft] = React.useState(createDefaultCalendarFilterTemplate());
   const [isCalendarFiltersExpanded, setIsCalendarFiltersExpanded] = React.useState(false);
   const [isNotificationsExpanded, setIsNotificationsExpanded] = React.useState(false);
   const [isFavoriteClassesExpanded, setIsFavoriteClassesExpanded] = React.useState(false);
+  const [isThemeExpanded, setIsThemeExpanded] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const signOut = useAuthStore((state) => state.signOut);
   const clearLogoutSensitivePreferences = usePreferencesStore((state) => state.clearLogoutSensitivePreferences);
@@ -40,6 +43,8 @@ export default function SettingsScreen() {
   const moveFavoriteClass = usePreferencesStore((state) => state.moveFavoriteClass);
   const removeFavoriteClass = usePreferencesStore((state) => state.removeFavoriteClass);
   const setNotificationSetting = usePreferencesStore((state) => state.setNotificationSetting);
+  const themeName = usePreferencesStore((state) => state.themeName);
+  const setThemeName = usePreferencesStore((state) => state.setThemeName);
   const { districtOptions, error: districtError, organisationToDistrictId } = useEventorDistricts(isCalendarFiltersExpanded);
 
   React.useEffect(() => {
@@ -158,9 +163,9 @@ export default function SettingsScreen() {
             { icon: 'bookmark-outline', label: 'Favoritklasser', value: `${favoriteClasses.length}` },
           ]}
           eyebrow="Konton"
-          subtitle="Kalenderfilter, notiser och favoritklasser."
+          subtitle="Kalenderfilter, notiser, tema och favoritklasser."
           title="Inställningar"
-          topRightText="3 sektioner"
+          topRightText="4 sektioner"
         />
 
         <ExpandableCard
@@ -343,6 +348,34 @@ export default function SettingsScreen() {
             )}
           </View>
         </ExpandableCard>
+
+        <ExpandableCard
+          expanded={isThemeExpanded}
+          icon="color-palette-outline"
+          onPress={() => setIsThemeExpanded((current) => !current)}
+          title="Tema"
+        >
+          <View style={styles.sectionContent}>
+            <Text style={styles.helperText}>Välj utseende för appen.</Text>
+            <View style={styles.themeToggleRow}>
+              <Pressable
+                onPress={() => void setThemeName('light')}
+                style={[styles.themeOption, themeName === 'light' ? styles.themeOptionActive : null]}
+              >
+                <Ionicons color={themeName === 'light' ? colors.primaryDeep : colors.textSecondary} name="sunny-outline" size={20} />
+                <Text style={[styles.themeOptionText, themeName === 'light' ? styles.themeOptionTextActive : null]}>Ljust</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void setThemeName('dark')}
+                style={[styles.themeOption, themeName === 'dark' ? styles.themeOptionActive : null]}
+              >
+                <Ionicons color={themeName === 'dark' ? colors.primaryDeep : colors.textSecondary} name="moon-outline" size={20} />
+                <Text style={[styles.themeOptionText, themeName === 'dark' ? styles.themeOptionTextActive : null]}>Mörkt</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ExpandableCard>
+
         {user ? (
           <View style={styles.logoutFooter}>
             <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
@@ -383,6 +416,8 @@ function ExpandableCard({
   title: string;
   variant?: 'default' | 'compact';
 }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={[styles.panel, variant === 'compact' ? styles.panelCompact : null]}>
       <Pressable onPress={onPress} style={styles.panelHeader}>
@@ -399,7 +434,8 @@ function ExpandableCard({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
@@ -551,6 +587,34 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
     paddingTop: spacing.md,
   },
+  themeToggleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  themeOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  themeOptionActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.primary,
+  },
+  themeOptionText: {
+    ...typography.bodyStrong,
+    color: colors.textSecondary,
+  },
+  themeOptionTextActive: {
+    color: colors.primaryDeep,
+  },
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
@@ -603,4 +667,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 });
+}
 

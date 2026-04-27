@@ -9,7 +9,7 @@ import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventSplitTimesRow, EventSplitTimesSection } from '@/src/types/eventSplitTimes';
@@ -76,6 +76,8 @@ export function SplitTimesModal({
   onOpenAnalysis?: OpenAnalysisHandler;
   state: SplitTimesModalState | null;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const metricsScrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -513,6 +515,8 @@ function MetricCell({
   showLossDot?: boolean;
   onPress?: () => void;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const toneStyle = tone === 'leader' ? styles.metricTextLeader : tone === 'podium' ? styles.metricTextPodium : null;
   const headlineStyle = lossHighlight ? styles.metricSplitLossHeadline : styles.metricHeadline;
   const valueStyle = lossHighlight ? styles.metricSplitLossValue : styles.metricValue;
@@ -558,6 +562,8 @@ const SplitTimesClassRow = React.memo(function SplitTimesClassRow({
   row: EventSplitTimesRow;
   rowIndex: number;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const handleNamePress = React.useCallback(() => {
     if (row.organisationId && row.personId && onOpenAnalysis) {
       onOpenAnalysisChoice({
@@ -610,6 +616,8 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
   row: EventSplitTimesRow;
   rowIndex: number;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const splitTitle = pageKey === 'total' ? '' : computed.splitPrimary;
   const splitSubtitle = pageKey === 'total' ? '' : computed.splitSecondary;
 
@@ -1070,7 +1078,8 @@ function extractSelectedEventRaceId(eventId: string) {
   return parts.length > 1 ? parts.slice(1).join('::') || null : null;
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   classChip: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
@@ -1080,8 +1089,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   classChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
   },
   classChipText: {
     color: colors.textPrimary,
@@ -1546,7 +1555,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tableClassHeader: {
-    backgroundColor: colors.primaryDeep,
+    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -1577,3 +1586,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+}

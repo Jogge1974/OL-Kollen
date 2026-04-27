@@ -1,7 +1,8 @@
+import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
@@ -11,6 +12,8 @@ type AppTextFieldProps = TextInputProps & {
 };
 
 export function AppTextField({ label, onClearText, style, value, ...props }: AppTextFieldProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const hasClearButton = Boolean(onClearText && typeof value === 'string' && value.length > 0);
 
   return (
@@ -28,36 +31,38 @@ export function AppTextField({ label, onClearText, style, value, ...props }: App
   );
 }
 
-const styles = StyleSheet.create({
-  wrapper: {
-    gap: spacing.xs,
-  },
-  clearButton: {
-    position: 'absolute',
-    right: 10,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  label: {
-    ...typography.captionStrong,
-    color: colors.textPrimary,
-  },
-  inputWrap: {
-    position: 'relative',
-  },
-  input: {
-    ...typography.body,
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    color: colors.textPrimary,
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-  },
-  inputWithClear: {
-    paddingRight: 38,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    wrapper: {
+      gap: spacing.xs,
+    },
+    clearButton: {
+      position: 'absolute',
+      right: 10,
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+    },
+    label: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+    },
+    inputWrap: {
+      position: 'relative',
+    },
+    input: {
+      ...typography.body,
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      color: colors.textPrimary,
+      minHeight: 40,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 8,
+    },
+    inputWithClear: {
+      paddingRight: 38,
+    },
+  });
+}

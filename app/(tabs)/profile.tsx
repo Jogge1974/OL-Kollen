@@ -19,12 +19,14 @@ import { useRememberMe } from '@/src/hooks/useRememberMe';
 import { useSverigelistan } from '@/src/hooks/useSverigelistan';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { SverigelistanTrendDirection } from '@/src/types/sverigelistan';
 
 export default function ProfileScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [saveEncryptedLogin, setSaveEncryptedLogin] = React.useState(false);
@@ -249,7 +251,7 @@ export default function ProfileScreen() {
                         <Text style={styles.rankSummaryValue}>{currentEntry.Rank}</Text>
                         <Text style={styles.rankSummaryComparison}>({previousEntry ? previousEntry.Rank : '-'})</Text>
                       </View>
-                      {renderTrendBadge(trendDirection)}
+                      <TrendBadge direction={trendDirection} />
                     </View>
                   </View>
 
@@ -315,6 +317,8 @@ export default function ProfileScreen() {
 }
 
 function ProfileRow({ label, value }: { label: string; value: string }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -323,7 +327,9 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function renderTrendBadge(direction: SverigelistanTrendDirection) {
+function TrendBadge({ direction }: { direction: SverigelistanTrendDirection }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   if (direction === 'unknown') {
     return null;
   }
@@ -358,7 +364,8 @@ function formatUpdatedDate(updated: string) {
   });
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
@@ -629,6 +636,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
 });
+}
 
 
 

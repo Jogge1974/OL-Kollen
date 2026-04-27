@@ -4,7 +4,7 @@ import { Image, ImageStyle, StyleProp, StyleSheet, Text, View } from 'react-nati
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { getOrganisationLogoUri, peekOrganisationLogoUri } from '@/src/services/organisationLogoCache';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 
 type OrganisationLogoProps = {
   organisationId?: string | null;
@@ -14,6 +14,8 @@ type OrganisationLogoProps = {
 };
 
 export function OrganisationLogo({ organisationId, label, size = 16, style }: OrganisationLogoProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const initialLogoUri = peekOrganisationLogoUri(organisationId);
   const [logoUri, setLogoUri] = React.useState<string | null>(initialLogoUri ?? null);
   const [loading, setLoading] = React.useState(Boolean(organisationId && initialLogoUri === undefined));
@@ -69,17 +71,19 @@ export function OrganisationLogo({ organisationId, label, size = 16, style }: Or
   );
 }
 
-const styles = StyleSheet.create({
-  logo: {
-    flexShrink: 0,
-  },
-  placeholder: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderRadius: 4,
-    borderWidth: 1,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    logo: {
+      flexShrink: 0,
+    },
+    placeholder: {
+      alignItems: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: 4,
+      borderWidth: 1,
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+  });
+}

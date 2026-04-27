@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { SverigelistanTrendPoint } from '@/src/types/sverigelistan';
@@ -29,6 +29,8 @@ const AXIS_WIDTH = 34;
 const AXIS_GAP = 8;
 
 export function RankingTrendChart({ classPoints = [], points, showTitle = true }: RankingTrendChartProps) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [chartWidth, setChartWidth] = React.useState(0);
 
   const onLayout = (event: LayoutChangeEvent) => {
@@ -48,7 +50,7 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
 
   return (
     <View style={styles.card}>
-      {showTitle ? <Text style={styles.title}>Placering senaste månaderna</Text> : null}
+      {showTitle ? <Text style={styles.title}>Placering senaste mï¿½naderna</Text> : null}
 
       <View onLayout={onLayout} style={styles.chartFrame}>
         <View style={styles.axisLeft}>
@@ -66,10 +68,10 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
         <View style={styles.guideTop} />
         <View style={styles.guideBottom} />
 
-        {renderSegments(primaryChartPoints, styles.primarySegment)}
-        {renderSegments(secondaryChartPoints, styles.secondarySegment)}
-        {renderPoints(primaryChartPoints, styles.primaryDot)}
-        {renderPoints(secondaryChartPoints, styles.secondaryDot)}
+        {renderSegments(primaryChartPoints, styles.primarySegment, styles)}
+        {renderSegments(secondaryChartPoints, styles.secondarySegment, styles)}
+        {renderPoints(primaryChartPoints, styles.primaryDot, 'primary', styles)}
+        {renderPoints(secondaryChartPoints, styles.secondaryDot, 'secondary', styles)}
 
         <View style={styles.labelsRow}>
           {primaryChartPoints.map((point) => (
@@ -83,7 +85,7 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
   );
 }
 
-function renderSegments(chartPoints: ChartPoint[], segmentStyle: object) {
+function renderSegments(chartPoints: ChartPoint[], segmentStyle: object, styles: ReturnType<typeof createStyles>) {
   return chartPoints
     .map((point, index) => {
       const next = chartPoints[index + 1];
@@ -115,11 +117,11 @@ function renderSegments(chartPoints: ChartPoint[], segmentStyle: object) {
     .filter(Boolean);
 }
 
-function renderPoints(chartPoints: ChartPoint[], pointStyle: object) {
+function renderPoints(chartPoints: ChartPoint[], pointStyle: object, kind: string, styles: ReturnType<typeof createStyles>) {
   return chartPoints.map((point) =>
     point.y === null ? null : (
       <View
-        key={`${point.label}-${point.rank}-${pointStyle === styles.secondaryDot ? 'secondary' : 'primary'}`}
+        key={`${point.label}-${point.rank}-${kind}`}
         style={[
           styles.dotBase,
           pointStyle,
@@ -177,7 +179,8 @@ function getScale(points: SverigelistanTrendPoint[], padding: number) {
   };
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   axisLeft: {
     bottom: CHART_PADDING_BOTTOM,
     left: CHART_PADDING_HORIZONTAL,
@@ -293,6 +296,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 });
+}
 
 
 

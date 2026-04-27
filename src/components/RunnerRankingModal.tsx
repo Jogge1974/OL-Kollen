@@ -8,7 +8,7 @@ import { AppTextField } from '@/src/components/AppTextField';
 import { LoadingState } from '@/src/components/LoadingState';
 import { fetchRunnerRankingTable, RunnerRankingTableResult } from '@/src/services/eventorRunnerRanking';
 import { refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
-import { colors } from '@/src/theme/colors';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { useAuthStore } from '@/src/store/authStore';
@@ -41,6 +41,8 @@ export function RunnerRankingModal({
   onClose: () => void;
   selection: RunnerRankingSelection | null;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [state, setState] = React.useState<RunnerRankingModalState | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
   const [manualLoginVisible, setManualLoginVisible] = React.useState(false);
@@ -370,6 +372,8 @@ function SummaryChip({
   subtitle?: string;
   value: string;
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <View style={styles.summaryChip}>
       <View style={styles.summaryChipHeader}>
@@ -389,6 +393,8 @@ function SummaryChip({
 }
 
 function MetaPill({ label, emphasized = false }: { label: string; emphasized?: boolean }) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   return (
     <View style={[styles.metaPill, emphasized ? styles.metaPillEmphasis : null]}>
       <Text numberOfLines={1} style={[styles.metaPillText, emphasized ? styles.metaPillTextEmphasis : null]}>
@@ -406,7 +412,8 @@ function formatPoints(points: number | null | undefined) {
   return Number.isInteger(points) ? `${points}` : points.toFixed(2).replace('.', ',');
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ColorPalette, isDark: boolean) {
+  return StyleSheet.create({
   overlay: {
     backgroundColor: colors.overlay,
     flex: 1,
@@ -495,16 +502,16 @@ const styles = StyleSheet.create({
   },
   expiryBadge: {
     alignItems: 'center',
-    backgroundColor: '#F0F6E8',
-    borderColor: '#C9DBB0',
+    backgroundColor: isDark ? '#17301A' : '#F0F6E8',
+    borderColor: isDark ? '#2E5A30' : '#C9DBB0',
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
   expiryBadgeActive: {
-    backgroundColor: '#FFF1F1',
-    borderColor: '#E2B1B1',
+    backgroundColor: isDark ? '#301717' : '#FFF1F1',
+    borderColor: isDark ? '#5A2E2E' : '#E2B1B1',
   },
   expiryBadgeText: {
     ...typography.captionStrong,
@@ -516,8 +523,8 @@ const styles = StyleSheet.create({
   },
   expirySummaryCard: {
     alignItems: 'center',
-    backgroundColor: '#FFF7F7',
-    borderColor: '#E7B5B5',
+    backgroundColor: isDark ? '#301717' : '#FFF7F7',
+    borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
     borderRadius: 22,
     borderWidth: 1,
     gap: 2,
@@ -600,8 +607,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   metaPillEmphasis: {
-    backgroundColor: '#FFF7F7',
-    borderColor: '#E7B5B5',
+    backgroundColor: isDark ? '#301717' : '#FFF7F7',
+    borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
   },
   metaPillText: {
     ...typography.captionStrong,
@@ -638,8 +645,8 @@ const styles = StyleSheet.create({
   rankBadge: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: '#E3F1D2',
-    borderColor: '#AFCF88',
+    backgroundColor: isDark ? '#17301A' : '#E3F1D2',
+    borderColor: isDark ? '#2E5A30' : '#AFCF88',
     borderWidth: 1,
     borderRadius: 999,
     justifyContent: 'center',
@@ -678,8 +685,8 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   rowCardEmphasis: {
-    backgroundColor: '#FFF3F3',
-    borderColor: '#E7B5B5',
+    backgroundColor: isDark ? '#301717' : '#FFF3F3',
+    borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
   },
   rowDate: {
     ...typography.captionStrong,
@@ -811,3 +818,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+}
