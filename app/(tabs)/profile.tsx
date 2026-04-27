@@ -273,12 +273,12 @@ export default function ProfileScreen() {
                   <>
                     <View style={styles.trendHeaderRow}>
                       <Text style={styles.trendHeaderTitle}>Placering senaste månaderna</Text>
-                      <Text style={styles.trendToggleLink}>&lt;&lt; Visa mindre</Text>
+                      <Text style={styles.trendToggleLink}>&lt; Visa mindre</Text>
                     </View>
                     <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
                   </>
                 ) : (
-                  <Text style={styles.trendToggleLink}>Visa mer &gt;&gt;</Text>
+                  <Text style={styles.trendToggleLink}>Visa mer &gt;</Text>
                 )}
               </>
             )}
