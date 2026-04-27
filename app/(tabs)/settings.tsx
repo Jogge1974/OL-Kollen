@@ -3,7 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
 import { router } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
@@ -372,6 +372,13 @@ export default function SettingsScreen() {
                 <Ionicons color={themeName === 'dark' ? colors.primaryDeep : colors.textSecondary} name="moon-outline" size={20} />
                 <Text style={[styles.themeOptionText, themeName === 'dark' ? styles.themeOptionTextActive : null]}>Mörkt</Text>
               </Pressable>
+              <Pressable
+                onPress={() => void setThemeName('soft')}
+                style={[styles.themeOption, themeName === 'soft' ? styles.themeOptionActive : null]}
+              >
+                <Image source={require('@/assets/soft-icon.png')} style={styles.softIcon} />
+                <Text style={[styles.themeOptionText, themeName === 'soft' ? styles.themeOptionTextActive : null]}>SOFT</Text>
+              </Pressable>
             </View>
           </View>
         </ExpandableCard>
@@ -614,6 +621,11 @@ function createStyles(colors: ColorPalette) {
   },
   themeOptionTextActive: {
     color: colors.primaryDeep,
+  },
+  softIcon: {
+    borderRadius: 4,
+    height: 20,
+    width: 20,
   },
   errorText: {
     ...typography.captionStrong,

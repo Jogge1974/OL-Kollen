@@ -4,7 +4,7 @@ import { colors as lightColors } from '@/src/theme/colors';
 
 export type ColorPalette = { [K in keyof typeof lightColors]: string };
 
-export type ThemeName = 'light' | 'dark';
+export type ThemeName = 'light' | 'dark' | 'soft';
 
 export const darkColors: ColorPalette = {
   accent: '#F3DA3E',
@@ -41,6 +41,41 @@ export const darkColors: ColorPalette = {
   textSecondary: '#9BAE9D',
 } as const;
 
+export const softColors: ColorPalette = {
+  accent: '#FFDD00',
+  accentGlow: 'rgba(255, 221, 0, 0.42)',
+  accentLineToday: '#0F347C',
+  accentLineWeekend: '#69BFEB',
+  accentLineWeekday: '#B4DAEF',
+  accentLinePastBorder: '#0F347C',
+  accentSoft: '#FFF8DC',
+  background: '#F0F6FC',
+  backgroundDeep: '#E8F4FC',
+  backgroundGlow: 'rgba(105, 191, 235, 0.20)',
+  border: '#C8D8E8',
+  borderSoft: '#DCE8F2',
+  buttonText: '#001A4F',
+  error: '#B73B3B',
+  heroBottom: '#001A4F',
+  heroEyebrow: '#FFDD00',
+  heroText: '#FFFFFF',
+  heroTextMuted: 'rgba(255, 255, 255, 0.82)',
+  heroTop: '#0F347C',
+  overlay: 'rgba(0, 26, 79, 0.38)',
+  primary: '#0F347C',
+  primaryDeep: '#001A4F',
+  secondaryGlow: 'rgba(105, 191, 235, 0.22)',
+  surface: '#FFFFFF',
+  surfaceMuted: '#EDF2FA',
+  surfaceOverlay: 'rgba(255, 255, 255, 0.88)',
+  tabActive: '#0F347C',
+  tabBackground: '#FAFCFF',
+  tabInactive: '#7888A0',
+  textMuted: '#6B7B8F',
+  textPrimary: '#001A4F',
+  textSecondary: '#3D5070',
+} as const;
+
 type ThemeContextValue = {
   colors: ColorPalette;
   isDark: boolean;
@@ -53,6 +88,17 @@ const ThemeContext = React.createContext<ThemeContextValue>({
   themeName: 'light',
 });
 
+function getColorsForTheme(themeName: ThemeName): ColorPalette {
+  switch (themeName) {
+    case 'dark':
+      return darkColors;
+    case 'soft':
+      return softColors;
+    default:
+      return lightColors;
+  }
+}
+
 export function ThemeProvider({
   children,
   themeName,
@@ -62,7 +108,7 @@ export function ThemeProvider({
 }) {
   const value = React.useMemo<ThemeContextValue>(
     () => ({
-      colors: themeName === 'dark' ? darkColors : lightColors,
+      colors: getColorsForTheme(themeName),
       isDark: themeName === 'dark',
       themeName,
     }),

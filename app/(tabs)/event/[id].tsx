@@ -28,8 +28,8 @@ import { EventDocument, EventPublishedListKind } from '@/src/types/eventor';
 import { normalizeEventId } from '@/src/utils/eventId';
 
 export default function EventDetailScreen() {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
   const selectedEventRaceId = React.useMemo(() => {
     if (typeof id !== 'string' || id.length === 0) {
@@ -51,7 +51,7 @@ export default function EventDetailScreen() {
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
 
-  const tone = getClassificationTone(event?.classificationId ?? 2);
+  const tone = getClassificationTone(event?.classificationId ?? 2, themeName);
   const isRelayEvent = event?.eventForm === 'RelaySingleDay' || event?.eventForm === 'Relay';
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
@@ -180,7 +180,7 @@ export default function EventDetailScreen() {
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
-              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
+              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : themeName === 'soft' ? '#001A4F' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
               <Text style={[styles.heroFavoriteBadgeText, isFavorite ? styles.heroFavoriteBadgeTextActive : null]}>Favorit</Text>
             </Pressable>
           </View>
@@ -371,8 +371,8 @@ export default function EventDetailScreen() {
 }
 
 function InfoMini({ label, value }: { label: string; value: string }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <View style={styles.infoMini}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -384,8 +384,8 @@ function InfoMini({ label, value }: { label: string; value: string }) {
 }
 
 function InfoTextBlock({ label, value }: { label: string; value: string }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <View style={styles.infoTextBlock}>
       <Text style={styles.infoBlockTitle}>{label}</Text>
@@ -405,8 +405,8 @@ function ActionButton({
   onPress: () => void;
   tone: 'result' | 'start';
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <AppButton
       disabled={disabled}
@@ -420,8 +420,8 @@ function ActionButton({
 }
 
 function MapShortcutButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.mapShortcutButton, pressed ? styles.mapShortcutButtonPressed : null]}>
       <Ionicons color={colors.primaryDeep} name={icon} size={18} />
@@ -439,8 +439,8 @@ function normalizeDocumentName(name: string) {
 }
 
 function DocumentModal({ document, onClose }: { document: EventDocument | null; onClose: () => void }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <Modal animationType="slide" transparent visible={Boolean(document)}>
       <View style={styles.modalOverlay}>
@@ -462,7 +462,8 @@ function DocumentModal({ document, onClose }: { document: EventDocument | null; 
   );
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
@@ -550,8 +551,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     paddingVertical: 5,
   },
   heroFavoriteBadgeActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: isDark ? '#8B7A20' : colors.primary,
+    backgroundColor: isSoft ? '#FFDD00' : colors.accentSoft,
+    borderColor: isDark ? '#8B7A20' : isSoft ? '#CCB200' : colors.primary,
   },
   heroFavoriteBadgeText: {
     ...typography.captionStrong,
@@ -569,8 +570,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     padding: spacing.lg,
   },
   infoPanel: {
-    backgroundColor: isDark ? '#17301A' : '#EAF4E0',
-    borderColor: isDark ? '#2E5A30' : '#CEE0C1',
+    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#EAF4E0',
+    borderColor: isDark ? '#2E5A30' : isSoft ? '#B0C4DE' : '#CEE0C1',
   },
   infoHeader: {
     alignItems: 'center',
@@ -668,8 +669,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     lineHeight: 18,
   },
   startButton: {
-    backgroundColor: isDark ? '#17301A' : '#E3F0D7',
-    borderColor: isDark ? '#2E5A32' : '#8CAF7C',
+    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#E3F0D7',
+    borderColor: isDark ? '#2E5A32' : isSoft ? '#6A9FD8' : '#8CAF7C',
     minHeight: 52,
   },
   liveloxButton: {
@@ -740,8 +741,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
   },
   mapShortcutButton: {
     alignItems: 'center',
-    backgroundColor: isDark ? colors.surfaceMuted : 'rgba(252, 253, 249, 0.94)',
-    borderColor: isDark ? colors.border : '#BED2B6',
+    backgroundColor: isDark ? colors.surfaceMuted : isSoft ? 'rgba(240, 246, 252, 0.94)' : 'rgba(252, 253, 249, 0.94)',
+    borderColor: isDark ? colors.border : isSoft ? '#B0C4DE' : '#BED2B6',
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,

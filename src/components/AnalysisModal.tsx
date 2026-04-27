@@ -9,7 +9,7 @@ import { LoadingState } from '@/src/components/LoadingState';
 import { buildEventAnalysis } from '@/src/services/eventAnalysis';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
 import { getClassificationTone } from '@/src/theme/colors';
-import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventSplitTimesSection } from '@/src/types/eventSplitTimes';
@@ -27,7 +27,7 @@ export type AnalysisModalState = {
 };
 
 export function AnalysisModal({ onClose, state }: { onClose: () => void; state: AnalysisModalState | null }) {
-  const colors = useColors();
+  const { colors, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const currentState = state;
 
@@ -66,7 +66,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
 
           {!currentState.isLoading && !currentState.error && analysis ? (
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-              <LinearGradient colors={getClassificationTone(selectedSection?.classificationId ?? 0).detailGradient} style={styles.hero}>
+              <LinearGradient colors={getClassificationTone(selectedSection?.classificationId ?? 0, themeName).detailGradient} style={styles.hero}>
                 <View style={styles.heroTopRow}>
                   <View style={styles.heroTitleWrap}>
                     <Text numberOfLines={1} style={styles.heroEyebrow}>

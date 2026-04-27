@@ -57,8 +57,8 @@ export function PublishedListModal({
   onOpenAnalysis?: OpenAnalysisHandler;
   state: PublishedListModalState | null;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorOffsets, setAnchorOffsets] = React.useState<Record<string, number>>({});
@@ -364,8 +364,8 @@ function PublishedTableSection({
   sverigelistanRanks: Record<string, number> | null;
   sverigelistanVisible: boolean;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const seenClassAnchors = React.useRef<Set<string>>(new Set());
   seenClassAnchors.current.clear();
   const { width: windowWidth } = useWindowDimensions();
@@ -1435,7 +1435,8 @@ function normalizeClassLabel(label: string) {
   return label.replace(/\s+/g, ' ').trim().toLocaleLowerCase('sv');
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   modalOverlay: {
     backgroundColor: colors.overlay,
@@ -1694,7 +1695,7 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     backgroundColor: colors.surface,
   },
   tableRowOdd: {
-    backgroundColor: '#F1F8EA',
+    backgroundColor: isSoft ? '#EDF2FA' : isDark ? colors.surfaceMuted : '#F1F8EA',
   },
   relayRow: {
     paddingBottom: 5,

@@ -41,8 +41,8 @@ export function RunnerRankingModal({
   onClose: () => void;
   selection: RunnerRankingSelection | null;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const [state, setState] = React.useState<RunnerRankingModalState | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
   const [manualLoginVisible, setManualLoginVisible] = React.useState(false);
@@ -372,8 +372,8 @@ function SummaryChip({
   subtitle?: string;
   value: string;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <View style={styles.summaryChip}>
       <View style={styles.summaryChipHeader}>
@@ -393,8 +393,8 @@ function SummaryChip({
 }
 
 function MetaPill({ label, emphasized = false }: { label: string; emphasized?: boolean }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   return (
     <View style={[styles.metaPill, emphasized ? styles.metaPillEmphasis : null]}>
       <Text numberOfLines={1} style={[styles.metaPillText, emphasized ? styles.metaPillTextEmphasis : null]}>
@@ -412,7 +412,8 @@ function formatPoints(points: number | null | undefined) {
   return Number.isInteger(points) ? `${points}` : points.toFixed(2).replace('.', ',');
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   overlay: {
     backgroundColor: colors.overlay,
@@ -502,8 +503,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
   },
   expiryBadge: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#17301A' : '#F0F6E8',
-    borderColor: isDark ? '#2E5A30' : '#C9DBB0',
+    backgroundColor: isDark ? '#17301A' : isSoft ? '#EDF2FA' : '#F0F6E8',
+    borderColor: isDark ? '#2E5A30' : isSoft ? '#B0C4DE' : '#C9DBB0',
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
@@ -645,8 +646,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
   rankBadge: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: isDark ? '#17301A' : '#E3F1D2',
-    borderColor: isDark ? '#2E5A30' : '#AFCF88',
+    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#E3F1D2',
+    borderColor: isDark ? '#2E5A30' : isSoft ? '#A0C0E0' : '#AFCF88',
     borderWidth: 1,
     borderRadius: 999,
     justifyContent: 'center',
@@ -746,8 +747,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
   },
   scorePill: {
     alignItems: 'center',
-    backgroundColor: '#F1F8EA',
-    borderColor: '#C8DAB0',
+    backgroundColor: isSoft ? '#EDF2FA' : isDark ? colors.surfaceMuted : '#F1F8EA',
+    borderColor: isSoft ? '#B0C4DE' : isDark ? colors.border : '#C8DAB0',
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,

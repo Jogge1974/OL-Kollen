@@ -21,9 +21,9 @@ type EventSummaryCardProps = {
 
 export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSummaryCardProps) {
   const pathname = usePathname();
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const tone = getClassificationTone(item.classificationId);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
+  const tone = getClassificationTone(item.classificationId, themeName);
   const accentStyle = getAccentStyle(item.startDate, colors);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
@@ -205,7 +205,8 @@ function getShortClassificationLabel(classificationId: number) {
   return `Typ ${classificationId}`;
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
@@ -229,8 +230,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     paddingVertical: 10,
   },
   cardFavorite: {
-    backgroundColor: isDark ? '#2E2A0A' : '#FFF6CF',
-    borderColor: isDark ? '#5C5420' : '#E7D98B',
+    backgroundColor: isDark ? '#2E2A0A' : isSoft ? '#FFF8DC' : '#FFF6CF',
+    borderColor: isDark ? '#5C5420' : isSoft ? '#E0C850' : '#E7D98B',
   },
   cardPressable: {
     flex: 1,
@@ -316,13 +317,13 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     bottom: 10,
   },
   publicationBadgeStart: {
-    backgroundColor: isDark ? '#1A3520' : '#E4F4D5',
-    borderColor: isDark ? '#2E5A32' : '#86AD73',
+    backgroundColor: isDark ? '#1A3520' : isSoft ? '#E0ECF8' : '#E4F4D5',
+    borderColor: isDark ? '#2E5A32' : isSoft ? '#6A9FD8' : '#86AD73',
     borderWidth: 1,
   },
   publicationBadgeResult: {
-    backgroundColor: isDark ? '#332D0A' : '#F6D94B',
-    borderColor: isDark ? '#665A15' : '#C9A700',
+    backgroundColor: isDark ? '#332D0A' : isSoft ? '#FFDD00' : '#F6D94B',
+    borderColor: isDark ? '#665A15' : isSoft ? '#CCB200' : '#C9A700',
     borderWidth: 1,
   },
   publicationBadgeText: {

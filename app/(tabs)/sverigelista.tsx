@@ -19,8 +19,8 @@ import { typography } from '@/src/theme/typography';
 import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export default function SverigelistaScreen() {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const user = useAuthStore((state) => state.user);
   const canViewSverigelistan = Boolean(user);
   const [selectedGender, setSelectedGender] = React.useState<'D' | 'H'>(user?.gender ?? 'H');
@@ -399,8 +399,8 @@ function SverigelistaRowCard({
   index: number;
   item: SverigelistanRow;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const isMe = currentUserRunnerId !== null && item.RunnerId === currentUserRunnerId;
   const filterPlacement = filterLabel ? index + 1 : null;
   const showRightRank = showFilterPlacement && filterPlacement !== null;
@@ -490,7 +490,8 @@ function formatPoints(points: number) {
   return Number.isInteger(points) ? `${points}` : points.toFixed(2);
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   clearFilterChip: {
     backgroundColor: colors.surfaceMuted,
@@ -694,7 +695,7 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     opacity: 0.85,
   },
   searchResultItemSelected: {
-    backgroundColor: '#E7F4D8',
+    backgroundColor: isSoft ? '#E0ECF8' : isDark ? colors.surfaceMuted : '#E7F4D8',
     borderColor: colors.primary,
   },
   searchResultText: {
@@ -723,8 +724,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
   },
   searchClubChip: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#0F1E30' : '#EEF4FF',
-    borderColor: isDark ? '#2E4A6E' : '#C8D6FF',
+    backgroundColor: isDark ? '#0F1E30' : isSoft ? '#E8F0FA' : '#EEF4FF',
+    borderColor: isDark ? '#2E4A6E' : isSoft ? '#B0C4DE' : '#C8D6FF',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
@@ -794,7 +795,7 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     backgroundColor: colors.surface,
   },
   rowCardMe: {
-    backgroundColor: '#F1F8EA',
+    backgroundColor: isSoft ? '#E0ECF8' : isDark ? colors.surfaceMuted : '#F1F8EA',
     borderColor: colors.primary,
   },
   rowCardOdd: {
@@ -824,8 +825,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
   },
   filterPlacementBadge: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#17301A' : '#E7F4D8',
-    borderColor: isDark ? '#2E5A30' : '#B7D2A0',
+    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#E7F4D8',
+    borderColor: isDark ? '#2E5A30' : isSoft ? '#A0C0E0' : '#B7D2A0',
     borderRadius: 999,
     borderWidth: 1,
     height: 28,

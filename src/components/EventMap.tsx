@@ -9,7 +9,7 @@ import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
 import { getClassificationTone } from '@/src/theme/colors';
-import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
+import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
@@ -28,8 +28,8 @@ const DEFAULT_REGION: Region = {
 };
 
 export function EventMap({ error, events }: EventMapProps) {
-  const colors = useColors();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { colors, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, themeName), [colors, themeName]);
   const mapRef = React.useRef<MapView>(null);
   const ignoreNextMapPressRef = React.useRef(false);
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
@@ -139,7 +139,7 @@ export function EventMap({ error, events }: EventMapProps) {
           >
             {markerGroups.map((group) => {
               const isSelected = selectedMarkerKey === group.key;
-              const tone = getClassificationTone(group.events[0]?.classificationId ?? 2);
+              const tone = getClassificationTone(group.events[0]?.classificationId ?? 2, themeName);
               const markerColor = isSelected ? colors.accent : tone.accent;
 
               return (
@@ -280,7 +280,8 @@ function getFallbackRegion(groups: Array<{ coordinate: { latitude: number; longi
   };
 }
 
-function createStyles(colors: ColorPalette) {
+function createStyles(colors: ColorPalette, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   container: {
     flex: 1,
@@ -358,7 +359,7 @@ function createStyles(colors: ColorPalette) {
     paddingBottom: 2,
   },
   inlineBanner: {
-    backgroundColor: 'rgba(252, 253, 249, 0.96)',
+    backgroundColor: isSoft ? 'rgba(240, 246, 252, 0.96)' : 'rgba(252, 253, 249, 0.96)',
     borderColor: colors.border,
     borderRadius: 16,
     borderWidth: 1,

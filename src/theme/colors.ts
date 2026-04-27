@@ -33,7 +33,76 @@ export const colors = {
   textSecondary: '#5C695F',
 } as const;
 
-export function getClassificationTone(classificationId: number) {
+export function getClassificationTone(classificationId: number, themeName?: string) {
+  if (themeName === 'soft') {
+    const softTones = {
+      1: {
+        accent: '#001A4F',
+        badgeBackground: '#001A4F',
+        badgeText: '#FFFFFF',
+        border: '#8AA4CC',
+        cardBackground: '#F0F5FC',
+        detailGradient: ['#001A4F', '#0F347C'] as const,
+        text: '#001A4F',
+      },
+      2: {
+        accent: '#0F347C',
+        badgeBackground: '#0F347C',
+        badgeText: '#FFFFFF',
+        border: '#95B0D5',
+        cardBackground: '#F2F7FC',
+        detailGradient: ['#0F347C', '#2855A0'] as const,
+        text: '#0F347C',
+      },
+      3: {
+        accent: '#2855A0',
+        badgeBackground: '#2855A0',
+        badgeText: '#FFFFFF',
+        border: '#A0BBDB',
+        cardBackground: '#F4F8FC',
+        detailGradient: ['#2855A0', '#4A78C0'] as const,
+        text: '#1A3D6B',
+      },
+      4: {
+        accent: '#4A78C0',
+        badgeBackground: '#4A78C0',
+        badgeText: '#001A4F',
+        border: '#B0C8E5',
+        cardBackground: '#F6F9FC',
+        detailGradient: ['#4A78C0', '#69BFEB'] as const,
+        text: '#2A5080',
+      },
+      5: {
+        accent: '#69BFEB',
+        badgeBackground: '#69BFEB',
+        badgeText: '#001A4F',
+        border: '#B8D8F0',
+        cardBackground: '#F8FBFE',
+        detailGradient: ['#69BFEB', '#8BD0F0'] as const,
+        text: '#2A5080',
+      },
+      6: {
+        accent: '#A8D8F0',
+        badgeBackground: '#A8D8F0',
+        badgeText: '#001A4F',
+        border: '#C8E4F5',
+        cardBackground: '#FAFCFE',
+        detailGradient: ['#8BD0F0', '#B4DAEF'] as const,
+        text: '#2A5080',
+      },
+    } as const;
+
+    return softTones[classificationId as keyof typeof softTones] ?? {
+      accent: '#0F347C',
+      badgeBackground: '#EDF2FA',
+      badgeText: '#001A4F',
+      border: '#C8D8E8',
+      cardBackground: '#FFFFFF',
+      detailGradient: ['#0F347C', '#001A4F'] as const,
+      text: '#001A4F',
+    };
+  }
+
   const tones = {
     1: {
       accent: '#1E4A2A',

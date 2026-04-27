@@ -76,8 +76,8 @@ export function SplitTimesModal({
   onOpenAnalysis?: OpenAnalysisHandler;
   state: SplitTimesModalState | null;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const metricsScrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -515,8 +515,8 @@ function MetricCell({
   showLossDot?: boolean;
   onPress?: () => void;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const toneStyle = tone === 'leader' ? styles.metricTextLeader : tone === 'podium' ? styles.metricTextPodium : null;
   const headlineStyle = lossHighlight ? styles.metricSplitLossHeadline : styles.metricHeadline;
   const valueStyle = lossHighlight ? styles.metricSplitLossValue : styles.metricValue;
@@ -562,8 +562,8 @@ const SplitTimesClassRow = React.memo(function SplitTimesClassRow({
   row: EventSplitTimesRow;
   rowIndex: number;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const handleNamePress = React.useCallback(() => {
     if (row.organisationId && row.personId && onOpenAnalysis) {
       onOpenAnalysisChoice({
@@ -616,8 +616,8 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
   row: EventSplitTimesRow;
   rowIndex: number;
 }) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const splitTitle = pageKey === 'total' ? '' : computed.splitPrimary;
   const splitSubtitle = pageKey === 'total' ? '' : computed.splitSecondary;
 
@@ -1078,7 +1078,8 @@ function extractSelectedEventRaceId(eventId: string) {
   return parts.length > 1 ? parts.slice(1).join('::') || null : null;
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft';
   return StyleSheet.create({
   classChip: {
     backgroundColor: colors.surfaceMuted,
@@ -1576,7 +1577,7 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     backgroundColor: colors.surface,
   },
   tableRowOdd: {
-    backgroundColor: '#F1F8EA',
+    backgroundColor: isSoft ? '#EDF2FA' : isDark ? colors.surfaceMuted : '#F1F8EA',
   },
   bodyTable: {
     flex: 1,
