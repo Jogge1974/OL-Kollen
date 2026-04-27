@@ -8,6 +8,7 @@ import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListRow, PublishedListSection, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
+import { calculateClassPoints, fetchSverigelistanForPoints } from '@/src/services/sverigelistanPointsCalculator';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { colors } from '@/src/theme/colors';
 import { spacing } from '@/src/theme/spacing';
@@ -487,6 +488,41 @@ function PublishedTableSection({
     return Math.min(Math.floor(windowWidth * 0.6), estimatedWidth);
   }, [isEntries, scope, section.rows, windowWidth]);
 
+  const [classPoints, setClassPoints] = React.useState<Record<string, number> | null>(null);
+  const [classPointsLoading, setClassPointsLoading] = React.useState(false);
+  const [classPointsVisible, setClassPointsVisible] = React.useState(false);
+
+  const isEligibleForPoints = React.useMemo(() => {
+    if (kind !== 'results' || scope !== 'public' || isRelaySection) return false;
+    const label = section.title;
+    const pattern = /^[HDWM]\d/i;
+    if (!pattern.test(label)) return false;
+    const match = label.match(/^[HDWM](\d+)/i);
+    if (!match) return false;
+    return Number(match[1]) >= 16;
+  }, [kind, scope, isRelaySection, section.title]);
+
+  const handlePointsBadgePress = React.useCallback(async () => {
+    if (classPointsLoading) return;
+
+    if (classPoints !== null) {
+      setClassPointsVisible((prev) => !prev);
+      return;
+    }
+
+    setClassPointsLoading(true);
+    try {
+      const svMap = await fetchSverigelistanForPoints();
+      const points = calculateClassPoints(section, svMap);
+      setClassPoints(points ?? {});
+      setClassPointsVisible(true);
+    } catch (error) {
+      console.error('[PublishedListModal] failed to calculate points', error);
+    } finally {
+      setClassPointsLoading(false);
+    }
+  }, [classPointsLoading, classPoints, section]);
+
   const handleRowPress = React.useCallback(
     (row: PublishedListRow) => {
       console.log('[PublishedListModal] row press', {
@@ -544,7 +580,26 @@ function PublishedTableSection({
           <Text numberOfLines={1} style={styles.tableClassHeaderText}>
             {formatSectionTitle(section)}
           </Text>
-          {section.meta ? <Text style={styles.tableClassHeaderMeta}>{formatSectionMeta(section.meta)}</Text> : null}
+          <View style={styles.tableClassHeaderRightRow}>
+            {isEligibleForPoints ? (
+              <Pressable onPress={handlePointsBadgePress} style={styles.pointsBadge} disabled={classPointsLoading}>
+                {classPointsLoading ? (
+                  <>
+                    <ActivityIndicator color={colors.primaryDeep} size={12} />
+                    <Text style={styles.pointsBadgeText}>Beräknar...</Text>
+                  </>
+                ) : classPoints !== null && classPointsVisible ? (
+                  <>
+                    <Text style={styles.pointsBadgeText}>Beräk. Sv.poä</Text>
+                    <Ionicons color={colors.primaryDeep} name="trash-outline" size={11} />
+                  </>
+                ) : (
+                  <Text style={styles.pointsBadgeText}>Beräk. Sv.poä</Text>
+                )}
+              </Pressable>
+            ) : null}
+            {section.meta ? <Text style={styles.tableClassHeaderMeta}>{formatSectionMeta(section.meta)}</Text> : null}
+          </View>
         </View>
 
         {isRelaySection ? (
@@ -1156,6 +1211,10 @@ function PublishedTableSection({
               <Text numberOfLines={1} style={[styles.tableCellText, styles.tableMetricColumn, { width: columnWidths.pace }]}>
                 {row.pace ?? '-'}
               </Text>
+            ) : null}
+
+            {classPointsVisible && classPoints && row.personId && classPoints[row.personId] != null ? (
+              <Text numberOfLines={1} style={styles.pointsTextAbsolute}>Prel. Sv.poäng: {classPoints[row.personId].toFixed(2)}</Text>
             ) : null}
           </RowContainer>
         );
@@ -2016,6 +2075,52 @@ const styles = StyleSheet.create({
     color: '#2F66A8',
     fontFamily: typography.bodyStrong.fontFamily,
     fontSize: 14,
+  },
+  tableClassHeaderRightRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 6,
+  },
+  pointsBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  pointsBadgeText: {
+    color: colors.heroText,
+    fontFamily: typography.buttonSmall.fontFamily,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  pointsText: {
+    color: '#2F66A8',
+    fontFamily: typography.bodyStrong.fontFamily,
+    fontSize: 12,
+    lineHeight: 15,
+    textAlign: 'right',
+  },
+  pointsTextAbsolute: {
+    bottom: 7,
+    color: '#2F66A8',
+    fontFamily: typography.bodyStrong.fontFamily,
+    fontSize: 12,
+    lineHeight: 15,
+    position: 'absolute',
+    right: spacing.sm,
+    textAlign: 'right',
+  },
+  clubPointsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 1,
   },
 });
 

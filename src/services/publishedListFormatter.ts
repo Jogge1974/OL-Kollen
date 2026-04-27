@@ -53,6 +53,7 @@ export type PublishedListRow = {
   relayMembers?: PublishedListRelayMemberRow[];
   status?: string;
   time?: string;
+  timeSeconds?: number;
 };
 
 export type PublishedListSection = {
@@ -349,6 +350,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             primary: row.primary,
             status: row.status ?? undefined,
             time: row.time,
+            timeSeconds: row.timeSeconds,
           })),
           title: 'Min klubb',
         },
@@ -377,6 +379,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
             primary: row.primary,
             status: row.status ?? undefined,
             time: row.time,
+            timeSeconds: row.timeSeconds,
           })),
         title: section.classLabel,
       }))
@@ -1036,6 +1039,7 @@ function buildPublishedResultRow({
     raceNumber,
     status,
     time: timeSeconds > 0 ? formatSeconds(timeSeconds) : '-',
+    timeSeconds: timeSeconds > 0 ? timeSeconds : undefined,
   };
 }
 
