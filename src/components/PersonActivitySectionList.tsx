@@ -33,8 +33,8 @@ export function PersonActivitySectionList({
   onPressEvent,
   sections,
 }: PersonActivitySectionListProps) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
 
@@ -243,7 +243,8 @@ function buildResultRight(row: PersonActivitySection['rows'][number]) {
   return `Tid: ${row.time ?? '-'} ${row.diff ?? '-'}, Plac: ${row.position ?? '-'}`;
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   errorText: {
     ...typography.captionStrong,
@@ -388,16 +389,16 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     paddingVertical: 5,
   },
   resultActionButtonPrimary: {
-    backgroundColor: isDark ? '#17301A' : '#E9F2E1',
-    borderColor: isDark ? '#2E5A32' : '#86AD73',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#E0ECF8' : '#E9F2E1',
+    borderColor: isDark ? (isSoft ? '#2A4878' : '#2E5A32') : isSoft ? '#6A9FD8' : '#86AD73',
   },
   resultActionButtonMuted: {
-    backgroundColor: isDark ? '#332D0A' : '#F6D94B',
-    borderColor: isDark ? '#665A15' : '#C9A700',
+    backgroundColor: isDark ? (isSoft ? '#3A3000' : '#332D0A') : isSoft ? '#FFDD00' : '#F6D94B',
+    borderColor: isDark ? (isSoft ? '#665A15' : '#665A15') : isSoft ? '#CCB200' : '#C9A700',
   },
   resultActionButtonAnalysis: {
-    backgroundColor: isDark ? '#0F1E30' : '#E7F1FF',
-    borderColor: isDark ? '#2E4A6E' : '#90B5E8',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#0F1E30') : isSoft ? '#E0ECF8' : '#E7F1FF',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E4A6E') : isSoft ? '#6A9FD8' : '#90B5E8',
   },
   resultActionButtonText: {
     ...typography.captionStrong,

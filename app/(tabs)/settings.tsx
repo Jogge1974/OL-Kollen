@@ -357,28 +357,39 @@ export default function SettingsScreen() {
         >
           <View style={styles.sectionContent}>
             <Text style={styles.helperText}>Välj utseende för appen.</Text>
-            <View style={styles.themeToggleRow}>
-              <Pressable
-                onPress={() => void setThemeName('light')}
-                style={[styles.themeOption, themeName === 'light' ? styles.themeOptionActive : null]}
-              >
-                <Ionicons color={themeName === 'light' ? colors.primaryDeep : colors.textSecondary} name="sunny-outline" size={20} />
-                <Text style={[styles.themeOptionText, themeName === 'light' ? styles.themeOptionTextActive : null]}>Ljust</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void setThemeName('dark')}
-                style={[styles.themeOption, themeName === 'dark' ? styles.themeOptionActive : null]}
-              >
-                <Ionicons color={themeName === 'dark' ? colors.primaryDeep : colors.textSecondary} name="moon-outline" size={20} />
-                <Text style={[styles.themeOptionText, themeName === 'dark' ? styles.themeOptionTextActive : null]}>Mörkt</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void setThemeName('soft')}
-                style={[styles.themeOption, themeName === 'soft' ? styles.themeOptionActive : null]}
-              >
-                <Image source={require('@/assets/soft-icon.png')} style={styles.softIcon} />
-                <Text style={[styles.themeOptionText, themeName === 'soft' ? styles.themeOptionTextActive : null]}>SOFT</Text>
-              </Pressable>
+            <View style={styles.themeToggleGrid}>
+              <View style={styles.themeToggleRow}>
+                <Pressable
+                  onPress={() => void setThemeName('light')}
+                  style={[styles.themeOption, themeName === 'light' ? styles.themeOptionActive : null]}
+                >
+                  <Ionicons color={themeName === 'light' ? colors.primaryDeep : colors.textSecondary} name="sunny-outline" size={20} />
+                  <Text style={[styles.themeOptionText, themeName === 'light' ? styles.themeOptionTextActive : null]}>Ljust</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void setThemeName('dark')}
+                  style={[styles.themeOption, themeName === 'dark' ? styles.themeOptionActive : null]}
+                >
+                  <Ionicons color={themeName === 'dark' ? colors.primaryDeep : colors.textSecondary} name="moon-outline" size={20} />
+                  <Text style={[styles.themeOptionText, themeName === 'dark' ? styles.themeOptionTextActive : null]}>Mörkt</Text>
+                </Pressable>
+              </View>
+              <View style={styles.themeToggleRow}>
+                <Pressable
+                  onPress={() => void setThemeName('soft')}
+                  style={[styles.themeOption, themeName === 'soft' ? styles.themeOptionActive : null]}
+                >
+                  <Image source={require('@/assets/soft-icon.png')} style={styles.softIcon} />
+                  <Text style={[styles.themeOptionText, themeName === 'soft' ? styles.themeOptionTextActive : null]}>SOFT</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void setThemeName('soft-dark')}
+                  style={[styles.themeOption, themeName === 'soft-dark' ? styles.themeOptionActive : null]}
+                >
+                  <Image source={require('@/assets/soft-icon.png')} style={styles.softIcon} />
+                  <Text style={[styles.themeOptionText, themeName === 'soft-dark' ? styles.themeOptionTextActive : null]}>SOFT mörkt</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </ExpandableCard>
@@ -593,6 +604,9 @@ function createStyles(colors: ColorPalette) {
     marginTop: 'auto',
     paddingBottom: spacing.xs,
     paddingTop: spacing.md,
+  },
+  themeToggleGrid: {
+    gap: spacing.sm,
   },
   themeToggleRow: {
     flexDirection: 'row',

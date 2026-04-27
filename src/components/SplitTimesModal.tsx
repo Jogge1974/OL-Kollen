@@ -1079,7 +1079,7 @@ function extractSelectedEventRaceId(eventId: string) {
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   classChip: {
     backgroundColor: colors.surfaceMuted,
@@ -1090,8 +1090,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 5,
   },
   classChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   classChipText: {
     color: colors.textPrimary,
@@ -1411,7 +1411,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   choiceButtonLabelAnalysis: {
     ...typography.buttonSmall,
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontSize: 16,
     lineHeight: 19,
     textAlign: 'center',
@@ -1444,7 +1444,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   choiceButtonPersonText: {
     ...typography.captionStrong,
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontSize: 14,
     lineHeight: 17,
     textAlign: 'center',
@@ -1556,7 +1556,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     overflow: 'hidden',
   },
   tableClassHeader: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -1577,7 +1577,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     backgroundColor: colors.surface,
   },
   tableRowOdd: {
-    backgroundColor: isSoft ? '#EDF2FA' : isDark ? colors.surfaceMuted : '#F1F8EA',
+    backgroundColor: isDark ? (isSoft ? '#152240' : colors.surfaceMuted) : isSoft ? '#EDF2FA' : '#F1F8EA',
   },
   bodyTable: {
     flex: 1,

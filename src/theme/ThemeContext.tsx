@@ -4,7 +4,7 @@ import { colors as lightColors } from '@/src/theme/colors';
 
 export type ColorPalette = { [K in keyof typeof lightColors]: string };
 
-export type ThemeName = 'light' | 'dark' | 'soft';
+export type ThemeName = 'light' | 'dark' | 'soft' | 'soft-dark';
 
 export const darkColors: ColorPalette = {
   accent: '#F3DA3E',
@@ -76,6 +76,41 @@ export const softColors: ColorPalette = {
   textSecondary: '#3D5070',
 } as const;
 
+export const softDarkColors: ColorPalette = {
+  accent: '#FFDD00',
+  accentGlow: 'rgba(255, 221, 0, 0.22)',
+  accentLineToday: '#69BFEB',
+  accentLineWeekend: '#4A8FC0',
+  accentLineWeekday: '#2A5A8A',
+  accentLinePastBorder: '#3A70A0',
+  accentSoft: '#1A2A4A',
+  background: '#0A1025',
+  backgroundDeep: '#060C1A',
+  backgroundGlow: 'rgba(15, 52, 124, 0.20)',
+  border: '#1E3058',
+  borderSoft: '#162545',
+  buttonText: '#001A4F',
+  error: '#E06060',
+  heroBottom: '#001A4F',
+  heroEyebrow: '#FFDD00',
+  heroText: '#E0EAFF',
+  heroTextMuted: 'rgba(224, 234, 255, 0.72)',
+  heroTop: '#0F347C',
+  overlay: 'rgba(0, 0, 0, 0.55)',
+  primary: '#4A8FD0',
+  primaryDeep: '#8AB8E8',
+  secondaryGlow: 'rgba(105, 191, 235, 0.16)',
+  surface: '#101A35',
+  surfaceMuted: '#152240',
+  surfaceOverlay: 'rgba(16, 26, 53, 0.88)',
+  tabActive: '#69BFEB',
+  tabBackground: '#0C1428',
+  tabInactive: '#5A708A',
+  textMuted: '#7088A8',
+  textPrimary: '#D8E4F5',
+  textSecondary: '#8AAAC8',
+} as const;
+
 type ThemeContextValue = {
   colors: ColorPalette;
   isDark: boolean;
@@ -94,6 +129,8 @@ function getColorsForTheme(themeName: ThemeName): ColorPalette {
       return darkColors;
     case 'soft':
       return softColors;
+    case 'soft-dark':
+      return softDarkColors;
     default:
       return lightColors;
   }
@@ -109,7 +146,7 @@ export function ThemeProvider({
   const value = React.useMemo<ThemeContextValue>(
     () => ({
       colors: getColorsForTheme(themeName),
-      isDark: themeName === 'dark',
+      isDark: themeName === 'dark' || themeName === 'soft-dark',
       themeName,
     }),
     [themeName],

@@ -44,8 +44,8 @@ export function FavoritesAndResultsPanel({
   setResultsFilter,
   setResultsYear,
 }: FavoritesAndResultsPanelProps) {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const pathname = usePathname();
   const [selectedTab, setSelectedTab] = React.useState<'favorites' | 'results'>('favorites');
 
@@ -166,7 +166,8 @@ export function FavoritesAndResultsPanel({
   );
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   deleteButton: {
     alignItems: 'center',
@@ -231,8 +232,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     paddingVertical: 4,
   },
   filterChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   filterChipText: {
     color: colors.textPrimary,
@@ -288,7 +289,7 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     justifyContent: 'center',
   },
   tabButtonActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   tabButtonText: {
     ...typography.bodyStrong,
@@ -312,8 +313,8 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     paddingVertical: 5,
   },
   yearChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   yearChipText: {
     color: colors.textPrimary,

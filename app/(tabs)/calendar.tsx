@@ -18,8 +18,8 @@ import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 export default function CalendarScreen() {
-  const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const [filterVisible, setFilterVisible] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'list' | 'map'>('list');
   const { applyFilters, error, events, filters, isLoading, isRefreshing, refresh } = useEventorEvents();
@@ -124,7 +124,8 @@ function getSelectedDistrictCountLabel(count: number) {
   return count === 1 ? '1 valt' : `${count} valda`;
 }
 
-function createStyles(colors: ColorPalette, isDark: boolean) {
+function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
@@ -211,7 +212,7 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     paddingVertical: 7,
   },
   modeButtonActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   modeButtonText: {
     ...typography.buttonSmall,

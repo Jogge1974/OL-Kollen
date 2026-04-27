@@ -491,7 +491,7 @@ function formatPoints(points: number) {
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   clearFilterChip: {
     backgroundColor: colors.surfaceMuted,
@@ -510,8 +510,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   resetAllButtonInline: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#301717' : '#FFF1F1',
-    borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
+    backgroundColor: isDark ? (isSoft ? '#2A1020' : '#301717') : '#FFF1F1',
+    borderColor: isDark ? (isSoft ? '#4A2040' : '#5A2E2E') : '#E7B5B5',
     borderRadius: 999,
     borderWidth: 1,
     height: 30,
@@ -550,8 +550,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 5,
   },
   classChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   classChipRow: {
     gap: 8,
@@ -618,8 +618,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 7,
   },
   genderChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   genderChipText: {
     ...typography.captionStrong,
@@ -724,8 +724,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   searchClubChip: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#0F1E30' : isSoft ? '#E8F0FA' : '#EEF4FF',
-    borderColor: isDark ? '#2E4A6E' : isSoft ? '#B0C4DE' : '#C8D6FF',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#0F1E30') : isSoft ? '#E8F0FA' : '#EEF4FF',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E4A6E') : isSoft ? '#B0C4DE' : '#C8D6FF',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
@@ -766,7 +766,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   rankBadge: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     borderRadius: 999,
     height: 30,
     justifyContent: 'center',
@@ -825,8 +825,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   filterPlacementBadge: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#E7F4D8',
-    borderColor: isDark ? '#2E5A30' : isSoft ? '#A0C0E0' : '#B7D2A0',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#E0ECF8' : '#E7F4D8',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E5A30') : isSoft ? '#A0C0E0' : '#B7D2A0',
     borderRadius: 999,
     borderWidth: 1,
     height: 28,
@@ -866,8 +866,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 4,
   },
   modeChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   modeChipText: {
     ...typography.captionStrong,

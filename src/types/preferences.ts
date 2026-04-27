@@ -34,5 +34,5 @@ export type PersistedPreferences = {
   favoriteEvents: FavoriteEventSummary[];
   favoriteClasses: string[];
   notificationSettings: NotificationSettings;
-  themeName?: 'light' | 'dark' | 'soft';
+  themeName?: 'light' | 'dark' | 'soft' | 'soft-dark';
 };

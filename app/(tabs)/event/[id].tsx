@@ -180,7 +180,7 @@ export default function EventDetailScreen() {
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
-              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : themeName === 'soft' ? '#001A4F' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
+              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : (themeName === 'soft' || themeName === 'soft-dark') ? '#001A4F' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
               <Text style={[styles.heroFavoriteBadgeText, isFavorite ? styles.heroFavoriteBadgeTextActive : null]}>Favorit</Text>
             </Pressable>
           </View>
@@ -463,7 +463,7 @@ function DocumentModal({ document, onClose }: { document: EventDocument | null; 
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   safeArea: {
     backgroundColor: colors.background,
@@ -551,8 +551,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 5,
   },
   heroFavoriteBadgeActive: {
-    backgroundColor: isSoft ? '#FFDD00' : colors.accentSoft,
-    borderColor: isDark ? '#8B7A20' : isSoft ? '#CCB200' : colors.primary,
+    backgroundColor: isSoft ? (isDark ? '#3A3000' : '#FFDD00') : colors.accentSoft,
+    borderColor: isDark ? (isSoft ? '#8B7A20' : '#8B7A20') : isSoft ? '#CCB200' : colors.primary,
   },
   heroFavoriteBadgeText: {
     ...typography.captionStrong,
@@ -570,8 +570,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     padding: spacing.lg,
   },
   infoPanel: {
-    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#EAF4E0',
-    borderColor: isDark ? '#2E5A30' : isSoft ? '#B0C4DE' : '#CEE0C1',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#E0ECF8' : '#EAF4E0',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E5A30') : isSoft ? '#B0C4DE' : '#CEE0C1',
   },
   infoHeader: {
     alignItems: 'center',
@@ -669,8 +669,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 18,
   },
   startButton: {
-    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#E3F0D7',
-    borderColor: isDark ? '#2E5A32' : isSoft ? '#6A9FD8' : '#8CAF7C',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#E0ECF8' : '#E3F0D7',
+    borderColor: isDark ? (isSoft ? '#2A4878' : '#2E5A32') : isSoft ? '#6A9FD8' : '#8CAF7C',
     minHeight: 52,
   },
   liveloxButton: {
@@ -806,7 +806,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   eventorLink: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     borderRadius: 16,
     flexDirection: 'row',
     gap: spacing.xs,

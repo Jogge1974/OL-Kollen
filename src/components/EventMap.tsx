@@ -281,7 +281,7 @@ function getFallbackRegion(groups: Array<{ coordinate: { latitude: number; longi
 }
 
 function createStyles(colors: ColorPalette, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   container: {
     flex: 1,

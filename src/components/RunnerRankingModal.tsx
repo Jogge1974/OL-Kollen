@@ -413,7 +413,7 @@ function formatPoints(points: number | null | undefined) {
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   overlay: {
     backgroundColor: colors.overlay,
@@ -503,16 +503,16 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   expiryBadge: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#17301A' : isSoft ? '#EDF2FA' : '#F0F6E8',
-    borderColor: isDark ? '#2E5A30' : isSoft ? '#B0C4DE' : '#C9DBB0',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#EDF2FA' : '#F0F6E8',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E5A30') : isSoft ? '#B0C4DE' : '#C9DBB0',
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
   expiryBadgeActive: {
-    backgroundColor: isDark ? '#301717' : '#FFF1F1',
-    borderColor: isDark ? '#5A2E2E' : '#E2B1B1',
+    backgroundColor: isDark ? (isSoft ? '#2A1020' : '#301717') : '#FFF1F1',
+    borderColor: isDark ? (isSoft ? '#4A2040' : '#5A2E2E') : '#E2B1B1',
   },
   expiryBadgeText: {
     ...typography.captionStrong,
@@ -646,8 +646,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   rankBadge: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: isDark ? '#17301A' : isSoft ? '#E0ECF8' : '#E3F1D2',
-    borderColor: isDark ? '#2E5A30' : isSoft ? '#A0C0E0' : '#AFCF88',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#E0ECF8' : '#E3F1D2',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E5A30') : isSoft ? '#A0C0E0' : '#AFCF88',
     borderWidth: 1,
     borderRadius: 999,
     justifyContent: 'center',

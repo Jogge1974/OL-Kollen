@@ -112,11 +112,11 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
           ]}
         >
           <Ionicons
-            color={colors.textPrimary}
+            color={publicationIndicator === 'Resultatlista' && isDark ? '#FFFFFF' : colors.textPrimary}
             name={publicationIndicator === 'Resultatlista' ? 'trophy-outline' : 'list-outline'}
             size={mode === 'overlay' ? 13 : 12}
           />
-          <Text style={[styles.publicationBadgeText, mode === 'overlay' ? styles.publicationBadgeTextOverlay : null]}>{publicationIndicator}</Text>
+          <Text style={[styles.publicationBadgeText, mode === 'overlay' ? styles.publicationBadgeTextOverlay : null, publicationIndicator === 'Resultatlista' ? styles.publicationBadgeResultText : null]}>{publicationIndicator}</Text>
         </Pressable>
       ) : null}
 
@@ -206,7 +206,7 @@ function getShortClassificationLabel(classificationId: number) {
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
@@ -230,8 +230,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 10,
   },
   cardFavorite: {
-    backgroundColor: isDark ? '#2E2A0A' : isSoft ? '#FFF8DC' : '#FFF6CF',
-    borderColor: isDark ? '#5C5420' : isSoft ? '#E0C850' : '#E7D98B',
+    backgroundColor: isDark ? (isSoft ? '#2A2500' : '#2E2A0A') : isSoft ? '#FFF8DC' : '#FFF6CF',
+    borderColor: isDark ? (isSoft ? '#5A5020' : '#5C5420') : isSoft ? '#E0C850' : '#E7D98B',
   },
   cardPressable: {
     flex: 1,
@@ -317,13 +317,13 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     bottom: 10,
   },
   publicationBadgeStart: {
-    backgroundColor: isDark ? '#1A3520' : isSoft ? '#E0ECF8' : '#E4F4D5',
-    borderColor: isDark ? '#2E5A32' : isSoft ? '#6A9FD8' : '#86AD73',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#1A3520') : isSoft ? '#E0ECF8' : '#E4F4D5',
+    borderColor: isDark ? (isSoft ? '#2A4878' : '#2E5A32') : isSoft ? '#6A9FD8' : '#86AD73',
     borderWidth: 1,
   },
   publicationBadgeResult: {
-    backgroundColor: isDark ? '#332D0A' : isSoft ? '#FFDD00' : '#F6D94B',
-    borderColor: isDark ? '#665A15' : isSoft ? '#CCB200' : '#C9A700',
+    backgroundColor: isDark ? (isSoft ? '#3A3000' : '#332D0A') : isSoft ? '#FFDD00' : '#F6D94B',
+    borderColor: isDark ? (isSoft ? '#665A15' : '#665A15') : isSoft ? '#CCB200' : '#C9A700',
     borderWidth: 1,
   },
   publicationBadgeText: {
@@ -332,6 +332,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     fontSize: 10,
     lineHeight: 12,
     textAlign: 'center',
+  },
+  publicationBadgeResultText: {
+    color: isDark ? '#FFFFFF' : undefined,
   },
   publicationBadgeTextOverlay: {
     fontSize: 11,

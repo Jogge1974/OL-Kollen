@@ -1436,7 +1436,7 @@ function normalizeClassLabel(label: string) {
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string) {
-  const isSoft = themeName === 'soft';
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   return StyleSheet.create({
   modalOverlay: {
     backgroundColor: colors.overlay,
@@ -1520,8 +1520,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: 5,
   },
   classChipActive: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
-    borderColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   classChipText: {
     color: colors.textPrimary,
@@ -1560,11 +1560,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: spacing.md,
   },
   choiceButtonPrimary: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
   },
   choiceButtonAnalysis: {
-    backgroundColor: isDark ? '#0F1E30' : '#E7F1FF',
-    borderColor: isDark ? '#2E4A6E' : '#90B5E8',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#0F1E30') : '#E7F1FF',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2E4A6E') : '#90B5E8',
     borderWidth: 1,
   },
   choiceButtonLabel: {
@@ -1609,7 +1609,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   choiceButtonPersonText: {
     ...typography.captionStrong,
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontSize: 16,
     lineHeight: 19,
     textAlign: 'center',
@@ -1653,7 +1653,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     overflow: 'hidden',
   },
   tableClassHeader: {
-    backgroundColor: isDark ? '#1E4428' : colors.primaryDeep,
+    backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -1695,7 +1695,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     backgroundColor: colors.surface,
   },
   tableRowOdd: {
-    backgroundColor: isSoft ? '#EDF2FA' : isDark ? colors.surfaceMuted : '#F1F8EA',
+    backgroundColor: isDark ? (isSoft ? '#152240' : colors.surfaceMuted) : isSoft ? '#EDF2FA' : '#F1F8EA',
   },
   relayRow: {
     paddingBottom: 5,
@@ -1981,6 +1981,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingRight: 4,
   },
   tableMainText: {
+    color: colors.textPrimary,
     fontFamily: typography.bodyStrong.fontFamily,
     fontSize: 16,
     lineHeight: 19,
@@ -2015,6 +2016,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     flexShrink: 0,
   },
   nameMetaCourse: {
+    color: isDark ? (isSoft ? '#7AB8E0' : '#8CC490') : undefined,
     flexShrink: 0,
   },
   tableClassColumn: {
@@ -2023,6 +2025,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     width: 86,
   },
   tableCourseColumn: {
+    color: isDark ? (isSoft ? '#7AB8E0' : '#8CC490') : undefined,
     flexShrink: 0,
     paddingRight: 4,
     width: 78,
@@ -2055,8 +2058,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   sverigelistanChip: {
     alignItems: 'center',
-    backgroundColor: '#E7F1FF',
-    borderColor: '#90B5E8',
+    backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#1C2A1F') : '#E7F1FF',
+    borderColor: isDark ? (isSoft ? '#1E3058' : '#2A3A2C') : '#90B5E8',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
@@ -2078,7 +2081,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     width: 44,
   },
   sverigelistanRankCell: {
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontFamily: typography.bodyStrong.fontFamily,
     fontSize: 14,
   },
@@ -2106,7 +2109,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 14,
   },
   pointsText: {
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontFamily: typography.bodyStrong.fontFamily,
     fontSize: 12,
     lineHeight: 15,
@@ -2114,7 +2117,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   pointsTextAbsolute: {
     bottom: 7,
-    color: '#2F66A8',
+    color: isDark ? '#90B5E8' : '#2F66A8',
     fontFamily: typography.bodyStrong.fontFamily,
     fontSize: 12,
     lineHeight: 15,

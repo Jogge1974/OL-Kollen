@@ -34,7 +34,7 @@ export const colors = {
 } as const;
 
 export function getClassificationTone(classificationId: number, themeName?: string) {
-  if (themeName === 'soft') {
+  if (themeName === 'soft' || themeName === 'soft-dark') {
     const softTones = {
       1: {
         accent: '#001A4F',
