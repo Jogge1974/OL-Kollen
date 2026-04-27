@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.sverigelistan-latest]
 verify_jwt = false
+
+[functions.notify-feedback]
+verify_jwt = false
