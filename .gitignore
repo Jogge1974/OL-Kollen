@@ -18,6 +18,8 @@ web-build/
 Credentials.txt
 
 # Build output
+/android/
+/ios/
 
 # Others
 *.log

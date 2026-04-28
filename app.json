@@ -29,7 +29,7 @@
       },
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyBxVt8jq1FNMLlM0wP0if7xt63ocvh_Zf0"
+          "apiKey": "PLACEHOLDER_GOOGLE_MAPS_KEY"
         }
       },
       "edgeToEdgeEnabled": true,
