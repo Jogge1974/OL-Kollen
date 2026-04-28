@@ -23,3 +23,4 @@ Credentials.txt
 *.log
 *.pdb
 /ol-kollen-firebase-adminsdk-fbsvc-a0644472f5.json
+/android/app/src/debug
