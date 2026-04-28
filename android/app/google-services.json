@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "409945791466",
+    "project_id": "ol-kollen",
+    "storage_bucket": "ol-kollen.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:409945791466:android:7ca26e63d0008f605eb093",
+        "android_client_info": {
+          "package_name": "se.mastol.kontrollen"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgWOgp5iilEsrmFnMhJq9aNSHosFiVDLc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
