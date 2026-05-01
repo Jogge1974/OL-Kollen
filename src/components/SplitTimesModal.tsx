@@ -1,5 +1,6 @@
 ﻿import * as React from 'react';
 
+import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
 import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
@@ -504,7 +505,7 @@ function MetricCell({
   style,
   tone = 'default',
   lossHighlight = false,
-  showLossDot = false,
+  showLossIcon = false,
   onPress,
 }: {
   title: string;
@@ -512,7 +513,7 @@ function MetricCell({
   style: StyleProp<ViewStyle>;
   tone?: MetricTone;
   lossHighlight?: boolean;
-  showLossDot?: boolean;
+  showLossIcon?: boolean;
   onPress?: () => void;
 }) {
   const { colors, isDark, themeName } = useTheme();
@@ -525,10 +526,12 @@ function MetricCell({
       <Text numberOfLines={1} style={[headlineStyle, toneStyle]}>
         {title}
       </Text>
-      <Text numberOfLines={1} style={[valueStyle, toneStyle]}>
-        {subtitle}
-        {showLossDot ? <Text style={styles.metricLossDot}> •</Text> : null}
-      </Text>
+      <View style={styles.metricSubtitleRow}>
+        <Text numberOfLines={1} style={[valueStyle, toneStyle, showLossIcon ? styles.metricSubtitleShrink : null]}>
+          {subtitle}
+        </Text>
+        {showLossIcon ? <Ionicons color={colors.error} name="time" size={12} style={styles.metricLossIcon} /> : null}
+      </View>
     </>
   );
 
@@ -644,7 +647,7 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
             style={[styles.metricColumn, { width: pageMetricsLayout.split }]}
             tone={computed.splitTone}
             lossHighlight={lossHighlight}
-            showLossDot={lossHighlight && Boolean(splitSubtitle)}
+            showLossIcon={lossHighlight && pageKey !== 'total'}
             onPress={onToggleLoss}
           />
           {pageKey === 'total' && computed.totalStatusLabel ? (
@@ -660,7 +663,7 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
               style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
               tone={computed.totalTone}
               lossHighlight={false}
-              showLossDot={lossHighlight}
+              showLossIcon={lossHighlight && pageKey === 'total'}
               onPress={onToggleLoss}
             />
           )}
@@ -1150,13 +1153,20 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   metricCellPressable: {
     borderRadius: 8,
   },
-  metricCellLoss: {
-    backgroundColor: 'rgba(196, 54, 54, 0.10)',
-    borderRadius: 8,
-  },
   metricColumn: {
     flexShrink: 0,
     minWidth: 0,
+  },
+  metricSubtitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 3,
+  },
+  metricSubtitleShrink: {
+    flexShrink: 1,
+  },
+  metricLossIcon: {
+    flexShrink: 0,
   },
   metricHeadline: {
     ...typography.captionStrong,
@@ -1280,9 +1290,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     fontSize: 13,
     lineHeight: 15,
     textAlign: 'left',
-  },
-  metricLossDot: {
-    color: colors.error,
   },
   metricMergedCell: {
     alignItems: 'center',
