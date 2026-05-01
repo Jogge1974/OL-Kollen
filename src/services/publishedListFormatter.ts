@@ -330,6 +330,11 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
           return positionCompare;
         }
 
+        const statusCompare = getStatusSortOrder(left.status) - getStatusSortOrder(right.status);
+        if (statusCompare !== 0) {
+          return statusCompare;
+        }
+
         return `${left.classLabel}${left.primary}`.localeCompare(`${right.classLabel}${right.primary}`, 'sv');
       });
 
@@ -366,7 +371,7 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
           .filter(Boolean)
           .join(' • '),
         rows: section.rows
-          .sort((left, right) => compareNullableNumbers(left.positionSort, right.positionSort))
+          .sort((left, right) => compareNullableNumbers(left.positionSort, right.positionSort) || getStatusSortOrder(left.status) - getStatusSortOrder(right.status))
           .map((row) => ({
             diff: row.diff,
             familyName: row.familyName,
@@ -1076,6 +1081,25 @@ function compareNullableNumbers(left: number | null, right: number | null) {
   }
 
   return left - right;
+}
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+  OK: 0,
+  'Missing punch': 1,
+  MissingPunch: 1,
+  DidNotFinish: 2,
+  Disqualified: 3,
+  OverTime: 4,
+  DidNotStart: 5,
+  Cancelled: 6,
+};
+
+function getStatusSortOrder(status: string | null | undefined) {
+  if (!status) {
+    return 99;
+  }
+
+  return STATUS_SORT_ORDER[status] ?? 50;
 }
 
 function extractDate(value: unknown) {

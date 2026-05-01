@@ -471,10 +471,39 @@ function matchesSelectedRace(
   return false;
 }
 
+const STATUS_SORT_ORDER: Record<string, number> = {
+  OK: 0,
+  'Missing punch': 1,
+  MissingPunch: 1,
+  DidNotFinish: 2,
+  Disqualified: 3,
+  OverTime: 4,
+  DidNotStart: 5,
+  Cancelled: 6,
+};
+
+function getStatusSortOrder(status: string | undefined) {
+  if (!status) {
+    return 99;
+  }
+
+  return STATUS_SORT_ORDER[status] ?? 50;
+}
+
 function compareRows(left: EventSplitTimesRow, right: EventSplitTimesRow) {
   const leftPosition = toNullableNumber(left.position) ?? Number.MAX_SAFE_INTEGER;
   const rightPosition = toNullableNumber(right.position) ?? Number.MAX_SAFE_INTEGER;
-  return leftPosition - rightPosition || left.primary.localeCompare(right.primary, 'sv');
+  const positionCompare = leftPosition - rightPosition;
+  if (positionCompare !== 0) {
+    return positionCompare;
+  }
+
+  const statusCompare = getStatusSortOrder(left.status) - getStatusSortOrder(right.status);
+  if (statusCompare !== 0) {
+    return statusCompare;
+  }
+
+  return left.primary.localeCompare(right.primary, 'sv');
 }
 
 function formatCourseLength(lengthMeters: number) {
