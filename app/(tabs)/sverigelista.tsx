@@ -32,6 +32,7 @@ export default function SverigelistaScreen() {
   const [clubSearchText, setClubSearchText] = React.useState('');
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const clubSearchListRef = React.useRef<FlatList<string> | null>(null);
+  const listRef = React.useRef<FlatList<SverigelistanRow> | null>(null);
   const [headerCollapsed, setHeaderCollapsed] = React.useState(false);
   const collapseAnim = React.useRef(new Animated.Value(1)).current;
   const lastScrollY = React.useRef(0);
@@ -133,6 +134,7 @@ export default function SverigelistaScreen() {
 
   const expandHeader = React.useCallback(() => {
     if (headerCollapsed) {
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
       setHeaderCollapsed(false);
       Animated.timing(collapseAnim, { toValue: 1, duration: 250, useNativeDriver: false }).start();
     }
@@ -220,6 +222,7 @@ export default function SverigelistaScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FlatList
+        ref={listRef}
         data={filteredRows}
         stickyHeaderIndices={[0]}
         keyExtractor={(item) => `${item.RunnerId ?? item.Rank}-${item.Updated}`}
@@ -809,7 +812,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     borderRadius: 999,
     height: 30,
     justifyContent: 'center',
-    width: 30,
+    minWidth: 30,
+    paddingHorizontal: 6,
   },
   rankBadgeText: {
     ...typography.bodyStrong,

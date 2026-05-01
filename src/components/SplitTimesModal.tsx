@@ -660,6 +660,7 @@ const SplitTimesMetricRow = React.memo(function SplitTimesMetricRow({
               style={[styles.metricColumn, { width: pageMetricsLayout.total }]}
               tone={computed.totalTone}
               lossHighlight={false}
+              showLossDot={lossHighlight}
               onPress={onToggleLoss}
             />
           )}
@@ -795,11 +796,8 @@ function buildTotalMetrics(row: EventSplitTimesRow, allRows: EventSplitTimesRow[
 function buildSplitMetrics(splitIndex: number, row: EventSplitTimesRow, allRows: EventSplitTimesRow[]): RowMetrics {
   const currentSplit = getSplitTime(row, splitIndex);
   const currentTotal = getSplitCumulative(row, splitIndex);
-  const valid = currentSplit !== null && currentTotal !== null;
-  const firstInvalidSplitIndex = getFirstInvalidSplitIndex(row);
-  const totalsInvalidFromHere = firstInvalidSplitIndex !== null && splitIndex >= firstInvalidSplitIndex;
 
-  if (!valid) {
+  if (currentTotal === null) {
     return {
       leftPlacement: row.totalPosition ?? row.position ?? '-',
       loss: '-',
@@ -812,17 +810,19 @@ function buildSplitMetrics(splitIndex: number, row: EventSplitTimesRow, allRows:
     };
   }
 
-  const splitRank = getRankForValue(allRows, (candidate) => getSplitTime(candidate, splitIndex), currentSplit);
+  const splitValid = currentSplit !== null;
+
+  const splitRank = splitValid ? getRankForValue(allRows, (candidate) => getSplitTime(candidate, splitIndex), currentSplit) : '-';
   const totalRank = getRankForValue(allRows, (candidate) => getSplitCumulative(candidate, splitIndex), currentTotal);
   const splitRankNumber = Number(splitRank);
   const totalRankNumber = Number(totalRank);
 
-  const splitLeader = getLeaderValue(allRows, (candidate) => getSplitTime(candidate, splitIndex));
+  const splitLeader = splitValid ? getLeaderValue(allRows, (candidate) => getSplitTime(candidate, splitIndex)) : null;
   const totalLeader = getLeaderValue(allRows, (candidate) => getSplitCumulative(candidate, splitIndex));
-  const splitSecondBest = getNthValue(allRows, (candidate) => getSplitTime(candidate, splitIndex), 2);
+  const splitSecondBest = splitValid ? getNthValue(allRows, (candidate) => getSplitTime(candidate, splitIndex), 2) : null;
   const totalSecondBest = getNthValue(allRows, (candidate) => getSplitCumulative(candidate, splitIndex), 2);
 
-  const splitBehind = splitLeader !== null ? Math.max(0, currentSplit - splitLeader) : null;
+  const splitBehind = splitValid && splitLeader !== null ? Math.max(0, currentSplit - splitLeader) : null;
   const totalBehind = totalLeader !== null ? Math.max(0, currentTotal - totalLeader) : null;
   const splitTone = splitRankNumber === 1 ? 'leader' : splitRankNumber === 2 || splitRankNumber === 3 ? 'podium' : 'default';
   const totalTone = totalRankNumber === 1 ? 'leader' : totalRankNumber === 2 || totalRankNumber === 3 ? 'podium' : 'default';
@@ -830,28 +830,14 @@ function buildSplitMetrics(splitIndex: number, row: EventSplitTimesRow, allRows:
 
   return {
     leftPlacement: row.totalPosition ?? row.position ?? '-',
-    loss: formatLossSeconds(splitLoss),
-    splitPrimary: `${formatDuration(currentSplit)} (${splitRank})`,
-    splitSecondary: splitRankNumber === 1 && splitSecondBest !== null ? formatTimeDelta(splitSecondBest - currentSplit) : splitBehind !== null ? `+${formatDuration(splitBehind)}` : '',
-    splitTone,
-    totalPrimary: totalsInvalidFromHere ? '-' : `${formatDuration(currentTotal)} (${totalRank})`,
-    totalSecondary: totalsInvalidFromHere ? '' : totalRankNumber === 1 && totalSecondBest !== null ? formatTimeDelta(totalSecondBest - currentTotal) : totalBehind !== null ? `+${formatDuration(totalBehind)}` : '',
+    loss: splitValid ? formatLossSeconds(splitLoss) : '-',
+    splitPrimary: splitValid ? `${formatDuration(currentSplit)} (${splitRank})` : '-',
+    splitSecondary: splitValid ? (splitRankNumber === 1 && splitSecondBest !== null ? formatTimeDelta(splitSecondBest - currentSplit) : splitBehind !== null ? `+${formatDuration(splitBehind)}` : '') : '',
+    splitTone: splitValid ? splitTone : 'default',
+    totalPrimary: `${formatDuration(currentTotal)} (${totalRank})`,
+    totalSecondary: totalRankNumber === 1 && totalSecondBest !== null ? formatTimeDelta(totalSecondBest - currentTotal) : totalBehind !== null ? `+${formatDuration(totalBehind)}` : '',
     totalTone,
   };
-}
-
-function getFirstInvalidSplitIndex(row: EventSplitTimesRow) {
-  let previous = 0;
-
-  for (let index = 0; index < row.splitCumulativeSeconds.length; index += 1) {
-    const current = row.splitCumulativeSeconds[index];
-    if (!Number.isFinite(current) || current <= previous) {
-      return index + 1;
-    }
-    previous = current;
-  }
-
-  return null;
 }
 
 function getRankForValue(
