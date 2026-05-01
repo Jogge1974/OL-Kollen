@@ -90,48 +90,59 @@ Deno.serve(async (request) => {
     let checkedEvents = 0;
     let pushCount = 0;
 
+    // Group watches by event_id so we fetch each event only once
+    const watchesByEventId = new Map<string, WatchRow[]>();
+
     for (const watch of (watches as WatchRow[] | null | undefined) ?? []) {
-      const preferencesForUser = preferenceByPersonId.get(watch.person_id);
+      const existing = watchesByEventId.get(watch.event_id) ?? [];
+      existing.push(watch);
+      watchesByEventId.set(watch.event_id, existing);
+    }
 
-      if (!preferencesForUser) {
-        continue;
-      }
-
-      const eventXml = await fetchEventDetailXml(watch.event_id);
+    for (const [eventId, eventWatches] of watchesByEventId) {
+      const eventXml = await fetchEventDetailXml(eventId);
       const flags = extractPublicationFlags(eventXml);
       const messages: Array<{ body: string; title: string; to: string }> = [];
-      const pushTokens = tokensByPersonId.get(watch.person_id) ?? [];
-      const shouldNotifyStartPublication = isPublicationAfterFavorite(flags.startPublishedAt, watch.created_at);
-      const shouldNotifyResultPublication = isPublicationAfterFavorite(flags.resultPublishedAt, watch.created_at);
 
-      if (!watch.has_published_starts && flags.hasPublishedStarts && shouldNotifyStartPublication && preferencesForUser.push_on_start_list) {
-        pushTokens.forEach((pushToken) => {
-          messages.push({
-            body: `${watch.event_name} har nu publicerat startlista.`,
-            data: {
-              eventId: watch.event_id,
-              kind: 'starts',
-            },
-            title: 'Startlista publicerad',
-            to: pushToken,
-          });
-        });
+      for (const watch of eventWatches) {
+        const preferencesForUser = preferenceByPersonId.get(watch.person_id);
+
+        if (preferencesForUser) {
+          const pushTokens = tokensByPersonId.get(watch.person_id) ?? [];
+          const shouldNotifyStartPublication = isPublicationAfterFavorite(flags.startPublishedAt, watch.created_at);
+          const shouldNotifyResultPublication = isPublicationAfterFavorite(flags.resultPublishedAt, watch.created_at);
+
+          if (!watch.has_published_starts && flags.hasPublishedStarts && shouldNotifyStartPublication && preferencesForUser.push_on_start_list) {
+            pushTokens.forEach((pushToken) => {
+              messages.push({
+                body: `${watch.event_name} har nu publicerat startlista.`,
+                data: {
+                  eventId: watch.event_id,
+                  kind: 'starts',
+                },
+                title: 'Startlista publicerad',
+                to: pushToken,
+              });
+            });
+          }
+
+          if (!watch.has_published_results && flags.hasPublishedResults && shouldNotifyResultPublication && preferencesForUser.push_on_result_list) {
+            pushTokens.forEach((pushToken) => {
+              messages.push({
+                body: `${watch.event_name} har nu publicerat resultatlista.`,
+                data: {
+                  eventId: watch.event_id,
+                  kind: 'results',
+                },
+                title: 'Resultatlista publicerad',
+                to: pushToken,
+              });
+            });
+          }
+        }
       }
 
-      if (!watch.has_published_results && flags.hasPublishedResults && shouldNotifyResultPublication && preferencesForUser.push_on_result_list) {
-        pushTokens.forEach((pushToken) => {
-          messages.push({
-            body: `${watch.event_name} har nu publicerat resultatlista.`,
-            data: {
-              eventId: watch.event_id,
-              kind: 'results',
-            },
-            title: 'Resultatlista publicerad',
-            to: pushToken,
-          });
-        });
-      }
-
+      // Send all push messages for this event in one batch
       if (messages.length > 0) {
         await sendExpoPushMessages(
           messages.map((message) => ({
@@ -143,16 +154,18 @@ Deno.serve(async (request) => {
         pushCount += messages.length;
       }
 
+      // Update ALL watch rows for this event at once
+      const now = new Date().toISOString();
+
       await supabase
         .from('favorite_event_watches')
         .update({
           has_published_results: flags.hasPublishedResults,
           has_published_starts: flags.hasPublishedStarts,
-          last_checked_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          last_checked_at: now,
+          updated_at: now,
         })
-        .eq('person_id', watch.person_id)
-        .eq('event_id', watch.event_id);
+        .eq('event_id', eventId);
 
       checkedEvents += 1;
     }

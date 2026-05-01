@@ -15,10 +15,14 @@
     },
     "ios": {
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
       },
       "bundleIdentifier": "se.mastol.kontrollen",
-      "supportsTablet": true
+      "supportsTablet": false,
+      "entitlements": {
+        "aps-environment": "production"
+      }
     },
     "android": {
       "package": "se.mastol.kontrollen",

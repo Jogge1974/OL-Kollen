@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
@@ -32,6 +32,9 @@ export default function SverigelistaScreen() {
   const [clubSearchText, setClubSearchText] = React.useState('');
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const clubSearchListRef = React.useRef<FlatList<string> | null>(null);
+  const [headerCollapsed, setHeaderCollapsed] = React.useState(false);
+  const collapseAnim = React.useRef(new Animated.Value(1)).current;
+  const lastScrollY = React.useRef(0);
   const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory({ enabled: canViewSverigelistan });
 
   React.useEffect(() => {
@@ -121,6 +124,33 @@ export default function SverigelistaScreen() {
     setClubSearchVisible(true);
   }, [selectedClubName]);
 
+  const collapseHeader = React.useCallback(() => {
+    if (!headerCollapsed) {
+      setHeaderCollapsed(true);
+      Animated.timing(collapseAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+    }
+  }, [collapseAnim, headerCollapsed]);
+
+  const expandHeader = React.useCallback(() => {
+    if (headerCollapsed) {
+      setHeaderCollapsed(false);
+      Animated.timing(collapseAnim, { toValue: 1, duration: 250, useNativeDriver: false }).start();
+    }
+  }, [collapseAnim, headerCollapsed]);
+
+  const handleScroll = React.useCallback(
+    (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+      const y = event.nativeEvent.contentOffset.y;
+      const delta = y - lastScrollY.current;
+      lastScrollY.current = y;
+
+      if (delta > 12 && y > 80 && !headerCollapsed) {
+        collapseHeader();
+      }
+    },
+    [collapseHeader, headerCollapsed],
+  );
+
   const handleSelectClubFromSearch = React.useCallback((clubName: string) => {
     setSelectedFilterMode('club');
     setSelectedClubName(clubName);
@@ -205,118 +235,124 @@ export default function SverigelistaScreen() {
           )
         }
         ListHeaderComponent={
-          <View style={styles.headerWrap}>
+          <Pressable style={styles.headerWrap} onPress={headerCollapsed ? expandHeader : undefined} disabled={!headerCollapsed}>
             <ScreenHeroHeader
-              chips={[
+              chips={headerCollapsed ? undefined : [
                 { icon: 'man-outline', label: 'Herr / Dam', value: selectedGender === 'H' ? 'Herr' : 'Dam' },
                 { icon: 'filter-outline', label: 'Klass', value: selectedClassLabel ?? 'Alla' },
                 { icon: 'people-outline', label: 'Visar', value: `${filteredRows.length} / ${genderRows.length}` },
               ]}
               eyebrow="Ranking"
               title="Sverigelistan"
-              topRightText={latestUpdated ? `Uppd. ${formatPrettyDate(latestUpdated)}` : ''}
+              topRightText={headerCollapsed
+                ? `${selectedGender === 'H' ? 'Herr' : 'Dam'} · ${selectedClassLabel ?? 'Alla'} · ${filteredRows.length} st  ▼`
+                : latestUpdated ? `Uppd. ${formatPrettyDate(latestUpdated)}` : ''}
             />
 
+            <Animated.View style={{ maxHeight: collapseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 800] }), opacity: collapseAnim, overflow: 'hidden' }}>
             <View style={styles.controlsCard}>
-              <View style={styles.genderRow}>
-                {(['H', 'D'] as const).map((gender) => (
-                  <Pressable
-                    key={gender}
-                    onPress={() => {
-                      setSelectedGender(gender);
-                      setSelectedClassLabel(null);
-                    }}
-                    style={[styles.genderChip, selectedGender === gender ? styles.genderChipActive : null]}
-                  >
-                    <Text style={[styles.genderChipText, selectedGender === gender ? styles.genderChipTextActive : null]}>
-                      {gender === 'H' ? 'Herr' : 'Dam'}
-                    </Text>
-                  </Pressable>
-                ))}
-                {currentUserRunnerId ? (
-                  <Pressable onPress={handleOpenMyPage} style={({ pressed }) => [styles.myPageBadge, pressed ? styles.myPageBadgePressed : null]}>
-                    <Ionicons color={colors.primaryDeep} name="person-outline" size={14} />
-                    <Text style={styles.myPageBadgeText}>Min sida</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable onPress={handleResetFilters} style={({ pressed }) => [styles.resetAllButtonInline, pressed ? styles.resetAllButtonPressed : null]}>
-                  <Ionicons color={colors.error} name="trash-outline" size={17} />
-                </Pressable>
-              </View>
-
-              <AppTextField
-                autoCapitalize="none"
-                autoCorrect={false}
-                label="Sök namn, klubb eller klass"
-                onClearText={() => setSearchText('')}
-                onChangeText={setSearchText}
-                placeholder="Skriv för att filtrera listan"
-                value={searchText}
-              />
-
-              <View style={styles.classHeaderRow}>
-                <View style={styles.modeRow}>
-                  {(['class', 'club'] as const).map((mode) => (
-                    <Pressable
-                      key={mode}
-                      onPress={() => setSelectedFilterMode(mode)}
-                      style={[styles.modeChip, selectedFilterMode === mode ? styles.modeChipActive : null]}
-                    >
-                      <Text style={[styles.modeChipText, selectedFilterMode === mode ? styles.modeChipTextActive : null]}>
-                        {mode === 'class' ? 'Klass' : 'Klubb'}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <View style={styles.classHeaderActions}>
-                  <Pressable onPress={handleOpenClubSearch} style={({ pressed }) => [styles.searchClubChip, pressed ? styles.searchClubChipPressed : null]}>
-                    <Ionicons color={colors.primaryDeep} name="search-outline" size={15} />
-                    <Text style={styles.searchClubText}>Sök klubb</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      if (selectedFilterMode === 'class') {
-                        setSelectedClassLabel(null);
-                      } else {
-                        setSelectedClubName(null);
-                      }
-                    }}
-                    style={({ pressed }) => [styles.clearFilterChip, pressed ? styles.clearFilterChipPressed : null]}
-                  >
-                    <Text style={styles.clearFilterText}>{selectedFilterMode === 'class' ? 'Alla klasser' : 'Alla klubbar'}</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.classChipRow}>
-                {selectedFilterMode === 'class'
-                  ? classLabels.map((classLabel) => (
+                  <View style={styles.genderRow}>
+                    {(['H', 'D'] as const).map((gender) => (
                       <Pressable
-                        key={classLabel}
-                        onPress={() => setSelectedClassLabel(classLabel)}
-                        style={[styles.classChip, selectedClassLabel === classLabel ? styles.classChipActive : null]}
+                        key={gender}
+                        onPress={() => {
+                          setSelectedGender(gender);
+                          setSelectedClassLabel(null);
+                        }}
+                        style={[styles.genderChip, selectedGender === gender ? styles.genderChipActive : null]}
                       >
-                        <Text style={[styles.classChipText, selectedClassLabel === classLabel ? styles.classChipTextActive : null]}>{classLabel}</Text>
-                      </Pressable>
-                    ))
-                  : clubLabels.map((clubName) => (
-                      <Pressable
-                        key={clubName}
-                        onPress={() => setSelectedClubName(clubName)}
-                        style={[styles.classChip, selectedClubName === clubName ? styles.classChipActive : null]}
-                      >
-                        <Text style={[styles.classChipText, selectedClubName === clubName ? styles.classChipTextActive : null]}>{clubName}</Text>
+                        <Text style={[styles.genderChipText, selectedGender === gender ? styles.genderChipTextActive : null]}>
+                          {gender === 'H' ? 'Herr' : 'Dam'}
+                        </Text>
                       </Pressable>
                     ))}
-              </ScrollView>
+                    {currentUserRunnerId ? (
+                      <Pressable onPress={handleOpenMyPage} style={({ pressed }) => [styles.myPageBadge, pressed ? styles.myPageBadgePressed : null]}>
+                        <Ionicons color={colors.primaryDeep} name="person-outline" size={14} />
+                        <Text style={styles.myPageBadgeText}>Min sida</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable onPress={handleResetFilters} style={({ pressed }) => [styles.resetAllButtonInline, pressed ? styles.resetAllButtonPressed : null]}>
+                      <Ionicons color={colors.error} name="trash-outline" size={17} />
+                    </Pressable>
+                  </View>
 
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              {!hasSupabase ? <Text style={styles.helperText}>Sverigelistan kan inte visas.</Text> : null}
+                  <AppTextField
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    label="Sök namn, klubb eller klass"
+                    onClearText={() => setSearchText('')}
+                    onChangeText={setSearchText}
+                    placeholder="Skriv för att filtrera listan"
+                    value={searchText}
+                  />
+
+                  <View style={styles.classHeaderRow}>
+                    <View style={styles.modeRow}>
+                      {(['class', 'club'] as const).map((mode) => (
+                        <Pressable
+                          key={mode}
+                          onPress={() => setSelectedFilterMode(mode)}
+                          style={[styles.modeChip, selectedFilterMode === mode ? styles.modeChipActive : null]}
+                        >
+                          <Text style={[styles.modeChipText, selectedFilterMode === mode ? styles.modeChipTextActive : null]}>
+                            {mode === 'class' ? 'Klass' : 'Klubb'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={styles.classHeaderActions}>
+                      <Pressable onPress={handleOpenClubSearch} style={({ pressed }) => [styles.searchClubChip, pressed ? styles.searchClubChipPressed : null]}>
+                        <Ionicons color={colors.primaryDeep} name="search-outline" size={15} />
+                        <Text style={styles.searchClubText}>Sök klubb</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          if (selectedFilterMode === 'class') {
+                            setSelectedClassLabel(null);
+                          } else {
+                            setSelectedClubName(null);
+                          }
+                        }}
+                        style={({ pressed }) => [styles.clearFilterChip, pressed ? styles.clearFilterChipPressed : null]}
+                      >
+                        <Text style={styles.clearFilterText}>{selectedFilterMode === 'class' ? 'Alla klasser' : 'Alla klubbar'}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.classChipRow}>
+                    {selectedFilterMode === 'class'
+                      ? classLabels.map((classLabel) => (
+                          <Pressable
+                            key={classLabel}
+                            onPress={() => setSelectedClassLabel(classLabel)}
+                            style={[styles.classChip, selectedClassLabel === classLabel ? styles.classChipActive : null]}
+                          >
+                            <Text style={[styles.classChipText, selectedClassLabel === classLabel ? styles.classChipTextActive : null]}>{classLabel}</Text>
+                          </Pressable>
+                        ))
+                      : clubLabels.map((clubName) => (
+                          <Pressable
+                            key={clubName}
+                            onPress={() => setSelectedClubName(clubName)}
+                            style={[styles.classChip, selectedClubName === clubName ? styles.classChipActive : null]}
+                          >
+                            <Text style={[styles.classChipText, selectedClubName === clubName ? styles.classChipTextActive : null]}>{clubName}</Text>
+                          </Pressable>
+                        ))}
+                  </ScrollView>
+
+                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                  {!hasSupabase ? <Text style={styles.helperText}>Sverigelistan kan inte visas.</Text> : null}
             </View>
-          </View>
+            </Animated.View>
+          </Pressable>
         }
         ListHeaderComponentStyle={styles.listHeader}
         style={styles.list}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={<RefreshControl colors={[colors.primary]} refreshing={isLoading || isRefreshing} tintColor={colors.primary} onRefresh={refetch} />}
           renderItem={({ item, index }) => (
             <SverigelistaRowCard
@@ -601,10 +637,12 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     color: colors.textSecondary,
   },
   headerWrap: {
+    backgroundColor: colors.background,
     gap: spacing.sm,
     alignSelf: 'stretch',
     width: '100%',
   },
+
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
@@ -642,6 +680,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingHorizontal: spacing.sm,
   },
   listHeader: {
+    backgroundColor: colors.background,
     paddingBottom: spacing.sm,
     paddingHorizontal: 0,
     paddingTop: 0,
