@@ -407,7 +407,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 13,
   },
   resultActionButtonTextPrimary: {
-    color: isDark ? '#A8D49A' : '#355F2A',
+    color: isDark ? (isSoft ? '#8AB8E8' : '#A8D49A') : isSoft ? '#0F347C' : '#355F2A',
   },
   resultActionButtonTextAnalysis: {
     color: isDark ? '#90B5E8' : '#2F66A8',

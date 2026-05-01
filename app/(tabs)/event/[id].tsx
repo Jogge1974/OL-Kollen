@@ -356,7 +356,7 @@ export default function EventDetailScreen() {
           ) : null}
         </View>
 
-        <Pressable onPress={() => void Linking.openURL(`https://eventor.orientering.se/Events/Show/${id}`)} style={styles.eventorLink}>
+        <Pressable onPress={() => void Linking.openURL(`https://eventor.orientering.se/Events/Show/${normalizeEventId(id)}`)} style={styles.eventorLink}>
           <Ionicons color="#fff" name="open-outline" size={16} />
           <Text style={styles.eventorLinkText}>Visa i Eventor</Text>
         </Pressable>
