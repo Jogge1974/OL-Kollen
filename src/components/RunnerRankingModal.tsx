@@ -15,6 +15,7 @@ import { useAuthStore } from '@/src/store/authStore';
 import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export type RunnerRankingSelection = {
+  birthYear: number | null;
   clubName: string;
   currentPoints: number;
   currentRank: number;
@@ -25,6 +26,7 @@ export type RunnerRankingSelection = {
 
 type RunnerRankingModalState = RunnerRankingTableResult & {
   addition: number | null;
+  runnerBirthYear: number | null;
   runnerClub: string;
   runnerCurrentPoints: number;
   runnerCurrentRank: number;
@@ -77,6 +79,7 @@ export function RunnerRankingModal({
       overview: null,
       pageTitle: null,
       rows: [],
+      runnerBirthYear: selection.birthYear,
       runnerClub: selection.clubName,
       runnerCurrentPoints: selection.currentPoints,
       runnerCurrentRank: selection.currentRank,
@@ -94,6 +97,7 @@ export function RunnerRankingModal({
 
       setState({
         ...result,
+        runnerBirthYear: selection.birthYear,
         runnerClub: selection.clubName,
         runnerCurrentPoints: selection.currentPoints,
         runnerCurrentRank: selection.currentRank,
@@ -179,7 +183,7 @@ export function RunnerRankingModal({
             </View>
             {state ? (
               <Text numberOfLines={1} style={styles.subtitle}>
-                {state.runnerName} • {state.runnerClub}
+                {state.runnerName}{state.runnerBirthYear ? ` (f. ${state.runnerBirthYear})` : ''} • {state.runnerClub}
               </Text>
             ) : null}
           </View>

@@ -111,6 +111,7 @@ export default function SverigelistaScreen() {
     }
 
     setActiveRunnerRanking({
+      birthYear: myRow.BirthYear,
       clubName: myRow.Club,
       currentPoints: myRow.Points,
       currentRank: myRow.Rank,
@@ -148,9 +149,11 @@ export default function SverigelistaScreen() {
 
       if (delta > 12 && y > 80 && !headerCollapsed) {
         collapseHeader();
+      } else if (y <= 10 && headerCollapsed) {
+        expandHeader();
       }
     },
-    [collapseHeader, headerCollapsed],
+    [collapseHeader, expandHeader, headerCollapsed],
   );
 
   const handleSelectClubFromSearch = React.useCallback((clubName: string) => {
@@ -196,6 +199,7 @@ export default function SverigelistaScreen() {
     }
 
     setActiveRunnerRanking({
+      birthYear: row.BirthYear,
       clubName: row.Club,
       currentPoints: row.Points,
       currentRank: row.Rank,
@@ -277,6 +281,7 @@ export default function SverigelistaScreen() {
                     ) : null}
                     <Pressable onPress={handleResetFilters} style={({ pressed }) => [styles.resetAllButtonInline, pressed ? styles.resetAllButtonPressed : null]}>
                       <Ionicons color={colors.error} name="trash-outline" size={17} />
+                      <Text style={styles.resetAllButtonText}>Filter</Text>
                     </Pressable>
                   </View>
 
@@ -553,12 +558,19 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     borderColor: isDark ? (isSoft ? '#4A2040' : '#5A2E2E') : '#E7B5B5',
     borderRadius: 999,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
     height: 30,
     justifyContent: 'center',
-    width: 30,
+    paddingHorizontal: 10,
   },
   resetAllButtonPressed: {
     opacity: 0.85,
+  },
+  resetAllButtonText: {
+    ...typography.caption,
+    color: colors.error,
+    fontSize: 12,
   },
   myPageBadge: {
     alignItems: 'center',
