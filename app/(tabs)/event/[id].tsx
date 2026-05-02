@@ -19,6 +19,7 @@ import { useEventDocuments } from '@/src/hooks/useEventDocuments';
 import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
 import { useAuthStore } from '@/src/store/authStore';
 import { canRenderNativeMap } from '@/src/services/nativeMaps';
+import { findLiveCompetition, LiveresultatMatch } from '@/src/services/liveresultat';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { getClassificationTone } from '@/src/theme/colors';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
@@ -53,6 +54,22 @@ export default function EventDetailScreen() {
 
   const tone = getClassificationTone(event?.classificationId ?? 2, themeName);
   const isRelayEvent = event?.eventForm === 'RelaySingleDay' || event?.eventForm === 'Relay';
+  const [liveMatch, setLiveMatch] = React.useState<LiveresultatMatch | null>(null);
+
+  React.useEffect(() => {
+    if (!event) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (event.eventRaceDate !== today || event.hasPublishedResults) {
+      setLiveMatch(null);
+      return;
+    }
+
+    let cancelled = false;
+    void findLiveCompetition(event.name, event.eventRaceDate).then((match) => {
+      if (!cancelled) setLiveMatch(match);
+    });
+    return () => { cancelled = true; };
+  }, [event]);
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
   const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId, event?.eventForm ?? null);
@@ -267,6 +284,16 @@ export default function EventDetailScreen() {
           </View>
         </View>
 
+        {liveMatch ? (
+          <Pressable onPress={async () => { try { await Linking.openURL(liveMatch.url); } catch {} }}
+            style={({ pressed }) => [styles.liveresultatButton, pressed ? styles.liveresultatButtonPressed : null]}
+          >
+            <Ionicons color="#fff" name="pulse-outline" size={16} />
+            <Text style={styles.liveresultatButtonText}>Nya Liveresultat</Text>
+            <Ionicons color="#fff" name="open-outline" size={14} />
+          </Pressable>
+        ) : null}
+
         {event.liveloxEventId ? (
           <Pressable
             onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
@@ -356,10 +383,16 @@ export default function EventDetailScreen() {
           ) : null}
         </View>
 
-        <Pressable onPress={() => void Linking.openURL(`https://eventor.orientering.se/Events/Show/${normalizeEventId(id)}`)} style={styles.eventorLink}>
-          <Ionicons color="#fff" name="open-outline" size={16} />
-          <Text style={styles.eventorLinkText}>Visa i Eventor</Text>
-        </Pressable>
+        <View style={styles.bottomLinksRow}>
+          <Pressable onPress={() => void Linking.openURL(`https://eventor.orientering.se/Events/Show/${normalizeEventId(id)}`)} style={styles.eventorLink}>
+            <Ionicons color="#fff" name="open-outline" size={16} />
+            <Text style={styles.eventorLinkText}>Visa i Eventor</Text>
+          </Pressable>
+          <Pressable onPress={async () => { try { await Linking.openURL('https://orientering.liveidrott.se/competitions'); } catch {} }} style={styles.liveresultatLink}>
+            <Ionicons color="#fff" name="pulse-outline" size={16} />
+            <Text style={styles.liveresultatLinkText}>Nya Liveresultat</Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} />
@@ -803,9 +836,14 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     gap: spacing.sm,
     padding: spacing.md,
   },
-  eventorLink: {
+  bottomLinksRow: {
     alignItems: 'center',
     alignSelf: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  eventorLink: {
+    alignItems: 'center',
     backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     borderRadius: 16,
     flexDirection: 'row',
@@ -814,6 +852,37 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingVertical: spacing.sm,
   },
   eventorLinkText: {
+    ...typography.bodyStrong,
+    color: '#fff',
+  },
+  liveresultatLink: {
+    alignItems: 'center',
+    backgroundColor: isDark ? '#BF360C' : '#E65100',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  liveresultatLinkText: {
+    ...typography.bodyStrong,
+    color: '#fff',
+    fontSize: 13,
+  },
+  liveresultatButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: isDark ? '#BF360C' : '#E65100',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  liveresultatButtonPressed: {
+    opacity: 0.85,
+  },
+  liveresultatButtonText: {
     ...typography.bodyStrong,
     color: '#fff',
   },
