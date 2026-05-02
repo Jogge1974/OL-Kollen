@@ -231,14 +231,14 @@ function buildMonthlyTrend(rows: SverigelistanRow[]) {
     const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
     const row = entriesByMonth.get(monthKey);
 
-    if (row) {
-      points.push({
-        className: null,
-        label: monthDate.toLocaleDateString('sv-SE', { month: 'short' }).replace('.', ''),
-        rank: row.Rank,
-        updated: row.Updated,
-      });
-    }
+    points.push({
+      className: null,
+      label: monthDate.toLocaleDateString('sv-SE', { month: 'short' }).replace('.', ''),
+      monthKey,
+      points: row?.Points ?? null,
+      rank: row?.Rank ?? null,
+      updated: row?.Updated ?? null,
+    });
   }
 
   return points;
@@ -281,6 +281,7 @@ function buildClassTrend(monthlyTrend: SverigelistanTrendPoint[], classRows: Sve
     return {
       className: classDefinition.className,
       label: point.label,
+      monthKey: point.monthKey,
       rank: classRankIndex >= 0 ? classRankIndex + 1 : null,
       updated: point.updated,
     } satisfies SverigelistanTrendPoint;

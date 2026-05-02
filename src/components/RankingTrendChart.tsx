@@ -15,6 +15,7 @@ type RankingTrendChartProps = {
 
 type ChartPoint = {
   label: string;
+  monthKey?: string;
   rank: number | null;
   x: number;
   y: number | null;
@@ -55,18 +56,37 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
       <View onLayout={onLayout} style={styles.chartFrame}>
         <View style={styles.axisLeft}>
           <Text style={styles.axisTitle}>Plac.</Text>
-          <Text style={styles.axisValueTop}>{primaryScale.best}</Text>
-          <Text style={styles.axisValueBottom}>{primaryScale.worst}</Text>
+          <Text style={styles.axisValueTop}>{primaryScale.worst}</Text>
+          <Text style={styles.axisValueBottom}>{primaryScale.best}</Text>
         </View>
 
         <View style={styles.axisRight}>
           <Text style={styles.axisSpacer}> </Text>
-          <Text style={styles.axisValueTop}>{secondaryScale.best}</Text>
-          <Text style={styles.axisValueBottom}>{secondaryScale.worst}</Text>
+          <Text style={styles.axisValueTop}>{secondaryScale.worst}</Text>
+          <Text style={styles.axisValueBottom}>{secondaryScale.best}</Text>
         </View>
 
         <View style={styles.guideTop} />
         <View style={styles.guideBottom} />
+
+        {primaryChartPoints.map((point, index) => {
+          if (index === 0 || !point.monthKey) return null;
+          const prev = primaryChartPoints[index - 1];
+          if (!prev.monthKey) return null;
+          const prevMonth = prev.monthKey.slice(5, 7);
+          const currMonth = point.monthKey.slice(5, 7);
+          if (prevMonth !== '12' || currMonth !== '01') return null;
+          const lineX = (prev.x + point.x) / 2;
+          return (
+            <View
+              key={`year-line-${point.monthKey}`}
+              style={[
+                styles.yearBoundary,
+                { left: lineX },
+              ]}
+            />
+          );
+        })}
 
         {renderSegments(primaryChartPoints, styles.primarySegment, styles)}
         {renderSegments(secondaryChartPoints, styles.secondarySegment, styles)}
@@ -74,9 +94,9 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
         {renderPoints(secondaryChartPoints, styles.secondaryDot, 'secondary', styles)}
 
         <View style={styles.labelsRow}>
-          {primaryChartPoints.map((point) => (
+          {primaryChartPoints.map((point, index) => (
             <Text key={`${point.label}-label`} style={styles.monthLabel}>
-              {point.label}
+              {index % 2 === 0 ? point.label : ''}
             </Text>
           ))}
         </View>
@@ -147,6 +167,7 @@ function buildChartPoints(
     if (point.rank === null) {
       return {
         label: point.label,
+        monthKey: point.monthKey,
         rank: null,
         x,
         y: null,
@@ -155,10 +176,11 @@ function buildChartPoints(
 
     const spread = Math.max(scale.max - scale.min, 1);
     const ratio = (point.rank - scale.min) / spread;
-    const y = CHART_PADDING_TOP + DOT_SIZE / 2 + ratio * usableHeight;
+    const y = CHART_PADDING_TOP + DOT_SIZE / 2 + (1 - ratio) * usableHeight;
 
     return {
       label: point.label,
+      monthKey: point.monthKey,
       rank: point.rank,
       x,
       y,
@@ -252,6 +274,13 @@ function createStyles(colors: ColorPalette) {
     left: CHART_PADDING_HORIZONTAL + AXIS_WIDTH + AXIS_GAP,
     position: 'absolute',
     right: CHART_PADDING_HORIZONTAL + AXIS_WIDTH + AXIS_GAP,
+    top: CHART_PADDING_TOP + DOT_SIZE / 2,
+  },
+  yearBoundary: {
+    borderLeftColor: colors.border,
+    borderLeftWidth: 1,
+    bottom: CHART_PADDING_BOTTOM,
+    position: 'absolute',
     top: CHART_PADDING_TOP + DOT_SIZE / 2,
   },
   labelsRow: {

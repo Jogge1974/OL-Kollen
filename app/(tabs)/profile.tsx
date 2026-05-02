@@ -22,7 +22,7 @@ import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { SverigelistanTrendDirection } from '@/src/types/sverigelistan';
+import { SverigelistanTrendDirection, SverigelistanTrendPoint } from '@/src/types/sverigelistan';
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -278,6 +278,7 @@ export default function ProfileScreen() {
                       <Text style={styles.trendToggleLink}>&lt; Visa mindre</Text>
                     </View>
                     <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
+                    <TrendTable classTrend={classTrend} monthlyTrend={monthlyTrend} />
                   </>
                 ) : (
                   <Text style={styles.trendToggleLink}>Visa mer &gt;</Text>
@@ -362,6 +363,79 @@ function formatUpdatedDate(updated: string) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+const MONTH_SHORT = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+function formatMonthLabel(monthKey: string | undefined) {
+  if (!monthKey || monthKey.length < 7) {
+    return '-';
+  }
+
+  const month = Number(monthKey.slice(5, 7)) - 1;
+  const year = monthKey.slice(2, 4);
+  return `${MONTH_SHORT[month] ?? '?'} '${year}`;
+}
+
+function buildClassColumnHeader(classTrend: SverigelistanTrendPoint[]) {
+  const classNames = new Set<string>();
+  for (const point of classTrend) {
+    if (point.className) {
+      classNames.add(point.className);
+    }
+  }
+
+  const sorted = [...classNames].sort();
+  if (sorted.length === 0) {
+    return 'Klass';
+  }
+
+  return sorted.join('/');
+}
+
+function TrendTable({ classTrend, monthlyTrend }: { classTrend: SverigelistanTrendPoint[]; monthlyTrend: SverigelistanTrendPoint[] }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
+  const classHeader = React.useMemo(() => buildClassColumnHeader(classTrend), [classTrend]);
+  const classLookup = React.useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const point of classTrend) {
+      if (point.monthKey) {
+        map.set(point.monthKey, point.rank);
+      }
+    }
+    return map;
+  }, [classTrend]);
+
+  const hasAnyData = monthlyTrend.some((p) => p.rank !== null);
+  if (!hasAnyData) {
+    return null;
+  }
+
+  const dataRows = monthlyTrend.filter((p) => p.rank !== null || classLookup.get(p.monthKey ?? '') !== undefined);
+
+  return (
+    <View style={styles.trendTable}>
+      <View style={[styles.trendTableRow, styles.trendTableHeaderRow]}>
+        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellMonth]}>Månad</Text>
+        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellRank]}>Riks</Text>
+        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellRank]}>{classHeader}</Text>
+        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellPoints]}>Po.</Text>
+      </View>
+      {dataRows.map((point, index) => {
+        const classRank = classLookup.get(point.monthKey ?? '') ?? null;
+        return (
+          <View key={point.monthKey ?? index} style={[styles.trendTableRow, index % 2 === 0 ? styles.trendTableRowEven : null]}>
+            <Text style={[styles.trendTableCell, styles.trendTableCellMonth]}>{formatMonthLabel(point.monthKey)}</Text>
+            <Text style={[styles.trendTableCell, styles.trendTableCellRank]}>{point.rank ?? '-'}</Text>
+            <Text style={[styles.trendTableCell, styles.trendTableCellRank]}>{classRank ?? '-'}</Text>
+            <Text style={[styles.trendTableCell, styles.trendTableCellPoints]}>{point.points != null ? formatPoints(point.points) : '-'}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
 function createStyles(colors: ColorPalette) {
@@ -634,6 +708,42 @@ function createStyles(colors: ColorPalette) {
     alignSelf: 'flex-end',
     paddingRight: 2,
     paddingVertical: 2,
+  },
+  trendTable: {
+    marginTop: spacing.sm,
+  },
+  trendTableRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 4,
+  },
+  trendTableHeaderRow: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+  },
+  trendTableRowEven: {
+    backgroundColor: colors.background,
+  },
+  trendTableCell: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  trendTableHeaderCell: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 12,
+  },
+  trendTableCellMonth: {
+    flex: 2,
+  },
+  trendTableCellRank: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  trendTableCellPoints: {
+    flex: 1.5,
+    textAlign: 'right',
   },
 });
 }
