@@ -18,6 +18,15 @@ type SyncPayload = {
     name: string;
     startDate: string;
   }>;
+  friends?: Array<{
+    birthYear: number | null;
+    club: string;
+    gender: string;
+    name: string;
+    personId: number;
+    pushOnResult: boolean;
+    pushOnStart: boolean;
+  }>;
   notificationSettings: {
     pushOnResultList: boolean;
     pushOnStartList: boolean;
@@ -210,6 +219,39 @@ Deno.serve(async (request) => {
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'person_id,device_id' },
+      );
+    }
+
+    // --- FRIENDS: sync friend_watches ---
+    const friends = payload.friends ?? [];
+    const friendPersonIds = friends.map((f) => String(f.personId));
+
+    // Delete friends that were removed locally
+    if (friendPersonIds.length > 0) {
+      await supabase
+        .from('friend_watches')
+        .delete()
+        .eq('person_id', personId)
+        .not('friend_person_id', 'in', `(${friendPersonIds.map((id) => `"${id}"`).join(',')})`);
+    } else {
+      await supabase.from('friend_watches').delete().eq('person_id', personId);
+    }
+
+    // Upsert current friends
+    if (friends.length > 0) {
+      await supabase.from('friend_watches').upsert(
+        friends.map((f) => ({
+          friend_birth_year: f.birthYear,
+          friend_club: f.club,
+          friend_gender: f.gender,
+          friend_name: f.name,
+          friend_person_id: String(f.personId),
+          person_id: personId,
+          push_on_result: f.pushOnResult ?? true,
+          push_on_start: f.pushOnStart ?? true,
+          updated_at: new Date().toISOString(),
+        })),
+        { onConflict: 'person_id,friend_person_id' },
       );
     }
 

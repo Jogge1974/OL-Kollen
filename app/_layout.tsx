@@ -7,8 +7,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LoadingState } from '@/src/components/LoadingState';
 import { PushSyncController } from '@/src/features/notifications/PushSyncController';
-import { addNotificationEventListener, getLastNotificationEventId } from '@/src/services/pushNotifications';
+import { addNotificationDataListener, getLastNotificationEventId, NotificationData } from '@/src/services/pushNotifications';
 import { useAuthStore } from '@/src/store/authStore';
+import { useFriendActivityStore } from '@/src/store/friendActivityStore';
+import { useFriendsStore } from '@/src/store/friendsStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ThemeProvider, useColors, useTheme } from '@/src/theme/ThemeContext';
 
@@ -22,8 +24,12 @@ export default function RootLayout() {
 
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const hydrateSession = useAuthStore((state) => state.hydrateSession);
+  const user = useAuthStore((state) => state.user);
   const isPreferencesHydrated = usePreferencesStore((state) => state.isHydrated);
   const hydratePreferences = usePreferencesStore((state) => state.hydratePreferences);
+  const isFriendsHydrated = useFriendsStore((state) => state.isHydrated);
+  const hydrateFriends = useFriendsStore((state) => state.hydrateFriends);
+  const clearFriends = useFriendsStore((state) => state.clearFriends);
   const themeName = usePreferencesStore((state) => state.themeName);
 
   React.useEffect(() => {
@@ -34,7 +40,19 @@ export default function RootLayout() {
     void hydratePreferences();
   }, [hydratePreferences]);
 
-  if (!fontsLoaded || !isHydrated || !isPreferencesHydrated) {
+  React.useEffect(() => {
+    if (!isHydrated) return;
+    if (user?.personId) {
+      void hydrateFriends(user.personId);
+    } else {
+      clearFriends();
+    }
+  }, [isHydrated, user?.personId, hydrateFriends, clearFriends]);
+
+  // Friends hydration depends on user; treat as ready when logged out
+  const friendsReady = isFriendsHydrated || (isHydrated && !user);
+
+  if (!fontsLoaded || !isHydrated || !isPreferencesHydrated || !friendsReady) {
     return <LoadingState label="Startar Kontrollen..." fullScreen />;
   }
 
@@ -66,40 +84,54 @@ function PushNotificationNavigator() {
   React.useEffect(() => {
     let isMounted = true;
 
-    const navigateToEvent = (eventId: string) => {
-      if (!eventId) {
-        return;
+    const handleNotificationData = (data: NotificationData) => {
+      if (!isMounted) return;
+
+      const notifType = data.type;
+      const eventId = typeof data.eventId === 'string' ? data.eventId : typeof data.eventId === 'number' ? `${data.eventId}` : null;
+
+      // Record friend activity for badge display
+      if ((notifType === 'friend-results' || notifType === 'friend-start') && Array.isArray(data.friendPersonIds) && data.friendPersonIds.length > 0 && eventId) {
+        useFriendActivityStore.getState().recordActivity(data.friendPersonIds, eventId, notifType as 'friend-results' | 'friend-start');
       }
 
-      if (typeof router.push !== 'function') {
-        return;
+      // Navigate based on type
+      if (notifType === 'friend-results' || notifType === 'friend-start') {
+        // Navigate to friends list so the user sees the badges
+        setTimeout(() => {
+          if (!isMounted) return;
+          try {
+            router.push('/(tabs)/friends');
+          } catch {
+            // Ignore navigation errors
+          }
+        }, 300);
+      } else if (eventId) {
+        // Default: navigate to event detail (existing behavior)
+        setTimeout(() => {
+          if (!isMounted) return;
+          try {
+            router.push({
+              params: { id: eventId, returnTo: '/(tabs)/calendar' },
+              pathname: '/event/[id]',
+            });
+          } catch {
+            // Ignore navigation errors on startup
+          }
+        }, 300);
       }
-
-      setTimeout(() => {
-        if (!isMounted) {
-          return;
-        }
-
-        try {
-          router.push({
-            params: { id: eventId, returnTo: '/(tabs)/calendar' },
-            pathname: '/event/[id]',
-          });
-        } catch {
-          // Ignore navigation errors on startup; the app must not crash here.
-        }
-      }, 300);
     };
 
     void getLastNotificationEventId().then((eventId) => {
       if (eventId) {
-        navigateToEvent(eventId);
+        handleNotificationData({ eventId });
       }
     });
 
-    const subscription = addNotificationEventListener((eventId) => {
-      navigateToEvent(eventId);
-    });
+    const subscription = addNotificationDataListener(handleNotificationData);
+
+    // Clear stale activity entries on mount
+    useFriendActivityStore.getState().clearOldEntries();
 
     return () => {
       isMounted = false;

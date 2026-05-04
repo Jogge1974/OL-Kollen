@@ -1,5 +1,6 @@
 import { FavoriteEventSummary, NotificationSettings } from '@/src/types/preferences';
 import { DevicePushTokenRecord, NotificationPreferenceRecord } from '@/src/types/user';
+import { Friend } from '@/src/store/friendsStore';
 import { normalizeEventId } from '@/src/utils/eventId';
 
 export type FavoriteWatchRecord = {
@@ -22,6 +23,7 @@ export type PushSyncPayload = {
     pushToken: string | null;
   } | null;
   favoriteEvents: FavoriteEventSummary[];
+  friends: Friend[];
   notificationSettings: NotificationSettings;
   user: {
     clubId: string | null;
@@ -74,6 +76,7 @@ export function createPushSyncPayload(args: {
   device: PushSyncPayload['device'];
   email: string | null;
   favoriteEvents: FavoriteEventSummary[];
+  friends: Friend[];
   fullName: string | null;
   notificationSettings: NotificationSettings;
   personId: string;
@@ -87,6 +90,7 @@ export function createPushSyncPayload(args: {
   return {
     device: args.device,
     favoriteEvents: args.favoriteEvents,
+    friends: args.friends,
     notificationSettings: args.notificationSettings,
     preferences: args.preferences ?? null,
     user: {

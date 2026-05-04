@@ -13,6 +13,7 @@ import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { createDefaultCalendarFilterTemplate, describeCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { useAuthStore } from '@/src/store/authStore';
+import { useFriendsStore } from '@/src/store/friendsStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -45,6 +46,9 @@ export default function SettingsScreen() {
   const setNotificationSetting = usePreferencesStore((state) => state.setNotificationSetting);
   const themeName = usePreferencesStore((state) => state.themeName);
   const setThemeName = usePreferencesStore((state) => state.setThemeName);
+  const friends = useFriendsStore((state) => state.friends);
+  const updateFriendPush = useFriendsStore((state) => state.updateFriendPush);
+  const setAllFriendsPush = useFriendsStore((state) => state.setAllFriendsPush);
   const { districtOptions, error: districtError, organisationToDistrictId } = useEventorDistricts(isCalendarFiltersExpanded);
 
   React.useEffect(() => {
@@ -257,34 +261,95 @@ export default function SettingsScreen() {
           title="Notiser"
         >
           <View style={styles.sectionContent}>
-                      <Text style={styles.helperText}>
-                          Observera att notiser endast gäller tävlingar man favoritmarkerat.
-                      </Text>
-              <View style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.settingTitle}>Push för startlistor</Text>
-                <Text style={styles.settingDescription}>Få en push när en favoritmarkerad tävling får startlista publicerad.</Text>
-              </View>
+            <Text style={styles.notifGroupLabel}>Favoritmarkerad tävling</Text>
+            <View style={styles.compactSettingRow}>
               <Checkbox
                 color={notificationSettings.pushOnStartList ? colors.primary : undefined}
                 style={styles.checkbox}
                 value={notificationSettings.pushOnStartList}
                 onValueChange={(value) => void setNotificationSetting('pushOnStartList', value)}
               />
+              <Text style={styles.compactSettingText}>Startlista publicerad</Text>
             </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.settingTitle}>Push för resultatlistor</Text>
-                <Text style={styles.settingDescription}>Få en push när en favoritmarkerad tävling får resultatlista publicerad.</Text>
-              </View>
+            <View style={styles.compactSettingRow}>
               <Checkbox
                 color={notificationSettings.pushOnResultList ? colors.primary : undefined}
                 style={styles.checkbox}
                 value={notificationSettings.pushOnResultList}
                 onValueChange={(value) => void setNotificationSetting('pushOnResultList', value)}
               />
+              <Text style={styles.compactSettingText}>Resultatlista publicerad</Text>
             </View>
+
+            {friends.length > 0 ? (
+              <>
+                <Text style={[styles.notifGroupLabel, { marginTop: spacing.sm }]}>Vänner</Text>
+                <View style={styles.friendMasterRow}>
+                  <Text style={styles.friendMasterLabel}>Alla</Text>
+                  <View style={styles.friendNotifToggles}>
+                    <Pressable
+                      onPress={() => {
+                        const allOn = friends.every((f) => f.pushOnStart);
+                        void setAllFriendsPush('pushOnStart', !allOn);
+                      }}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnStart) ? styles.friendNotifPillActive : null]}
+                    >
+                      <Ionicons
+                        color={friends.every((f) => f.pushOnStart) ? colors.primaryDeep : colors.textMuted}
+                        name={
+                          friends.every((f) => f.pushOnStart) ? 'checkbox' :
+                          friends.some((f) => f.pushOnStart) ? 'remove-outline' :
+                          'square-outline'
+                        }
+                        size={14}
+                      />
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnStart) ? styles.friendNotifPillTextActive : null]}>Start</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        const allOn = friends.every((f) => f.pushOnResult);
+                        void setAllFriendsPush('pushOnResult', !allOn);
+                      }}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnResult) ? styles.friendNotifPillActive : null]}
+                    >
+                      <Ionicons
+                        color={friends.every((f) => f.pushOnResult) ? colors.primaryDeep : colors.textMuted}
+                        name={
+                          friends.every((f) => f.pushOnResult) ? 'checkbox' :
+                          friends.some((f) => f.pushOnResult) ? 'remove-outline' :
+                          'square-outline'
+                        }
+                        size={14}
+                      />
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnResult) ? styles.friendNotifPillTextActive : null]}>Resultat</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                {friends.map((friend) => (
+                  <View key={friend.personId} style={styles.friendNotifRow}>
+                    <View style={styles.friendNotifName}>
+                      <Text numberOfLines={1} style={styles.compactSettingText}>{friend.name}</Text>
+                    </View>
+                    <View style={styles.friendNotifToggles}>
+                      <Pressable
+                        onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
+                        style={[styles.friendNotifPill, friend.pushOnStart ? styles.friendNotifPillActive : null]}
+                      >
+                        <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnStart ? styles.friendNotifPillTextActive : null]}>Start</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
+                        style={[styles.friendNotifPill, friend.pushOnResult ? styles.friendNotifPillActive : null]}
+                      >
+                        <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnResult ? styles.friendNotifPillTextActive : null]}>Resultat</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : null}
           </View>
         </ExpandableCard>
 
@@ -577,6 +642,74 @@ function createStyles(colors: ColorPalette) {
   },
   checkbox: {
     borderRadius: 6,
+  },
+  notifGroupLabel: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  compactSettingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: 2,
+  },
+  compactSettingText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  friendNotifRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+  },
+  friendMasterRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  friendMasterLabel: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+  },
+  friendNotifName: {
+    flex: 1,
+    minWidth: 0,
+  },
+  friendNotifToggles: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  friendNotifPill: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  friendNotifPillActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.primary,
+  },
+  friendNotifPillText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  friendNotifPillTextActive: {
+    color: colors.primaryDeep,
   },
   helperText: {
     ...typography.caption,

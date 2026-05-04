@@ -9,3 +9,9 @@ verify_jwt = false
 
 [functions.notify-feedback]
 verify_jwt = false
+
+[functions.person-search]
+verify_jwt = false
+
+[functions.poll-friend-activity]
+verify_jwt = false

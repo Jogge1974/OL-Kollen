@@ -8,6 +8,7 @@ import { typography } from '@/src/theme/typography';
 const iconByRoute = {
   calendar: 'calendar-outline',
   'event/[id]': 'ellipse-outline',
+  friends: 'people-outline',
   index: 'home-outline',
   profile: 'person-outline',
   sverigelista: 'trophy-outline',
@@ -71,6 +72,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="friends"
+        options={{
+          title: 'Vänner',
+          tabBarLabel: 'Vänner',
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Inställningar',
@@ -82,6 +90,13 @@ export default function TabsLayout() {
         options={{
           href: null,
           title: 'Tävling',
+        }}
+      />
+      <Tabs.Screen
+        name="friend/[personId]"
+        options={{
+          href: null,
+          title: 'Vän',
         }}
       />
     </Tabs>

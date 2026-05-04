@@ -22,22 +22,27 @@ type ScreenHeroHeaderProps = {
   };
   chips?: HeroChip[];
   eyebrow?: string;
+  eyebrowContent?: React.ReactNode;
   subtitle?: string;
   title: string;
+  titleRightContent?: React.ReactNode;
+  topRightContent?: React.ReactNode;
   topRightText?: string;
 };
 
-export function ScreenHeroHeader({ badge, chips, eyebrow, subtitle, title, topRightText }: ScreenHeroHeaderProps) {
+export function ScreenHeroHeader({ badge, chips, eyebrow, eyebrowContent, subtitle, title, titleRightContent, topRightContent, topRightText }: ScreenHeroHeaderProps) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   return (
     <LinearGradient colors={[colors.heroTop, colors.heroBottom]} style={styles.hero}>
       <View style={styles.heroTopRow}>
-        <Text style={styles.heroEyebrow}>{eyebrow ?? ''}</Text>
-        <Text numberOfLines={1} style={styles.heroTopRight}>
-          {topRightText ?? ''}
-        </Text>
+        {eyebrowContent ?? <Text style={styles.heroEyebrow}>{eyebrow ?? ''}</Text>}
+        {topRightContent ?? (
+          <Text numberOfLines={1} style={styles.heroTopRight}>
+            {topRightText ?? ''}
+          </Text>
+        )}
       </View>
 
       <View style={styles.heroTitleRow}>
@@ -51,6 +56,7 @@ export function ScreenHeroHeader({ badge, chips, eyebrow, subtitle, title, topRi
             </Text>
           ) : null}
         </View>
+        {titleRightContent}
         {badge ? (
           <View style={styles.heroBadge}>
             {badge.icon ? <Ionicons color={colors.primaryDeep} name={badge.icon} size={14} /> : null}

@@ -4,6 +4,7 @@ import { createPushSyncPayload } from '@/src/features/notifications/pushSync';
 import { registerForPushNotificationsAsync } from '@/src/services/pushNotifications';
 import { hasSupabaseRuntimeConfig, invokeSupabaseFunction } from '@/src/services/supabase';
 import { useAuthStore } from '@/src/store/authStore';
+import { useFriendsStore } from '@/src/store/friendsStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 
 type PushSyncResponse = {
@@ -19,6 +20,7 @@ export function PushSyncController() {
   const favoriteClasses = usePreferencesStore((state) => state.favoriteClasses);
   const calendarFilterPresets = usePreferencesStore((state) => state.calendarFilterPresets);
   const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
+  const friends = useFriendsStore((state) => state.friends);
   const lastFingerprintRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -38,6 +40,7 @@ export function PushSyncController() {
       calendarFilterPresets,
       favoriteClasses,
       favoriteEvents: favoriteEvents.map((event) => event.id),
+      friends: friends.map((f) => f.personId),
       notificationSettings,
       personId: user.personId,
     });
@@ -76,6 +79,7 @@ export function PushSyncController() {
           device,
           email: user.email,
           favoriteEvents,
+          friends,
           fullName: user.fullName,
           notificationSettings,
           personId,
@@ -106,7 +110,7 @@ export function PushSyncController() {
     return () => {
       isCancelled = true;
     };
-  }, [calendarDefaultFilterTemplate, calendarFilterPresets, favoriteClasses, favoriteEvents, notificationSettings, user]);
+  }, [calendarDefaultFilterTemplate, calendarFilterPresets, favoriteClasses, favoriteEvents, friends, notificationSettings, user]);
 
   return null;
 }

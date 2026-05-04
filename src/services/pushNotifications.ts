@@ -15,7 +15,11 @@ let isNotificationHandlerConfigured = false;
 
 type NotificationEventData = {
   eventId?: string | number;
+  friendPersonIds?: string[];
+  type?: string;
 };
+
+export type NotificationData = NotificationEventData;
 
 export function ensureNotificationHandler() {
   if (isNotificationHandlerConfigured) {
@@ -105,6 +109,15 @@ export function addNotificationEventListener(onEventId: (eventId: string) => voi
 
     if (eventId) {
       onEventId(eventId);
+    }
+  });
+}
+
+export function addNotificationDataListener(onData: (data: NotificationData) => void) {
+  return Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response?.notification.request.content.data as NotificationData | undefined;
+    if (data) {
+      onData(data);
     }
   });
 }
