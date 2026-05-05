@@ -578,7 +578,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingVertical: 8,
     },
     h2hMatchRowWin: {
-      backgroundColor: isDark ? 'rgba(76,175,80,0.12)' : 'rgba(76,175,80,0.08)',
+      backgroundColor: `${colors.primary}${isDark ? '1F' : '14'}`,
     },
     h2hMatchRowLoss: {
       backgroundColor: isDark ? 'rgba(244,67,54,0.10)' : 'rgba(244,67,54,0.06)',
