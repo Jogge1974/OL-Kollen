@@ -287,13 +287,23 @@ export default function FriendDetailScreen() {
                           <Text style={styles.h2hMatchDate}>{match.date}</Text>
                         </View>
                         <View style={styles.h2hMatchTimes}>
-                          <Text style={[styles.h2hTime, match.winner === 'me' ? styles.h2hTimeWin : null]}>
-                            {match.myTime ?? '—'}
-                          </Text>
+                          <View style={styles.h2hMatchSide}>
+                            <Text style={[styles.h2hTime, match.winner === 'me' ? styles.h2hTimeWin : null]}>
+                              {match.myTime ?? '—'}
+                            </Text>
+                            <Text style={[styles.h2hPos, match.winner === 'me' ? styles.h2hTimeWin : null]}>
+                              {match.myPosition != null ? `#${match.myPosition}` : '—'}
+                            </Text>
+                          </View>
                           <Text style={styles.h2hTimeSep}>vs</Text>
-                          <Text style={[styles.h2hTime, match.winner === 'friend' ? styles.h2hTimeWin : null]}>
-                            {match.friendTime ?? '—'}
-                          </Text>
+                          <View style={styles.h2hMatchSide}>
+                            <Text style={[styles.h2hTime, match.winner === 'friend' ? styles.h2hTimeWin : null]}>
+                              {match.friendTime ?? '—'}
+                            </Text>
+                            <Text style={[styles.h2hPos, match.winner === 'friend' ? styles.h2hTimeWin : null]}>
+                              {match.friendPosition != null ? `#${match.friendPosition}` : '—'}
+                            </Text>
+                          </View>
                         </View>
                       </View>
                     ))}
@@ -596,11 +606,20 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       flexDirection: 'row',
       gap: 4,
     },
+    h2hMatchSide: {
+      alignItems: 'center',
+    },
     h2hTime: {
       ...typography.captionStrong,
       color: colors.textSecondary,
       fontSize: 12,
       minWidth: 44,
+      textAlign: 'center',
+    },
+    h2hPos: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
       textAlign: 'center',
     },
     h2hTimeWin: {

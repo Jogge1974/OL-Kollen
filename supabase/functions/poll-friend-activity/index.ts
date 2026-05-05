@@ -127,13 +127,19 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
     for (let c = 1; c < classBlocks.length; c++) {
       const classBlock = classBlocks[c];
 
+      // Verify there's an actual completed result (not just a start entry).
+      // A valid result has <Result> with <Status>OK</Status> or at least a <Time> element.
+      const hasResultStatus = /<Result\b[\s\S]*?<Status>(OK|MisPunch|Overtime|Disqualified)<\/Status>/.test(classBlock);
+      const hasTime = /<Result\b[\s\S]*?<Time>\d+<\/Time>/.test(classBlock);
+      if (!hasResultStatus && !hasTime) continue;
+
       // Class name from <EventClass><Name> or <Class><Name>
       const classNameMatch =
         classBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
       const classLabel = classNameMatch?.[1] ?? null;
 
       // Position from <Result>...<Position>X</Position> (IOF 3.0)
-      const positionMatch = classBlock.match(/<Position>(\d+)<\/Position>/) ??
+      const positionMatch = classBlock.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/) ??
         classBlock.match(/<ResultPosition>([^<]+)<\/ResultPosition>/);
       const position = positionMatch?.[1] ?? null;
 

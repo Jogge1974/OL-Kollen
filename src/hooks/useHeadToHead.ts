@@ -45,8 +45,11 @@ function buildEventMap(sections: PersonActivitySection[]): Map<string, PersonAct
   const map = new Map<string, PersonActivityRow>();
   for (const section of sections) {
     // Use first row per event (typically the main result)
+    // Exclude DidNotStart / Inactive — they didn't actually compete
     if (!map.has(section.eventId) && section.rows.length > 0) {
-      map.set(section.eventId, section.rows[0]);
+      const row = section.rows[0];
+      if (row.status === 'DidNotStart' || row.status === 'Inactive') continue;
+      map.set(section.eventId, row);
     }
   }
   return map;

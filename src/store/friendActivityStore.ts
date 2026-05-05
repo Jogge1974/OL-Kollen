@@ -56,18 +56,16 @@ export const useFriendActivityStore = create<FriendActivityState>((set, get) => 
       .eq('event_date', today)
       .in('friend_person_id', friendPersonIds);
 
-    if (!data || data.length === 0) return;
-
-    const current = { ...get().activityByFriendId };
-    for (const row of data) {
+    const fresh: Record<string, FriendActivityEntry> = {};
+    for (const row of data ?? []) {
       const id = row.friend_person_id;
       if (row.result_notified_at) {
-        current[id] = { date: today, eventId: row.event_id, type: 'friend-results' };
+        fresh[id] = { date: today, eventId: row.event_id, type: 'friend-results' };
       } else if (row.start_notified_at) {
-        current[id] = { date: today, eventId: row.event_id, type: 'friend-start' };
+        fresh[id] = { date: today, eventId: row.event_id, type: 'friend-start' };
       }
     }
-    set({ activityByFriendId: current });
+    set({ activityByFriendId: fresh });
   },
 
   hasTodayActivity: (personId: number) => {
