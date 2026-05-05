@@ -8,6 +8,7 @@ import { sendExpoPushMessages } from '../_shared/expoPush.ts';
 // ---------------------------------------------------------------------------
 
 type FriendWatchRow = {
+  friend_club: string | null;
   friend_person_id: string;
   friend_name: string;
   person_id: string;
@@ -36,8 +37,10 @@ type ParsedStart = {
 };
 
 type ParsedResult = {
+  classLabel: string | null;
   eventId: string;
   eventName: string;
+  position: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -102,19 +105,48 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
   const results: ParsedResult[] = [];
   const seen = new Set<string>();
 
-  // <PersonResult> blocks contain <Event><EventId> and we only need unique
-  // event IDs to know that a result exists.
-  const blocks = xml.split(/<(?:ClassResult|PersonResult)\b/);
+  // /results/person returns <ResultListList><ResultList>…</ResultList>…</ResultListList>
+  // Each <ResultList> is one event. Split on it first to get event context.
+  const eventBlocks = xml.split(/<ResultList\b/);
 
-  for (const block of blocks) {
-    const eventIdMatch = block.match(/<EventId[^>]*>(\d+)<\/EventId>/);
-    if (eventIdMatch && !seen.has(eventIdMatch[1])) {
-      seen.add(eventIdMatch[1]);
-      const eventNameMatch = block.match(/<Name>([^<]+)<\/Name>/);
-      results.push({
-        eventId: eventIdMatch[1],
-        eventName: eventNameMatch?.[1] ?? 'Okänd tävling',
-      });
+  for (let i = 1; i < eventBlocks.length; i++) {
+    const eventBlock = eventBlocks[i];
+
+    // Extract event ID and name from within this ResultList
+    const eventIdMatch = eventBlock.match(/<EventId[^>]*>(\d+)<\/EventId>/);
+    if (!eventIdMatch) continue;
+    const eventId = eventIdMatch[1];
+    if (seen.has(eventId)) continue;
+
+    // Event name is typically in <Event><Name>...</Name>
+    const eventNameMatch = eventBlock.match(/<Event\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
+    const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
+
+    // Find ClassResult blocks within this event
+    const classBlocks = eventBlock.split(/<ClassResult\b/);
+    for (let c = 1; c < classBlocks.length; c++) {
+      const classBlock = classBlocks[c];
+
+      // Class name from <EventClass><Name> or <Class><Name>
+      const classNameMatch =
+        classBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
+      const classLabel = classNameMatch?.[1] ?? null;
+
+      // Position from <Result>...<Position>X</Position> (IOF 3.0)
+      const positionMatch = classBlock.match(/<Position>(\d+)<\/Position>/) ??
+        classBlock.match(/<ResultPosition>([^<]+)<\/ResultPosition>/);
+      const position = positionMatch?.[1] ?? null;
+
+      // Only take first class match per event (the person's own result)
+      if (!seen.has(eventId)) {
+        seen.add(eventId);
+        results.push({
+          classLabel,
+          eventId,
+          eventName,
+          position,
+        });
+      }
     }
   }
 
@@ -158,7 +190,7 @@ Deno.serve(async (request) => {
       { data: watches, error: watchesErr },
       { data: tokens, error: tokensErr },
     ] = await Promise.all([
-      supabase.from('friend_watches').select('friend_person_id, friend_name, person_id, push_on_result, push_on_start'),
+      supabase.from('friend_watches').select('friend_club, friend_person_id, friend_name, person_id, push_on_result, push_on_start'),
       supabase
         .from('device_push_tokens')
         .select('person_id, push_token')
@@ -229,10 +261,10 @@ Deno.serve(async (request) => {
     const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
     // Collect per-user grouped notifications
-    // start: per user → list of { friendName, eventName }
-    // result: per user → Map<eventId, { eventName, friendNames[] }>
-    const startNotifs = new Map<string, Array<{ friendName: string; eventName: string }>>();
-    const resultNotifs = new Map<string, Map<string, { eventName: string; friendNames: string[] }>>();
+    type StartNotifItem = { friendClub: string; friendName: string; eventName: string; startTime: string };
+    type ResultNotifItem = { classLabel: string | null; eventName: string; friendClub: string; friendName: string; position: string | null };
+    const startNotifs = new Map<string, StartNotifItem[]>();
+    const resultNotifs = new Map<string, ResultNotifItem[]>();
 
     // State rows to upsert after sending
     const stateUpserts: Array<Record<string, unknown>> = [];
@@ -257,7 +289,8 @@ Deno.serve(async (request) => {
           const diffMs = startDate.getTime() - now.getTime();
           if (diffMs > 0 && diffMs <= FIVE_MINUTES_MS) {
             const arr = startNotifs.get(watch.person_id) ?? [];
-            arr.push({ friendName: watch.friend_name, eventName: start.eventName });
+            const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
+            arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
             startNotifs.set(watch.person_id, arr);
 
             stateUpserts.push({
@@ -289,11 +322,15 @@ Deno.serve(async (request) => {
           const existing = stateMap.get(key);
           if (existing?.result_notified_at) continue; // already notified
 
-          const userMap = resultNotifs.get(watch.person_id) ?? new Map();
-          const entry = userMap.get(result.eventId) ?? { eventName: result.eventName, friendNames: [] };
-          entry.friendNames.push(watch.friend_name);
-          userMap.set(result.eventId, entry);
-          resultNotifs.set(watch.person_id, userMap);
+          const arr = resultNotifs.get(watch.person_id) ?? [];
+          arr.push({
+            classLabel: result.classLabel,
+            eventName: result.eventName,
+            friendClub: watch.friend_club ?? '',
+            friendName: watch.friend_name,
+            position: result.position,
+          });
+          resultNotifs.set(watch.person_id, arr);
 
           stateUpserts.push({
             event_date: todayStr,
@@ -313,56 +350,74 @@ Deno.serve(async (request) => {
     for (const [personId, items] of startNotifs) {
       const pushTokens = tokensByPerson.get(personId) ?? [];
       for (const item of items) {
+        const clubSuffix = item.friendClub ? `, ${item.friendClub}` : '';
         for (const token of pushTokens) {
           allMessages.push({
-            body: `${item.friendName} startar om ~5 min i ${item.eventName}.`,
+            body: `Startar ${item.startTime} i ${item.eventName}.`,
             data: { type: 'friend-start' },
             sound: 'default',
-            title: 'Vän startar snart',
+            title: `${item.friendName}${clubSuffix}, startar snart.`,
             to: token,
           });
         }
       }
     }
 
-    // Result notifications — grouped per event per user
-    for (const [personId, eventMap] of resultNotifs) {
+    // Result notifications
+    for (const [personId, items] of resultNotifs) {
       const pushTokens = tokensByPerson.get(personId) ?? [];
+      if (pushTokens.length === 0) continue;
 
-      // Collect all events, limit to 3 distinct notifications
-      const events = [...eventMap.entries()];
-      const displayEvents = events.slice(0, 3);
-      const remaining = events.length - displayEvents.length;
+      // Group by event
+      const byEvent = new Map<string, ResultNotifItem[]>();
+      for (const item of items) {
+        const arr = byEvent.get(item.eventName) ?? [];
+        arr.push(item);
+        byEvent.set(item.eventName, arr);
+      }
 
-      for (const [eventId, { eventName, friendNames }] of displayEvents) {
-        const uniqueNames = [...new Set(friendNames)];
-        const body =
-          uniqueNames.length === 1
-            ? `${uniqueNames[0]} har fått resultat i ${eventName}.`
-            : `${uniqueNames.length} vänner har fått resultat i ${eventName}.`;
+      const eventEntries = [...byEvent.entries()];
+      const displayEntries = eventEntries.slice(0, 3);
+      const remaining = eventEntries.length - displayEntries.length;
+
+      for (const [eventName, eventItems] of displayEntries) {
+        const uniqueFriends = [...new Map(eventItems.map((i) => [i.friendName, i])).values()];
+
+        let title: string;
+        let body: string;
+
+        if (uniqueFriends.length === 1) {
+          const f = uniqueFriends[0];
+          const clubSuffix = f.friendClub ? `, ${f.friendClub}` : '';
+          title = `Resultat för ${f.friendName}${clubSuffix}.`;
+          const posStr = f.position ? `Plac. ${f.position}` : 'Resultat';
+          const classStr = f.classLabel ? ` i ${f.classLabel}` : '';
+          body = `${posStr}${classStr}. Tävling ${eventName}.`;
+        } else {
+          title = 'Nya resultat för dina vänner.';
+          body = `${uniqueFriends.length} vänner har resultat från ${eventName}.`;
+        }
 
         for (const token of pushTokens) {
           allMessages.push({
             body,
-            data: {
-              eventId,
-              friendPersonIds: uniqueNames.length <= 5 ? friendNames : [],
-              type: 'friend-results',
-            },
+            data: { type: 'friend-results' },
             sound: 'default',
-            title: 'Resultat för vänner',
+            title,
             to: token,
           });
         }
       }
 
-      if (remaining > 0) {
+      if (remaining > 0 && displayEntries.length > 0) {
+        const firstName = items[0]?.friendName ?? 'vän';
+        const firstEventName = displayEntries[0][0];
         for (const token of pushTokens) {
           allMessages.push({
-            body: `...och ${remaining} ${remaining === 1 ? 'tävling' : 'tävlingar'} till.`,
+            body: `${firstEventName} och ${remaining} ${remaining === 1 ? 'tävling' : 'tävlingar'} till.`,
             data: { type: 'friend-results' },
             sound: 'default',
-            title: 'Resultat för vänner',
+            title: `Resultat för ${firstName}.`,
             to: token,
           });
         }
@@ -404,8 +459,10 @@ Deno.serve(async (request) => {
       pushCount: allMessages.length,
     });
   } catch (error) {
+    console.error('[poll-friend-activity] Error:', error);
+    const message = error instanceof Error ? error.message : JSON.stringify(error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown poll error.' }),
+      JSON.stringify({ error: message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 },
     );
   }

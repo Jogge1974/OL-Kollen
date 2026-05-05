@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 
+import { getSupabaseClient } from '@/src/services/supabase';
+
 /**
- * Ephemeral store that tracks friend activity received via push notifications.
+ * Ephemeral store that tracks friend activity received via push notifications
+ * or fetched from Supabase on startup.
  * Entries are only valid for the current day (the date the result was published).
  * Used to show a highlight badge on friend cards in the friends list.
  */
@@ -17,6 +20,7 @@ type FriendActivityState = {
   /** Map from friend personId (as string) → activity entry */
   activityByFriendId: Record<string, FriendActivityEntry>;
   clearOldEntries: () => void;
+  fetchTodayActivity: (friendPersonIds: string[]) => Promise<void>;
   hasTodayActivity: (personId: number) => boolean;
   recordActivity: (friendPersonIds: string[], eventId: string, type: FriendActivityEntry['type']) => void;
 };
@@ -38,6 +42,32 @@ export const useFriendActivityStore = create<FriendActivityState>((set, get) => 
       }
     }
     set({ activityByFriendId: cleaned });
+  },
+
+  fetchTodayActivity: async (friendPersonIds: string[]) => {
+    if (friendPersonIds.length === 0) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const today = todayStr();
+    const { data } = await client
+      .from('friend_activity_state')
+      .select('friend_person_id, event_id, result_notified_at, start_notified_at')
+      .eq('event_date', today)
+      .in('friend_person_id', friendPersonIds);
+
+    if (!data || data.length === 0) return;
+
+    const current = { ...get().activityByFriendId };
+    for (const row of data) {
+      const id = row.friend_person_id;
+      if (row.result_notified_at) {
+        current[id] = { date: today, eventId: row.event_id, type: 'friend-results' };
+      } else if (row.start_notified_at) {
+        current[id] = { date: today, eventId: row.event_id, type: 'friend-start' };
+      }
+    }
+    set({ activityByFriendId: current });
   },
 
   hasTodayActivity: (personId: number) => {

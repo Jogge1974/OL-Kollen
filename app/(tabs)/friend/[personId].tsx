@@ -12,8 +12,10 @@ import { RankingTrendChart } from '@/src/components/RankingTrendChart';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
+import { useHeadToHead } from '@/src/hooks/useHeadToHead';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useSverigelistan } from '@/src/hooks/useSverigelistan';
+import { useAuthStore } from '@/src/store/authStore';
 import { useFriendsStore } from '@/src/store/friendsStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -30,10 +32,13 @@ export default function FriendDetailScreen() {
 
   const friends = useFriendsStore((state) => state.friends);
   const updateFriendPush = useFriendsStore((state) => state.updateFriendPush);
+  const user = useAuthStore((state) => state.user);
   const friend = React.useMemo(
     () => friends.find((f) => String(f.personId) === personId) ?? null,
     [friends, personId],
   );
+
+  const h2h = useHeadToHead(user?.personId ?? null, personId);
 
   const {
     availableYears,
@@ -71,6 +76,7 @@ export default function FriendDetailScreen() {
   });
 
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
+  const [isH2hExpanded, setIsH2hExpanded] = React.useState(false);
 
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
@@ -233,6 +239,69 @@ export default function FriendDetailScreen() {
               </>
             )}
           </Pressable>
+        ) : null}
+
+        {user && friend ? (
+          <View style={styles.panel}>
+            <Pressable onPress={() => setIsH2hExpanded((v) => !v)} style={styles.h2hHeader}>
+              <Text style={styles.panelTitle}>Head-To-Head</Text>
+              <Text style={styles.h2hSubtitle}>
+                {h2h.isLoading ? 'Laddar...' : `${h2h.sharedEvents} möten i år`}
+              </Text>
+              <Ionicons color={colors.textMuted} name={isH2hExpanded ? 'chevron-up' : 'chevron-down'} size={18} />
+            </Pressable>
+
+            {isH2hExpanded && !h2h.isLoading ? (
+              h2h.matches.length === 0 ? (
+                <Text style={styles.helperText}>Inga gemensamma tävlingar hittades i år.</Text>
+              ) : (
+                <>
+                  <View style={styles.h2hStatsRow}>
+                    <View style={styles.h2hStatCard}>
+                      <Text style={styles.h2hStatValue}>{h2h.myWins}</Text>
+                      <Text style={styles.h2hStatLabel}>Mina segrar</Text>
+                    </View>
+                    <View style={styles.h2hStatCard}>
+                      <Text style={styles.h2hStatValue}>{h2h.ties}</Text>
+                      <Text style={styles.h2hStatLabel}>Lika</Text>
+                    </View>
+                    <View style={styles.h2hStatCard}>
+                      <Text style={styles.h2hStatValue}>{h2h.friendWins}</Text>
+                      <Text style={styles.h2hStatLabel}>{friend.name.split(' ')[0]}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.h2hMatchList}>
+                    {h2h.matches.map((match) => (
+                      <View
+                        key={match.eventId}
+                        style={[
+                          styles.h2hMatchRow,
+                          match.winner === 'me' ? styles.h2hMatchRowWin : null,
+                          match.winner === 'friend' ? styles.h2hMatchRowLoss : null,
+                          match.winner === 'tie' ? styles.h2hMatchRowTie : null,
+                        ]}
+                      >
+                        <View style={styles.h2hMatchInfo}>
+                          <Text numberOfLines={1} style={styles.h2hMatchName}>{match.eventName}</Text>
+                          <Text style={styles.h2hMatchDate}>{match.date}</Text>
+                        </View>
+                        <View style={styles.h2hMatchTimes}>
+                          <Text style={[styles.h2hTime, match.winner === 'me' ? styles.h2hTimeWin : null]}>
+                            {match.myTime ?? '—'}
+                          </Text>
+                          <Text style={styles.h2hTimeSep}>vs</Text>
+                          <Text style={[styles.h2hTime, match.winner === 'friend' ? styles.h2hTimeWin : null]}>
+                            {match.friendTime ?? '—'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )
+            ) : null}
+          </View>
         ) : null}
 
         <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
@@ -452,6 +521,95 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     panelTitle: {
       ...typography.sectionTitle,
       color: colors.textPrimary,
+    },
+    h2hHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    h2hSubtitle: {
+      ...typography.caption,
+      color: colors.textMuted,
+      flex: 1,
+      textAlign: 'right',
+    },
+    h2hStatsRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    h2hStatCard: {
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 14,
+      flex: 1,
+      gap: 2,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    h2hStatValue: {
+      ...typography.sectionTitle,
+      color: colors.primaryDeep,
+      fontSize: 20,
+    },
+    h2hStatLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 11,
+    },
+    h2hMatchList: {
+      gap: 6,
+    },
+    h2hMatchRow: {
+      alignItems: 'center',
+      borderRadius: 10,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 8,
+    },
+    h2hMatchRowWin: {
+      backgroundColor: isDark ? 'rgba(76,175,80,0.12)' : 'rgba(76,175,80,0.08)',
+    },
+    h2hMatchRowLoss: {
+      backgroundColor: isDark ? 'rgba(244,67,54,0.10)' : 'rgba(244,67,54,0.06)',
+    },
+    h2hMatchRowTie: {
+      backgroundColor: isDark ? 'rgba(255,193,7,0.10)' : 'rgba(255,193,7,0.08)',
+    },
+    h2hMatchInfo: {
+      flex: 1,
+      gap: 1,
+      minWidth: 0,
+    },
+    h2hMatchName: {
+      ...typography.caption,
+      color: colors.textPrimary,
+      fontSize: 12,
+    },
+    h2hMatchDate: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
+    },
+    h2hMatchTimes: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 4,
+    },
+    h2hTime: {
+      ...typography.captionStrong,
+      color: colors.textSecondary,
+      fontSize: 12,
+      minWidth: 44,
+      textAlign: 'center',
+    },
+    h2hTimeWin: {
+      color: colors.primary,
+    },
+    h2hTimeSep: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
     },
     helperText: {
       ...typography.caption,

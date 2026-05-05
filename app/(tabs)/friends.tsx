@@ -5,6 +5,8 @@ import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useFocusEffect } from 'expo-router';
+
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
@@ -43,6 +45,16 @@ export default function FriendsScreen() {
   const [isSearching, setIsSearching] = React.useState(false);
 
   const friendPersonIds = React.useMemo(() => new Set(friends.map((f) => f.personId)), [friends]);
+
+  // Fetch today's activity state from Supabase whenever screen gains focus
+  const fetchTodayActivity = useFriendActivityStore((s) => s.fetchTodayActivity);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (friends.length > 0) {
+        void fetchTodayActivity(friends.map((f) => String(f.personId)));
+      }
+    }, [friends, fetchTodayActivity]),
+  );
 
   const uniqueClubs = React.useMemo(() => new Set(friends.map((f) => f.club)).size, [friends]);
   const genderSummary = React.useMemo(() => {
