@@ -79,23 +79,67 @@ function todayRange(): { from: string; to: string } {
 
 function parsePersonStartsXml(xml: string): ParsedStart[] {
   const results: ParsedStart[] = [];
+  const seen = new Set<string>();
 
-  // Each <StartListEntry> or <PersonStart> may contain start info.
-  // We look for <Event> + <StartTime> pairs inside start list structures.
-  const eventBlocks = xml.split(/<(?:ClassStart|PersonStart|StartListEntry)\b/);
+  // /starts/person returns StartListList > StartList > ClassStart > PersonStart
+  // Split on StartList to get per-event context
+  const eventBlocks = xml.split(/<StartList\b/);
 
-  for (const block of eventBlocks) {
-    const eventIdMatch = block.match(/<EventId[^>]*>(\d+)<\/EventId>/);
-    const eventNameMatch = block.match(/<Name>([^<]+)<\/Name>/);
-    const startTimeMatch = block.match(/<StartTime>([^<]+)<\/StartTime>/);
+  for (let i = 1; i < eventBlocks.length; i++) {
+    const eventBlock = eventBlocks[i];
 
-    if (eventIdMatch) {
-      results.push({
-        eventId: eventIdMatch[1],
-        eventName: eventNameMatch?.[1] ?? 'Okänd tävling',
-        startTime: startTimeMatch?.[1]?.trim() ?? null,
-      });
+    const eventIdMatch = eventBlock.match(/<EventId[^>]*>(\d+)<\/EventId>/);
+    if (!eventIdMatch) continue;
+    const eventId = eventIdMatch[1];
+    if (seen.has(eventId)) continue;
+    seen.add(eventId);
+
+    // Event name
+    const eventNameMatch = eventBlock.match(/<Name>([^<]+)<\/Name>/);
+    const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
+
+    // Find the person's start time within <Start>...<StartTime>
+    // Eventor format: <StartTime><Date>YYYY-MM-DD</Date><Clock>HH:MM:SS</Clock></StartTime>
+    // IOF 3.0 format: <StartTime><Date>YYYY-MM-DD</Date><Time>HH:MM:SSZ</Time></StartTime>
+    // Flat format: <StartTime>ISO-STRING</StartTime>
+    let startTime: string | null = null;
+
+    // Look within <PersonStart>...<Start> blocks for the start time
+    const personStartMatch = eventBlock.match(/<PersonStart\b[\s\S]*?<Start\b[\s\S]*?<StartTime>([\s\S]*?)<\/StartTime>/);
+    if (personStartMatch) {
+      const stBlock = personStartMatch[1];
+      // Eventor native: <Date>...</Date><Clock>...</Clock>
+      const dateClockMatch = stBlock.match(/<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
+      if (dateClockMatch) {
+        startTime = `${dateClockMatch[1].trim()}T${dateClockMatch[2].trim()}`;
+      } else {
+        // IOF 3.0: <Date>...</Date><Time>...</Time>
+        const dateTimeMatch = stBlock.match(/<Date>([^<]+)<\/Date>\s*<Time>([^<]+)<\/Time>/);
+        if (dateTimeMatch) {
+          startTime = `${dateTimeMatch[1].trim()}T${dateTimeMatch[2].trim()}`;
+        } else {
+          // Flat ISO string
+          const flat = stBlock.trim();
+          if (flat.match(/^\d{4}-\d{2}-\d{2}T/)) {
+            startTime = flat;
+          }
+        }
+      }
     }
+
+    // Fallback: any StartTime with Date+Clock anywhere in the event block
+    if (!startTime) {
+      const anyMatch = eventBlock.match(/<StartTime>\s*<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
+      if (anyMatch) {
+        startTime = `${anyMatch[1].trim()}T${anyMatch[2].trim()}`;
+      }
+    }
+
+    results.push({
+      eventId,
+      eventName,
+      startTime,
+    });
   }
 
   return results;
@@ -118,7 +162,7 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
     const eventId = eventIdMatch[1];
     if (seen.has(eventId)) continue;
 
-    // Event name is typically in <Event><Name>...</Name>
+    // Event name — first <Name> inside <Event>
     const eventNameMatch = eventBlock.match(/<Event\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
     const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
 
@@ -127,20 +171,27 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
     for (let c = 1; c < classBlocks.length; c++) {
       const classBlock = classBlocks[c];
 
-      // Verify there's an actual completed result (not just a start entry).
-      // A valid result has <Result> with <Status>OK</Status> or at least a <Time> element.
-      const hasResultStatus = /<Result\b[\s\S]*?<Status>(OK|MisPunch|Overtime|Disqualified)<\/Status>/.test(classBlock);
-      const hasTime = /<Result\b[\s\S]*?<Time>\d+<\/Time>/.test(classBlock);
-      if (!hasResultStatus && !hasTime) continue;
+      // Verify there's an actual completed result.
+      // Eventor native: <CompetitorStatus value="OK" /> or value="MisPunch" etc.
+      // IOF 3.0: <Status>OK</Status>
+      const hasEventorStatus = /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish)"/.test(classBlock);
+      const hasIofStatus = /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish)<\/Status>/.test(classBlock);
+      const hasTime = /<Time>[^<]+<\/Time>/.test(classBlock);
+      if (!hasEventorStatus && !hasIofStatus && !hasTime) continue;
+
+      // Exclude DidNotStart
+      if (/<CompetitorStatus\s+value="DidNotStart"/.test(classBlock)) continue;
+      if (/<Status>DidNotStart<\/Status>/.test(classBlock)) continue;
 
       // Class name from <EventClass><Name> or <Class><Name>
       const classNameMatch =
         classBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
       const classLabel = classNameMatch?.[1] ?? null;
 
-      // Position from <Result>...<Position>X</Position> (IOF 3.0)
-      const positionMatch = classBlock.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/) ??
-        classBlock.match(/<ResultPosition>([^<]+)<\/ResultPosition>/);
+      // Position: Eventor native uses <ResultPosition>, IOF 3.0 uses <Position> inside <Result>
+      const positionMatch =
+        classBlock.match(/<ResultPosition>(\d+)<\/ResultPosition>/) ??
+        classBlock.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/);
       const position = positionMatch?.[1] ?? null;
 
       // Only take first class match per event (the person's own result)
@@ -161,7 +212,17 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
 
 function parseStartTimeIso(raw: string | null): Date | null {
   if (!raw) return null;
-  const d = new Date(raw);
+  // Eventor returns times without timezone — they are Swedish local time.
+  // If no timezone indicator (Z or +/-), assume Europe/Stockholm (CET/CEST).
+  let normalized = raw;
+  if (!raw.endsWith('Z') && !/[+-]\d{2}(:\d{2})?$/.test(raw)) {
+    // Summer: CEST = UTC+2, Winter: CET = UTC+1
+    // Determine if date is in DST (rough: last Sunday of March to last Sunday of October)
+    const month = new Date(raw + 'Z').getUTCMonth(); // 0-based
+    const offset = (month >= 2 && month <= 9) ? '+02:00' : '+01:00';
+    normalized = raw + offset;
+  }
+  const d = new Date(normalized);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -261,10 +322,18 @@ Deno.serve(async (request) => {
       );
     }
 
+    // Debug: log parsed starts
+    for (const [friendId, starts] of friendStartsMap) {
+      if (starts.length > 0) {
+        console.log(`[poll-friend] Friend ${friendId} starts:`, JSON.stringify(starts));
+      }
+    }
+
     // 5. Determine what needs notification
     const now = new Date();
     const nowIso = now.toISOString();
-    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    // Notify if start is within the next 15 minutes (cron runs every 10 min)
+    const START_WINDOW_MS = 15 * 60 * 1000;
 
     // Collect per-user grouped notifications
     type StartNotifItem = { friendClub: string; friendName: string; eventName: string; startTime: string };
@@ -293,7 +362,7 @@ Deno.serve(async (request) => {
           if (!startDate) continue;
 
           const diffMs = startDate.getTime() - now.getTime();
-          if (diffMs > 0 && diffMs <= FIVE_MINUTES_MS) {
+          if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
             const arr = startNotifs.get(watch.person_id) ?? [];
             const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
             arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
@@ -459,8 +528,17 @@ Deno.serve(async (request) => {
         .upsert([...deduped.values()], { onConflict: 'friend_person_id,event_id' });
     }
 
+    // Debug: collect starts info for response
+    const debugStarts: Record<string, unknown[]> = {};
+    for (const [friendId, starts] of friendStartsMap) {
+      if (starts.length > 0) {
+        debugStarts[friendId] = starts;
+      }
+    }
+
     return jsonOk({
       checkedFriends: uniqueFriendIds.length,
+      debug: { now: now.toISOString(), startsFound: debugStarts },
       ok: true,
       pushCount: allMessages.length,
     });

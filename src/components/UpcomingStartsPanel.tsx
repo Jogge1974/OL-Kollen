@@ -25,7 +25,7 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
 
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>Mina kommande starter</Text>
+      <Text style={styles.title}>Kommande starter</Text>
       <PersonActivitySectionList
         emptyLabel="Det finns inga kommande starter just nu."
         error={error}
@@ -41,18 +41,18 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
 function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     panel: {
-      backgroundColor: 'transparent',
+      backgroundColor: colors.surface,
       borderColor: colors.primary,
       borderRadius: 24,
-      borderWidth: 1,
+      borderWidth: 1.5,
       gap: spacing.sm,
-      padding: spacing.sm,
+      padding: spacing.md,
     },
     title: {
       ...typography.sectionTitle,
       color: colors.textPrimary,
-      fontSize: 15,
-      lineHeight: 19,
+      fontSize: 17,
+      lineHeight: 21,
       paddingTop: 2,
     },
   });

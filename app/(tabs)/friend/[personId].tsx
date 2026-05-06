@@ -531,6 +531,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     panelTitle: {
       ...typography.sectionTitle,
       color: colors.textPrimary,
+      fontSize: 17,
+      lineHeight: 21,
     },
     h2hHeader: {
       alignItems: 'center',
@@ -776,6 +778,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     resultsPanelTitle: {
       ...typography.sectionTitle,
       color: colors.textPrimary,
+      fontSize: 17,
+      lineHeight: 21,
     },
     yearRow: {
       flexDirection: 'row',

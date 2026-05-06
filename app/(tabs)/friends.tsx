@@ -46,7 +46,8 @@ export default function FriendsScreen() {
 
   const friendPersonIds = React.useMemo(() => new Set(friends.map((f) => f.personId)), [friends]);
 
-  // Fetch today's activity state from Supabase whenever screen gains focus
+  // Subscribe reactively so FlatList re-renders when activity state changes
+  const activityByFriendId = useFriendActivityStore((s) => s.activityByFriendId);
   const fetchTodayActivity = useFriendActivityStore((s) => s.fetchTodayActivity);
   useFocusEffect(
     React.useCallback(() => {
@@ -160,7 +161,9 @@ export default function FriendsScreen() {
           data={friends}
           keyExtractor={(item) => String(item.personId)}
           renderItem={({ item }) => {
-            const hasActivity = useFriendActivityStore.getState().hasTodayActivity(item.personId);
+            const today = new Date().toISOString().slice(0, 10);
+            const entry = activityByFriendId[String(item.personId)];
+            const hasActivity = entry != null && entry.date === today;
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}

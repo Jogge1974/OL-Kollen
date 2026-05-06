@@ -1173,7 +1173,7 @@ function PublishedTableSection({
             ) : null}
 
             {scope === 'organisation' && !isEntries && !isOrganisationResults ? (
-              <Text numberOfLines={1} style={[styles.tableCellText, styles.tableCourseColumn, { width: columnWidths.course }]}>
+              <Text numberOfLines={1} style={[styles.tableCellText, styles.tableCourseColumn, styles.tableCourseColumnData, { width: columnWidths.course }]}>
                 {row.courseLengthLabel ?? '-'}
               </Text>
             ) : null}
@@ -2025,10 +2025,12 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     width: 86,
   },
   tableCourseColumn: {
-    color: isDark ? (isSoft ? '#7AB8E0' : '#8CC490') : undefined,
     flexShrink: 0,
     paddingRight: 4,
     width: 78,
+  },
+  tableCourseColumnData: {
+    color: isDark ? (isSoft ? '#7AB8E0' : '#8CC490') : undefined,
   },
   tableMetricColumn: {
     flexShrink: 0,
