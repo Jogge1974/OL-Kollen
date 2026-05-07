@@ -284,7 +284,24 @@ export default function EventDetailScreen() {
           </View>
         </View>
 
-        {liveMatch ? (
+        {liveMatch && event.liveloxEventId ? (
+          <View style={styles.liveRow}>
+            <Pressable onPress={async () => { try { await Linking.openURL(liveMatch.url); } catch {} }}
+              style={({ pressed }) => [styles.liveresultatButton, styles.liveRowHalf, pressed ? styles.liveresultatButtonPressed : null]}
+            >
+              <Ionicons color="#fff" name="pulse-outline" size={16} />
+              <Text style={styles.liveresultatButtonText}>Nya Liveresultat</Text>
+              <Ionicons color="#fff" name="open-outline" size={14} />
+            </Pressable>
+            <Pressable
+              onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
+              style={({ pressed }) => [styles.liveloxButton, styles.liveRowHalf, pressed ? styles.liveloxButtonPressed : null]}
+            >
+              <Image source={isDark ? require('@/assets/livelox-logo-dark.png') : require('@/assets/livelox-logo.png')} style={styles.liveloxLogo} resizeMode="contain" />
+              <Ionicons color={isDark ? '#FF9D40' : '#F57C00'} name="open-outline" size={14} style={styles.liveloxExternalIcon} />
+            </Pressable>
+          </View>
+        ) : liveMatch ? (
           <Pressable onPress={async () => { try { await Linking.openURL(liveMatch.url); } catch {} }}
             style={({ pressed }) => [styles.liveresultatButton, pressed ? styles.liveresultatButtonPressed : null]}
           >
@@ -292,9 +309,7 @@ export default function EventDetailScreen() {
             <Text style={styles.liveresultatButtonText}>Nya Liveresultat</Text>
             <Ionicons color="#fff" name="open-outline" size={14} />
           </Pressable>
-        ) : null}
-
-        {event.liveloxEventId ? (
+        ) : event.liveloxEventId ? (
           <Pressable
             onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
             style={({ pressed }) => [styles.liveloxButton, pressed ? styles.liveloxButtonPressed : null]}
@@ -871,13 +886,21 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   liveresultatButton: {
     alignItems: 'center',
-    alignSelf: 'center',
     backgroundColor: isDark ? '#BF360C' : '#E65100',
-    borderRadius: 16,
+    borderRadius: 12,
     flexDirection: 'row',
     gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  liveRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  liveRowHalf: {
+    flex: 1,
   },
   liveresultatButtonPressed: {
     opacity: 0.85,
