@@ -3,7 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
 import { router } from 'expo-router';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
@@ -24,6 +24,7 @@ export default function SettingsScreen() {
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [className, setClassName] = React.useState('');
   const [presetName, setPresetName] = React.useState('');
+  const [showPresetModal, setShowPresetModal] = React.useState(false);
   const [calendarDefaultDraft, setCalendarDefaultDraft] = React.useState(createDefaultCalendarFilterTemplate());
   const [isCalendarFiltersExpanded, setIsCalendarFiltersExpanded] = React.useState(false);
   const [isNotificationsExpanded, setIsNotificationsExpanded] = React.useState(false);
@@ -194,20 +195,15 @@ export default function SettingsScreen() {
 
             {districtError ? <Text style={styles.errorText}>{districtError}</Text> : null}
 
-            <AppButton disabled={!canSaveDefaultFilter} label="Spara standardfilter" onPress={() => void handleSaveDefaultFilter()} />
-            <AppButton label="Återställ standardfilter" onPress={() => void handleResetDefaultFilter()} variant="secondary" />
-
-            <View style={styles.presetNameBlock}>
-              <AppTextField
-                autoCapitalize="words"
-                autoCorrect={false}
-                label="Namn på förvalt filter"
-                onChangeText={setPresetName}
-                placeholder="Till exempel Mitt distrikt"
-                value={presetName}
-              />
-              <AppButton disabled={!canSaveDefaultFilter} label="Spara som förvalt filter" onPress={() => void handleAddFilterPreset()} variant="secondary" />
+            <View style={styles.filterButtonRow}>
+              <View style={styles.filterButtonHalf}>
+                <AppButton disabled={!canSaveDefaultFilter} label="Spara standardfilter" onPress={() => void handleSaveDefaultFilter()} textStyle={styles.filterButtonText} />
+              </View>
+              <View style={styles.filterButtonHalf}>
+                <AppButton disabled={!canSaveDefaultFilter} label="Spara som förvalt" onPress={() => setShowPresetModal(true)} textStyle={styles.filterButtonText} variant="secondary" />
+              </View>
             </View>
+            <AppButton label="Återställ standardfilter" onPress={() => void handleResetDefaultFilter()} variant="secondary" />
 
             {calendarFilterPresets.length === 0 ? (
               <Text style={styles.helperText}>Du har inga sparade filter ännu.</Text>
@@ -478,6 +474,30 @@ export default function SettingsScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal animationType="fade" onRequestClose={() => setShowPresetModal(false)} transparent visible={showPresetModal}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.presetModalOverlay}>
+          <Pressable onPress={() => setShowPresetModal(false)} style={styles.presetModalBackdrop} />
+          <View style={styles.presetModalSheet}>
+            <Text style={styles.presetModalTitle}>Namn på förvalt filter</Text>
+            <AppTextField
+              autoCapitalize="words"
+              autoCorrect={false}
+              onChangeText={setPresetName}
+              placeholder="Till exempel Mitt distrikt"
+              value={presetName}
+            />
+            <View style={styles.presetModalButtons}>
+              <View style={styles.filterButtonHalf}>
+                <AppButton label="Avbryt" onPress={() => { setShowPresetModal(false); setPresetName(''); }} variant="secondary" />
+              </View>
+              <View style={styles.filterButtonHalf}>
+                <AppButton label="Spara" onPress={() => { void handleAddFilterPreset(); setShowPresetModal(false); }} />
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -587,6 +607,43 @@ function createStyles(colors: ColorPalette) {
     gap: spacing.sm,
   },
   presetNameBlock: {
+    gap: spacing.sm,
+  },
+  filterButtonRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  filterButtonHalf: {
+    flex: 1,
+  },
+  filterButtonText: {
+    fontSize: 13,
+  },
+  presetModalOverlay: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  presetModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.overlay,
+  },
+  presetModalSheet: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    gap: spacing.md,
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    width: '85%',
+  },
+  presetModalTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    fontSize: 17,
+    textAlign: 'center',
+  },
+  presetModalButtons: {
+    flexDirection: 'row',
     gap: spacing.sm,
   },
   presetList: {
