@@ -85,7 +85,8 @@ export function FavoritesAndResultsPanel({
             </View>
             {favoriteEvents.length > 0 ? (
               <Pressable onPress={confirmClearFavorites} style={styles.deleteButton}>
-                <Ionicons color={colors.error} name="trash-outline" size={18} />
+                <Ionicons color={colors.error} name="trash-outline" size={14} />
+                <Text style={styles.deleteButtonText}>Rensa favoriter</Text>
               </Pressable>
             ) : null}
           </View>
@@ -181,9 +182,16 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
     borderRadius: 999,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
     height: 32,
     justifyContent: 'center',
-    width: 32,
+    paddingHorizontal: spacing.sm,
+  },
+  deleteButtonText: {
+    ...typography.caption,
+    color: colors.error,
+    fontSize: 12,
   },
   favoriteLink: {
     flex: 1,
