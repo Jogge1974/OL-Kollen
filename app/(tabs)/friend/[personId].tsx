@@ -181,7 +181,10 @@ export default function FriendDetailScreen() {
             style={styles.panel}
           >
             <View style={styles.sverigelistanHeader}>
-              <Text style={styles.panelTitle}>Sverigelistan</Text>
+              <View style={styles.titleRow}>
+                <Ionicons color={colors.textMuted} name="trophy-outline" size={16} />
+                <Text style={styles.panelTitle}>Sverigelistan</Text>
+              </View>
               {isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry ? null : (
                 <Text style={styles.sverigelistanUpdated}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
               )}
@@ -245,6 +248,7 @@ export default function FriendDetailScreen() {
         {user && friend ? (
           <View style={styles.panel}>
             <Pressable onPress={() => setIsH2hExpanded((v) => !v)} style={styles.h2hHeader}>
+              <Ionicons color={colors.textMuted} name="people-outline" size={16} />
               <Text style={styles.panelTitle}>Head-To-Head</Text>
               <Text style={styles.h2hSubtitle}>
                 {h2h.isLoading ? 'Laddar...' : `${h2h.sharedEvents} möten i år`}
@@ -319,7 +323,10 @@ export default function FriendDetailScreen() {
 
         <View style={styles.resultsPanel}>
           <View style={styles.resultsPanelHeader}>
-            <Text style={styles.resultsPanelTitle}>Resultat</Text>
+            <View style={styles.resultsTitleRow}>
+              <Ionicons color={colors.textMuted} name="ribbon-outline" size={16} />
+              <Text style={styles.resultsPanelTitle}>Resultat</Text>
+            </View>
             <View style={styles.yearRow}>
               {availableYears.map((year) => (
                 <Pressable
@@ -535,6 +542,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textPrimary,
       fontSize: 17,
       lineHeight: 21,
+    },
+    titleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
     },
     h2hHeader: {
       alignItems: 'center',
@@ -782,6 +794,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textPrimary,
       fontSize: 17,
       lineHeight: 21,
+    },
+    resultsTitleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
     },
     yearRow: {
       flexDirection: 'row',

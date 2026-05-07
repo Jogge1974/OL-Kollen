@@ -79,7 +79,10 @@ export function FavoritesAndResultsPanel({
       {selectedTab === 'favorites' ? (
         <>
           <View style={styles.panelHeaderRow}>
-            <Text style={styles.title}>Favoriter</Text>
+            <View style={styles.titleRow}>
+              <Ionicons color={colors.textMuted} name="star-outline" size={16} />
+              <Text style={styles.title}>Favoriter</Text>
+            </View>
             {favoriteEvents.length > 0 ? (
               <Pressable onPress={confirmClearFavorites} style={styles.deleteButton}>
                 <Ionicons color={colors.error} name="trash-outline" size={18} />
@@ -121,7 +124,10 @@ export function FavoritesAndResultsPanel({
       ) : (
         <>
           <View style={styles.resultsHeaderRow}>
-            <Text style={styles.title}>Mina resultat</Text>
+            <View style={styles.titleRow}>
+              <Ionicons color={colors.textMuted} name="ribbon-outline" size={16} />
+              <Text style={styles.title}>Mina resultat</Text>
+            </View>
             <View style={styles.resultsFilterPills}>
               {(['national', 'district'] as const).map((filter) => (
                 <Pressable
@@ -303,6 +309,13 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   title: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
+    fontSize: 17,
+    lineHeight: 21,
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   yearChip: {
     backgroundColor: colors.surfaceMuted,

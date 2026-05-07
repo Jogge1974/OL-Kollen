@@ -135,7 +135,7 @@ export default function ProfileScreen() {
         refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
       >
         <ScreenHeroHeader
-          badge={user ? { text: 'Free' } : undefined}
+          badge={user ? { text: 'Premium' } : undefined}
           chips={
             user
               ? [
@@ -161,7 +161,10 @@ export default function ProfileScreen() {
 
         {!user ? (
           <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Logga in med Eventor</Text>
+            <View style={styles.titleRow}>
+              <Ionicons color={colors.textMuted} name="log-in-outline" size={16} />
+              <Text style={styles.panelTitle}>Logga in med Eventor</Text>
+            </View>
 
             <AppTextField
               autoCapitalize="none"
@@ -225,7 +228,10 @@ export default function ProfileScreen() {
             style={styles.panel}
           >
             <View style={styles.sverigelistanHeader}>
-              <Text style={styles.panelTitle}>Sverigelistan</Text>
+              <View style={styles.titleRow}>
+                <Ionicons color={colors.textMuted} name="trophy-outline" size={16} />
+                <Text style={styles.panelTitle}>Sverigelistan</Text>
+              </View>
               {!user.personId || isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry ? null : (
                 <Text style={styles.sverigelistanUpdated}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
               )}
@@ -499,6 +505,13 @@ function createStyles(colors: ColorPalette) {
   panelTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
+    fontSize: 17,
+    lineHeight: 21,
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   checkboxRow: {
     flexDirection: 'row',

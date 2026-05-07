@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { router, usePathname } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
-import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
+import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { PersonActivitySection } from '@/src/types/personLists';
@@ -16,8 +17,8 @@ type UpcomingStartsPanelProps = {
 
 export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStartsPanelProps) {
   const pathname = usePathname();
-  const colors = useColors();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   if (!error && sections.length === 0) {
     return null;
@@ -25,7 +26,10 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
 
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>Kommande starter</Text>
+      <View style={styles.titleRow}>
+        <Ionicons color={isDark ? colors.accent : '#B8960A'} name="time-outline" size={18} />
+        <Text style={styles.title}>Kommande starter</Text>
+      </View>
       <PersonActivitySectionList
         emptyLabel="Det finns inga kommande starter just nu."
         error={error}
@@ -38,15 +42,20 @@ export function UpcomingStartsPanel({ error, isLoading, sections }: UpcomingStar
   );
 }
 
-function createStyles(colors: ColorPalette) {
+function createStyles(colors: ColorPalette, isDark: boolean) {
   return StyleSheet.create({
     panel: {
-      backgroundColor: colors.surface,
-      borderColor: colors.primary,
+      backgroundColor: isDark ? colors.accentSoft : '#FFFBE6',
+      borderColor: isDark ? colors.accent : '#D4A800',
       borderRadius: 24,
       borderWidth: 1.5,
       gap: spacing.sm,
       padding: spacing.md,
+    },
+    titleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
     },
     title: {
       ...typography.sectionTitle,

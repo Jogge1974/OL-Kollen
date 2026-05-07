@@ -165,7 +165,7 @@ export default function HomeScreen() {
         {user ? (
           <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
         ) : (
-          <SectionCard title="Mina kommande starter" subtitle="Logga in för att se dina starter.">
+          <SectionCard icon="time-outline" title="Mina kommande starter" subtitle="Logga in för att se dina starter.">
             <View style={styles.loginPrompt}>
               <Text style={styles.loginPromptText}>När du loggar in visas nästa start, dina resultat och analys direkt här.</Text>
               <AppButton label="Logga in" onPress={() => router.push('/profile')} />
@@ -174,7 +174,7 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.sectionSpacer}>
-          <SectionCard flat title="Dagens tävlingar">
+          <SectionCard flat icon="calendar-outline" title="Dagens tävlingar">
           {isLoadingTodayEvents ? <LoadingState label="Hämtar tävlingar från Eventor..." /> : null}
 
           {!isLoadingTodayEvents && todayEventsError && nationalTodayEvents.length === 0 ? (
@@ -204,7 +204,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.sectionSpacer}>
-        <SectionCard flat title="Mina senaste tävlingar">
+        <SectionCard flat icon="ribbon-outline" title="Mina senaste tävlingar">
           {user ? (
             <PersonActivitySectionList
               emptyLabel="Inga senaste tävlingar att visa just nu."
@@ -268,7 +268,7 @@ function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.gl
   );
 }
 
-function SectionCard({ children, flat = false, subtitle, title }: { children: React.ReactNode; flat?: boolean; subtitle?: string; title: string }) {
+function SectionCard({ children, flat = false, icon, subtitle, title }: { children: React.ReactNode; flat?: boolean; icon?: keyof typeof Ionicons.glyphMap; subtitle?: string; title: string }) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
@@ -276,7 +276,10 @@ function SectionCard({ children, flat = false, subtitle, title }: { children: Re
     <View style={[styles.sectionCard, flat ? styles.sectionCardFlat : null]}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderCopy}>
-          <Text style={styles.sectionTitle}>{title}</Text>
+          <View style={styles.sectionTitleRow}>
+            {icon ? <Ionicons color={colors.textMuted} name={icon} size={16} /> : null}
+            <Text style={styles.sectionTitle}>{title}</Text>
+          </View>
           {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
         </View>
       </View>
@@ -315,7 +318,7 @@ function formatAccessLevel(level: string) {
     return 'Admin';
   }
 
-  return 'Free';
+  return 'Premium';
 }
 
 function createStyles(colors: ColorPalette) {
@@ -450,8 +453,13 @@ function createStyles(colors: ColorPalette) {
   sectionTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 17,
+    lineHeight: 21,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   shortcutCard: {
     alignItems: 'center',
