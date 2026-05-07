@@ -30,8 +30,9 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
   const [resultsFilter, setResultsFilter] = React.useState<PersonResultsFilter>('national');
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [resultsSections, setResultsSections] = React.useState<PersonActivitySection[]>([]);
+  const [allResultEventIds, setAllResultEventIds] = React.useState<Set<string>>(new Set());
   const [resultsCompetitionCount, setResultsCompetitionCount] = React.useState(0);
-  const [startsSections, setStartsSections] = React.useState<PersonActivitySection[]>([]);
+  const [rawStartsSections, setRawStartsSections] = React.useState<PersonActivitySection[]>([]);
   const [resultsError, setResultsError] = React.useState<string | null>(null);
   const [startsError, setStartsError] = React.useState<string | null>(null);
   const [isLoadingResults, setIsLoadingResults] = React.useState(false);
@@ -46,26 +47,26 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
           return;
         }
 
-        setStartsSections([]);
+        setRawStartsSections([]);
         setStartsError(null);
         setIsLoadingStarts(false);
         return;
       }
 
-      setStartsSections([]);
+      setRawStartsSections([]);
       setIsLoadingStarts(true);
       setStartsError(null);
 
       try {
         const { fromDate, toDate } = getStartsDateRange();
         const startsXml = await fetchPersonStartsXml(personId, fromDate, toDate);
-        const nextStarts = filterPastStarts(parsePersonStartsXml(startsXml));
+        const nextStarts = parsePersonStartsXml(startsXml);
 
         if (!isMounted) {
           return;
         }
 
-        setStartsSections(nextStarts);
+        setRawStartsSections(nextStarts);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -73,7 +74,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
 
         const message = error instanceof Error ? error.message : 'Okänt fel vid hämtning av personlistor.';
         setStartsError(message);
-        setStartsSections([]);
+        setRawStartsSections([]);
       } finally {
         if (isMounted) {
           setIsLoadingStarts(false);
@@ -117,6 +118,7 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
         }
 
         setResultsCompetitionCount(parsedResults.filter((section) => Number(section.eventDate.slice(0, 4)) === resultsYear).length);
+        setAllResultEventIds(new Set(parsedResults.map((s) => s.eventId)));
         setResultsSections(nextResults);
       } catch (error) {
         if (!isMounted) {
@@ -140,6 +142,11 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
       isMounted = false;
     };
   }, [personId, refreshKey, resultsFilter, resultsYear]);
+
+  // Derive filtered starts: keep until result exists or event date passes
+  const startsSections = React.useMemo(() => {
+    return filterPastStarts(rawStartsSections, allResultEventIds);
+  }, [rawStartsSections, allResultEventIds]);
 
   return {
     availableYears: buildAvailableYears(resultsYear),
@@ -208,23 +215,19 @@ function getStartsDateRange() {
   };
 }
 
-function filterPastStarts(sections: PersonActivitySection[]): PersonActivitySection[] {
-  const now = new Date();
+function filterPastStarts(sections: PersonActivitySection[], resultEventIds: Set<string>): PersonActivitySection[] {
+  const todayStr = formatLocalIsoDate(new Date());
 
   return sections
     .map((section) => {
+      // Hide if a result already exists for this event
+      if (resultEventIds.has(section.eventId)) {
+        return { ...section, rows: [] };
+      }
+
       const rows = section.rows.filter((row) => {
-        if (!row.startTime || row.startTime === '-') {
-          return true;
-        }
-
-        const match = row.startTime.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
-        if (!match) {
-          return true;
-        }
-
-        const startDate = new Date(`${row.eventDate}T${match[1]}:${match[2]}:${match[3] ?? '00'}`);
-        return startDate > now;
+        // Keep the start as long as the event date hasn't passed
+        return row.eventDate >= todayStr;
       });
 
       return { ...section, rows };

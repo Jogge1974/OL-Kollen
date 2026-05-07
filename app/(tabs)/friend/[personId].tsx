@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -27,6 +27,7 @@ export default function FriendDetailScreen() {
   const { colors, isDark, themeName } = useTheme();
   const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
+  const pathname = usePathname();
   const { personId: personIdParam } = useLocalSearchParams<{ personId: string }>();
   const personId = personIdParam ?? null;
 
@@ -356,6 +357,7 @@ export default function FriendDetailScreen() {
             onOpenAnalysis={handleOpenAnalysis}
             onOpenResultList={handleOpenResultList}
             onOpenSplitTimes={handleOpenSplitTimes}
+            onPressEvent={(eventId) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
             sections={resultsSections}
           />
         </View>

@@ -164,13 +164,15 @@ export default function FriendsScreen() {
             const today = new Date().toISOString().slice(0, 10);
             const entry = activityByFriendId[String(item.personId)];
             const hasActivity = entry != null && entry.date === today;
+            const isResult = hasActivity && entry.type === 'friend-results';
+            const activityColor = isResult ? colors.primary : colors.accent;
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}
-              style={({ pressed }) => [styles.friendCard, hasActivity ? styles.friendCardActivity : null, pressed ? styles.friendCardPressed : null]}
+              style={({ pressed }) => [styles.friendCard, hasActivity ? { borderColor: activityColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
             >
               {hasActivity ? (
-                <View style={styles.activityDot} />
+                <View style={[styles.activityDot, { backgroundColor: activityColor }]} />
               ) : null}
               <View style={styles.friendInfo}>
                 <Text numberOfLines={1} style={styles.friendName}>{item.name}</Text>
@@ -338,15 +340,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       gap: spacing.sm,
       padding: spacing.md,
     },
-    friendCardActivity: {
-      borderColor: colors.primary,
-      borderWidth: 1.5,
-    },
     friendCardPressed: {
       opacity: 0.85,
     },
     activityDot: {
-      backgroundColor: colors.primary,
       borderRadius: 5,
       height: 10,
       width: 10,

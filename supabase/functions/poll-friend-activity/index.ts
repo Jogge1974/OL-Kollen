@@ -66,9 +66,6 @@ async function fetchEventorXml(path: string): Promise<string> {
 
 function todayRange(): { from: string; to: string } {
   const now = new Date();
-  // Format as YYYY-MM-DD 00:00:00 / 23:59:59 in UTC (Eventor interprets
-  // dates in Swedish time, but using the UTC date is close enough for the
-  // "today" window when the cron runs during Swedish daytime).
   const dateStr = now.toISOString().slice(0, 10);
   return { from: `${dateStr} 00:00:00`, to: `${dateStr} 23:59:59` };
 }
@@ -168,20 +165,25 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
 
     // Find ClassResult blocks within this event
     const classBlocks = eventBlock.split(/<ClassResult\b/);
+    let foundResult = false;
+
     for (let c = 1; c < classBlocks.length; c++) {
+      if (foundResult) break;
       const classBlock = classBlocks[c];
 
-      // Verify there's an actual completed result.
+      // Verify there's an actual completed result for this person.
+      // /results/person returns only this person's ClassResult, so we look
+      // at the FIRST PersonResult block specifically (not other competitors).
       // Eventor native: <CompetitorStatus value="OK" /> or value="MisPunch" etc.
       // IOF 3.0: <Status>OK</Status>
-      const hasEventorStatus = /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish)"/.test(classBlock);
-      const hasIofStatus = /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish)<\/Status>/.test(classBlock);
-      const hasTime = /<Time>[^<]+<\/Time>/.test(classBlock);
-      if (!hasEventorStatus && !hasIofStatus && !hasTime) continue;
+      // Extract the first PersonResult block to check status
+      const personResultMatch = classBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/);
+      const personResult = personResultMatch?.[0] ?? classBlock;
 
-      // Exclude DidNotStart
-      if (/<CompetitorStatus\s+value="DidNotStart"/.test(classBlock)) continue;
-      if (/<Status>DidNotStart<\/Status>/.test(classBlock)) continue;
+      const hasEventorStatus = /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(personResult);
+      const hasIofStatus = /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/.test(personResult);
+      const hasTime = /<Time>[^<]+<\/Time>/.test(personResult);
+      if (!hasEventorStatus && !hasIofStatus && !hasTime) continue;
 
       // Class name from <EventClass><Name> or <Class><Name>
       const classNameMatch =
@@ -194,15 +196,27 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
         classBlock.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/);
       const position = positionMatch?.[1] ?? null;
 
-      // Only take first class match per event (the person's own result)
-      if (!seen.has(eventId)) {
+      seen.add(eventId);
+      foundResult = true;
+      results.push({
+        classLabel,
+        eventId,
+        eventName,
+        position,
+      });
+    }
+
+    // Fallback: if no ClassResult found, check eventBlock directly for a result
+    if (!foundResult && classBlocks.length <= 1) {
+      const personResult = eventBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/)?.[0] ?? eventBlock;
+      const hasStatus = /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(personResult);
+      const hasTime = /<Time>[^<]+<\/Time>/.test(personResult);
+
+      if (hasStatus || hasTime) {
+        const classLabel = eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1] ?? null;
+        const position = eventBlock.match(/<ResultPosition>(\d+)<\/ResultPosition>/)?.[1] ?? null;
         seen.add(eventId);
-        results.push({
-          classLabel,
-          eventId,
-          eventName,
-          position,
-        });
+        results.push({ classLabel, eventId, eventName, position });
       }
     }
   }
@@ -536,9 +550,17 @@ Deno.serve(async (request) => {
       }
     }
 
+    // Debug: collect results info
+    const debugResults: Record<string, unknown[]> = {};
+    for (const [friendId, results] of friendResultsMap) {
+      if (results.length > 0) {
+        debugResults[friendId] = results;
+      }
+    }
+
     return jsonOk({
       checkedFriends: uniqueFriendIds.length,
-      debug: { now: now.toISOString(), startsFound: debugStarts },
+      debug: { now: now.toISOString(), resultsFound: debugResults, startsFound: debugStarts },
       ok: true,
       pushCount: allMessages.length,
     });
