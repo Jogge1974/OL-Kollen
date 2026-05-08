@@ -346,8 +346,8 @@ Deno.serve(async (request) => {
     // 5. Determine what needs notification
     const now = new Date();
     const nowIso = now.toISOString();
-    // Notify if start is within the next 15 minutes (cron runs every 10 min)
-    const START_WINDOW_MS = 15 * 60 * 1000;
+    // Notify if start is within the next 5 minutes (cron runs every 3 min)
+    const START_WINDOW_MS = 5 * 60 * 1000;
 
     // Collect per-user grouped notifications
     type StartNotifItem = { friendClub: string; friendName: string; eventName: string; startTime: string };
@@ -358,30 +358,32 @@ Deno.serve(async (request) => {
     // State rows to upsert after sending
     const stateUpserts: Array<Record<string, unknown>> = [];
 
+    // Track which friend+event combos already got state upserted (avoid duplicates
+    // when multiple users watch the same friend).
+    const startStateTracked = new Set<string>();
+    const resultStateTracked = new Set<string>();
+
     for (const watch of allWatches) {
       const userTokens = tokensByPerson.get(watch.person_id);
       if (!userTokens || userTokens.length === 0) continue;
 
       const friendId = watch.friend_person_id;
 
-      // --- Start notifications (5 min before) ---
-      if (watch.push_on_start) {
-        const starts = friendStartsMap.get(friendId) ?? [];
-        for (const start of starts) {
-          const key = `${friendId}::${start.eventId}`;
-          const existing = stateMap.get(key);
-          if (existing?.start_notified_at) continue; // already notified
+      // --- Start activity tracking & notifications ---
+      const starts = friendStartsMap.get(friendId) ?? [];
+      for (const start of starts) {
+        const key = `${friendId}::${start.eventId}`;
+        const existing = stateMap.get(key);
+        if (existing?.start_notified_at) continue; // already tracked
 
-          const startDate = parseStartTimeIso(start.startTime);
-          if (!startDate) continue;
+        const startDate = parseStartTimeIso(start.startTime);
+        if (!startDate) continue;
 
-          const diffMs = startDate.getTime() - now.getTime();
-          if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
-            const arr = startNotifs.get(watch.person_id) ?? [];
-            const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
-            arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
-            startNotifs.set(watch.person_id, arr);
-
+        const diffMs = startDate.getTime() - now.getTime();
+        if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
+          // Always update state so the app can show the yellow dot
+          if (!startStateTracked.has(key)) {
+            startStateTracked.add(key);
             stateUpserts.push({
               event_date: todayStr,
               event_id: start.eventId,
@@ -390,27 +392,49 @@ Deno.serve(async (request) => {
               start_time: start.startTime,
               updated_at: nowIso,
             });
-          } else if (!existing) {
-            // Save start time for future checks (no notification yet)
-            stateUpserts.push({
-              event_date: todayStr,
-              event_id: start.eventId,
-              friend_person_id: friendId,
-              start_time: start.startTime,
-              updated_at: nowIso,
-            });
           }
+
+          // Only send push if enabled
+          if (watch.push_on_start) {
+            const arr = startNotifs.get(watch.person_id) ?? [];
+            const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
+            arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
+            startNotifs.set(watch.person_id, arr);
+          }
+        } else if (!existing && !startStateTracked.has(key)) {
+          // Save start time for future checks (no notification yet)
+          startStateTracked.add(key);
+          stateUpserts.push({
+            event_date: todayStr,
+            event_id: start.eventId,
+            friend_person_id: friendId,
+            start_time: start.startTime,
+            updated_at: nowIso,
+          });
         }
       }
 
-      // --- Result notifications ---
-      if (watch.push_on_result) {
-        const results = friendResultsMap.get(friendId) ?? [];
-        for (const result of results) {
-          const key = `${friendId}::${result.eventId}`;
-          const existing = stateMap.get(key);
-          if (existing?.result_notified_at) continue; // already notified
+      // --- Result activity tracking & notifications ---
+      const results = friendResultsMap.get(friendId) ?? [];
+      for (const result of results) {
+        const key = `${friendId}::${result.eventId}`;
+        const existing = stateMap.get(key);
+        if (existing?.result_notified_at) continue; // already tracked
 
+        // Always update state so the app can show the green dot
+        if (!resultStateTracked.has(key)) {
+          resultStateTracked.add(key);
+          stateUpserts.push({
+            event_date: todayStr,
+            event_id: result.eventId,
+            friend_person_id: friendId,
+            result_notified_at: nowIso,
+            updated_at: nowIso,
+          });
+        }
+
+        // Only send push if enabled
+        if (watch.push_on_result) {
           const arr = resultNotifs.get(watch.person_id) ?? [];
           arr.push({
             classLabel: result.classLabel,
@@ -420,14 +444,6 @@ Deno.serve(async (request) => {
             position: result.position,
           });
           resultNotifs.set(watch.person_id, arr);
-
-          stateUpserts.push({
-            event_date: todayStr,
-            event_id: result.eventId,
-            friend_person_id: friendId,
-            result_notified_at: nowIso,
-            updated_at: nowIso,
-          });
         }
       }
     }
@@ -442,10 +458,10 @@ Deno.serve(async (request) => {
         const clubSuffix = item.friendClub ? `, ${item.friendClub}` : '';
         for (const token of pushTokens) {
           allMessages.push({
-            body: `Startar ${item.startTime} i ${item.eventName}.`,
+            body: `${item.friendName}${clubSuffix} startar ${item.startTime} i ${item.eventName}.`,
             data: { type: 'friend-start' },
             sound: 'default',
-            title: `${item.friendName}${clubSuffix}, startar snart.`,
+            title: `Dags för start!`,
             to: token,
           });
         }

@@ -223,37 +223,41 @@ Deno.serve(async (request) => {
     }
 
     // --- FRIENDS: sync friend_watches ---
-    const friends = payload.friends ?? [];
-    const friendPersonIds = friends.map((f) => String(f.personId));
+    // Only touch friend_watches if the payload explicitly includes friends.
+    // If friends is undefined/null (e.g. older client or partial sync), skip.
+    if (payload.friends != null) {
+      const friends = payload.friends;
+      const friendPersonIds = friends.map((f) => String(f.personId));
 
-    // Delete friends that were removed locally
-    if (friendPersonIds.length > 0) {
-      await supabase
-        .from('friend_watches')
-        .delete()
-        .eq('person_id', personId)
-        .not('friend_person_id', 'in', `(${friendPersonIds.map((id) => `"${id}"`).join(',')})`);
-    } else {
-      await supabase.from('friend_watches').delete().eq('person_id', personId);
-    }
+      // Delete friends that were removed locally
+      if (friendPersonIds.length > 0) {
+        await supabase
+          .from('friend_watches')
+          .delete()
+          .eq('person_id', personId)
+          .not('friend_person_id', 'in', `(${friendPersonIds.map((id) => `"${id}"`).join(',')})`);
+      } else {
+        await supabase.from('friend_watches').delete().eq('person_id', personId);
+      }
 
-    // Upsert current friends
+      // Upsert current friends
     if (friends.length > 0) {
+      const friendRows = friends.map((f) => ({
+        friend_birth_year: f.birthYear,
+        friend_club: f.club,
+        friend_gender: f.gender,
+        friend_name: f.name,
+        friend_person_id: String(f.personId),
+        person_id: personId,
+        push_on_result: f.pushOnResult ?? true,
+        push_on_start: f.pushOnStart ?? true,
+      }));
       await supabase.from('friend_watches').upsert(
-        friends.map((f) => ({
-          friend_birth_year: f.birthYear,
-          friend_club: f.club,
-          friend_gender: f.gender,
-          friend_name: f.name,
-          friend_person_id: String(f.personId),
-          person_id: personId,
-          push_on_result: f.pushOnResult ?? true,
-          push_on_start: f.pushOnStart ?? true,
-          updated_at: new Date().toISOString(),
-        })),
+        friendRows,
         { onConflict: 'person_id,friend_person_id' },
       );
     }
+    } // end if (payload.friends != null)
 
     return new Response(
       JSON.stringify({

@@ -40,7 +40,7 @@ export function PushSyncController() {
       calendarFilterPresets,
       favoriteClasses,
       favoriteEvents: favoriteEvents.map((event) => event.id),
-      friends: friends.map((f) => f.personId),
+      friends: friends.map((f) => ({ id: f.personId, r: f.pushOnResult, s: f.pushOnStart })),
       notificationSettings,
       personId: user.personId,
     });
