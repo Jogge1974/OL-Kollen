@@ -20,10 +20,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       ITSAppUsesNonExemptEncryption: false,
     },
     bundleIdentifier: 'se.mastol.kontrollen',
+    buildNumber: '9',
     supportsTablet: true,
   },
   android: {
     package: 'se.mastol.kontrollen',
+    versionCode: 9,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       foregroundImage: './assets/icon1024.png',
