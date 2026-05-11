@@ -1155,31 +1155,18 @@ export function formatResultStatus(status: string | null) {
     return '-';
   }
 
-  if (status === 'Missing punch') {
-    return 'Felst.';
-  }
+  const map: Record<string, string> = {
+    'Missing punch': 'Felst.',
+    MisPunch: 'Felst.',
+    MissingPunch: 'Felst.',
+    DidNotStart: 'Ej start',
+    DidNotFinish: 'Utgått',
+    Overtime: 'Övertid',
+    Cancelled: 'Återb.',
+    Disqualified: 'Disk.',
+  };
 
-    if (status === 'MissingPunch') {
-        return 'Felst.';
-    }
-
-  if (status === 'DidNotStart') {
-    return 'Ej start';
-  }
-
-  if (status === 'DidNotFinish') {
-    return 'Utgått';
-  }
-
-  if (status === 'Cancelled') {
-    return 'Återb.';
-  }
-
-  if (status === 'Disqualified') {
-    return 'Disk.';
-  }
-
-  return status;
+  return map[status] ?? status;
 }
 
 function getIdValue(value: unknown) {

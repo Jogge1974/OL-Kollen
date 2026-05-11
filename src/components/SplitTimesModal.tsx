@@ -971,7 +971,10 @@ function formatStatus(status?: string) {
     Disqualified: 'Disk.',
     DidNotFinish: 'Utgått',
     DidNotStart: 'Ej start',
+    MisPunch: 'Felst.',
     MissingPunch: 'Felst.',
+    'Missing punch': 'Felst.',
+    Overtime: 'Övertid',
   };
 
   return statusMap[normalized] ?? normalized;

@@ -41,6 +41,7 @@ type ParsedResult = {
   eventId: string;
   eventName: string;
   position: string | null;
+  timeBehind: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -196,6 +197,10 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
         classBlock.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/);
       const position = positionMatch?.[1] ?? null;
 
+      // TimeBehind in seconds
+      const timeBehindMatch = classBlock.match(/<TimeBehind>(\d+)<\/TimeBehind>/);
+      const timeBehind = timeBehindMatch ? Number(timeBehindMatch[1]) : null;
+
       seen.add(eventId);
       foundResult = true;
       results.push({
@@ -203,6 +208,7 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
         eventId,
         eventName,
         position,
+        timeBehind,
       });
     }
 
@@ -215,13 +221,21 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
       if (hasStatus || hasTime) {
         const classLabel = eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1] ?? null;
         const position = eventBlock.match(/<ResultPosition>(\d+)<\/ResultPosition>/)?.[1] ?? null;
+        const timeBehindMatch = eventBlock.match(/<TimeBehind>(\d+)<\/TimeBehind>/);
+        const timeBehind = timeBehindMatch ? Number(timeBehindMatch[1]) : null;
         seen.add(eventId);
-        results.push({ classLabel, eventId, eventName, position });
+        results.push({ classLabel, eventId, eventName, position, timeBehind });
       }
     }
   }
 
   return results;
+}
+
+function formatTimeBehind(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
 function parseStartTimeIso(raw: string | null): Date | null {
@@ -351,7 +365,7 @@ Deno.serve(async (request) => {
 
     // Collect per-user grouped notifications
     type StartNotifItem = { friendClub: string; friendName: string; eventName: string; startTime: string };
-    type ResultNotifItem = { classLabel: string | null; eventName: string; friendClub: string; friendName: string; position: string | null };
+    type ResultNotifItem = { classLabel: string | null; eventName: string; friendClub: string; friendName: string; position: string | null; timeBehind: number | null };
     const startNotifs = new Map<string, StartNotifItem[]>();
     const resultNotifs = new Map<string, ResultNotifItem[]>();
 
@@ -442,6 +456,7 @@ Deno.serve(async (request) => {
             friendClub: watch.friend_club ?? '',
             friendName: watch.friend_name,
             position: result.position,
+            timeBehind: result.timeBehind,
           });
           resultNotifs.set(watch.person_id, arr);
         }
@@ -494,10 +509,11 @@ Deno.serve(async (request) => {
         if (uniqueFriends.length === 1) {
           const f = uniqueFriends[0];
           const clubSuffix = f.friendClub ? `, ${f.friendClub}` : '';
-          title = `Resultat för ${f.friendName}${clubSuffix}.`;
+          title = `Res. ${f.friendName}${clubSuffix}.`;
           const posStr = f.position ? `Plac. ${f.position}` : 'Resultat';
+          const timeBehindStr = f.timeBehind != null && f.timeBehind > 0 ? ` (+${formatTimeBehind(f.timeBehind)})` : '';
           const classStr = f.classLabel ? ` i ${f.classLabel}` : '';
-          body = `${posStr}${classStr}. Tävling ${eventName}.`;
+          body = `${posStr}${timeBehindStr}${classStr} (${eventName}).`;
         } else {
           title = 'Nya resultat för dina vänner.';
           body = `${uniqueFriends.length} vänner har resultat från ${eventName}.`;

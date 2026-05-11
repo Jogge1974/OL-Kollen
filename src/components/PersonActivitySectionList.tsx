@@ -9,6 +9,7 @@ import { typography } from '@/src/theme/typography';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { PersonActivitySection } from '@/src/types/personLists';
 import { normalizeEventId } from '@/src/utils/eventId';
+import { formatResultStatus } from '@/src/services/publishedListFormatter';
 
 type PersonActivitySectionListProps = {
   emptyLabel: string;
@@ -165,7 +166,7 @@ export function PersonActivitySectionList({
                       {row.status && row.status !== 'OK' ? (
                         <View style={styles.resultStatusWideCell}>
                           <Text numberOfLines={1} style={styles.resultStatusWideText}>
-                            {row.status}
+                            {formatResultStatus(row.status)}
                           </Text>
                         </View>
                       ) : (
@@ -237,7 +238,7 @@ function buildResultLeft(row: PersonActivitySection['rows'][number]) {
 
 function buildResultRight(row: PersonActivitySection['rows'][number]) {
   if (row.status && row.status !== 'OK') {
-    return row.status ?? '-';
+    return formatResultStatus(row.status);
   }
 
   return `Tid: ${row.time ?? '-'} ${row.diff ?? '-'}, Plac: ${row.position ?? '-'}`;

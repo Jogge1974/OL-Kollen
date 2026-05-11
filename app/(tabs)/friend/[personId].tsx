@@ -9,6 +9,7 @@ import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
+import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
@@ -77,6 +78,7 @@ export default function FriendDetailScreen() {
   });
 
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
+  const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const [isH2hExpanded, setIsH2hExpanded] = React.useState(false);
 
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
@@ -236,6 +238,24 @@ export default function FriendDetailScreen() {
                     </View>
                     <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
                     <TrendTable classTrend={classTrend} monthlyTrend={monthlyTrend} />
+
+                    <Pressable
+                      onPress={() => {
+                        if (!currentEntry) return;
+                        setActiveRunnerRanking({
+                          birthYear: currentEntry.BirthYear,
+                          clubName: currentEntry.Club,
+                          currentPoints: currentEntry.Points,
+                          currentRank: currentEntry.Rank,
+                          gender: currentEntry.Gender === 'D' ? 'D' : 'H',
+                          name: currentEntry.Name,
+                          personId: currentEntry.RunnerId,
+                        });
+                      }}
+                      style={styles.sverigelistanDetailLink}
+                    >
+                      <Text style={styles.sverigelistanDetailLinkText}>Visa de 6 bästa tävlingarna &gt;</Text>
+                    </Pressable>
                   </>
                 ) : (
                   <Text style={styles.trendToggleLink}>Visa mer &gt;</Text>
@@ -373,6 +393,7 @@ export default function FriendDetailScreen() {
       <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
       <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeSplitTimesModal} />
+      <RunnerRankingModal comparisonRows={[]} onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
     </SafeAreaView>
   );
 }
@@ -739,6 +760,18 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       alignSelf: 'flex-end',
       paddingRight: 2,
       paddingVertical: 2,
+    },
+    sverigelistanDetailLink: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      gap: 4,
+      marginTop: spacing.md,
+      paddingVertical: 4,
+    },
+    sverigelistanDetailLinkText: {
+      ...typography.bodyStrong,
+      color: colors.primary,
     },
     trendTable: {
       marginTop: spacing.sm,
