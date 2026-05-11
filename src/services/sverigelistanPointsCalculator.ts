@@ -64,6 +64,8 @@ export function calculateClassPoints(
 
   for (const row of section.rows) {
     if (!row.personId) continue;
+    // Runners who did not start or were moved up are excluded entirely
+    if (row.status === 'DidNotStart' || row.status === 'Cancelled') continue;
     const entry = sverigelistanMap[row.personId];
     if (!entry) continue;
 

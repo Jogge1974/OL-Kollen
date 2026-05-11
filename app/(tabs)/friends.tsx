@@ -151,7 +151,7 @@ export default function FriendsScreen() {
       {friends.length === 0 ? (
         <View style={styles.emptyContainer}>
           <EmptyState
-            description="Tryck på Sök vänner för att hitta och lägga till vänner från Sverigelistan."
+            description="Tryck på Sök vänner för att hitta och lägga till vänner."
             title="Inga vänner ännu"
           />
         </View>

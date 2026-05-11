@@ -49,8 +49,10 @@ export default function RootLayout() {
     }
   }, [isHydrated, user?.personId, hydrateFriends, clearFriends]);
 
-  // Friends hydration depends on user; treat as ready when logged out
-  const friendsReady = isFriendsHydrated || (isHydrated && !user);
+  // Friends hydration depends on user; treat as ready when logged out or user has no personId
+  const friendsReady = isFriendsHydrated || (isHydrated && !user) || (isHydrated && !!user && !user.personId);
+
+  console.log('[DEBUG] Layout state:', { fontsLoaded, isHydrated, isPreferencesHydrated, friendsReady, isFriendsHydrated, hasUser: !!user });
 
   if (!fontsLoaded || !isHydrated || !isPreferencesHydrated || !friendsReady) {
     return <LoadingState label="Startar Kontrollen..." fullScreen />;

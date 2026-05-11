@@ -75,7 +75,7 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
       const client = getSupabaseClient();
       if (!client) {
         if (!isMounted) {
-          return;m
+          return;
         }
 
         setState({

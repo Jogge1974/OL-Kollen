@@ -104,7 +104,13 @@ function parsePersonActivityXml(xml: string, kind: 'results' | 'starts'): Person
   });
 
   return sections
-    .sort((left, right) => right.eventDate.localeCompare(left.eventDate) || left.title.localeCompare(right.title, 'sv'))
+    .sort((left, right) => {
+      // Starts: ascending (earliest first). Results: descending (newest first).
+      const dateCompare = kind === 'starts'
+        ? left.eventDate.localeCompare(right.eventDate)
+        : right.eventDate.localeCompare(left.eventDate);
+      return dateCompare || left.title.localeCompare(right.title, 'sv');
+    })
     .filter((section) => section.rows.length > 0);
 }
 

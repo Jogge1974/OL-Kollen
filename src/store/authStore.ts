@@ -4,7 +4,7 @@ import { authenticateEventorPerson } from '@/src/api/authApi';
 import { resolveAccessLevel } from '@/src/features/auth/access';
 import { createFetchProfilePayload, createLogoutSyncPayload } from '@/src/features/notifications/pushSync';
 import { clearStoredEventorCredentials, getStoredEventorCredentials, saveStoredEventorCredentials } from '@/src/services/eventorCredentials';
-import { clearStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { clearStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
 import { registerForPushNotificationsAsync } from '@/src/services/pushNotifications';
 import { getStoredJson, removeStoredValue, setStoredJson } from '@/src/services/secureStorage';
 import { hasSupabaseRuntimeConfig, invokeSupabaseFunction } from '@/src/services/supabase';
@@ -61,11 +61,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         ...user,
         accessLevel: resolveAccessLevel(),
       };
-
-      await refreshStoredEventorWebSessionCookie(username, password).catch(() => {
-        // Best-effort only. The app login itself should still succeed.
-        return null;
-      });
 
       if (saveEncryptedLogin) {
         await saveStoredEventorCredentials(username, password);
