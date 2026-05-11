@@ -49,6 +49,7 @@ export default function HomeScreen() {
   });
 
   const todayIso = React.useMemo(() => getLocalIsoDate(), []);
+  const tomorrowIso = React.useMemo(() => getLocalIsoDate(1), []);
   const exactTodayEvents = React.useMemo(() => todayEvents.filter((event) => event.startDate === todayIso), [todayEvents, todayIso]);
   const nationalTodayEvents = React.useMemo(
     () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
@@ -76,7 +77,7 @@ export default function HomeScreen() {
           classificationIds: [0, 1, 2],
           districtIds: [],
           fromDate: todayIso,
-          toDate: todayIso,
+          toDate: tomorrowIso,
         });
 
         if (isMounted) {
@@ -301,8 +302,9 @@ function sortEventsDesc(left: EventItem, right: EventItem) {
   return sortEventsAsc(right, left);
 }
 
-function getLocalIsoDate() {
+function getLocalIsoDate(offsetDays = 0) {
   const now = new Date();
+  if (offsetDays) now.setDate(now.getDate() + offsetDays);
   const year = now.getFullYear();
   const month = `${now.getMonth() + 1}`.padStart(2, '0');
   const day = `${now.getDate()}`.padStart(2, '0');
