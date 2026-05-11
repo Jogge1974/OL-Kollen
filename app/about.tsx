@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -51,6 +52,7 @@ export default function AboutScreen() {
         person_id: user?.personId ?? null,
         person_name: user?.fullName ?? null,
         organisation: user?.organisationName ?? null,
+        app_version: Constants.expoConfig?.version ?? null,
       });
 
       if (error) {
@@ -82,6 +84,7 @@ export default function AboutScreen() {
         <View style={styles.titleRow}>
           <Ionicons color={colors.primary} name="information-circle-outline" size={28} />
           <Text style={styles.title}>Om appen</Text>
+          <Text style={styles.versionText}>Version {Constants.expoConfig?.version ?? ''}</Text>
         </View>
 
         <View style={styles.card}>
@@ -192,6 +195,12 @@ function createStyles(colors: ColorPalette) {
   title: {
     ...typography.headingMedium,
     color: colors.textPrimary,
+  },
+  versionText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    flex: 1,
+    textAlign: 'right',
   },
   card: {
     backgroundColor: colors.surface,

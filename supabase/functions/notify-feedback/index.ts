@@ -8,6 +8,7 @@ type FeedbackRow = {
   person_id: string | null;
   person_name: string | null;
   organisation: string | null;
+  app_version: string | null;
 };
 
 type WebhookPayload = {
@@ -53,6 +54,7 @@ Deno.serve(async (request) => {
       row.person_name ? `Löpare: ${row.person_name}` : null,
       row.person_id ? `PersonId: ${row.person_id}` : null,
       row.organisation ? `Klubb: ${row.organisation}` : null,
+      row.app_version ? `Appversion: ${row.app_version}` : null,
     ]
       .filter(Boolean)
       .join('\n');
@@ -74,6 +76,7 @@ Deno.serve(async (request) => {
       row.person_name ? `<p><strong>L&ouml;pare:</strong> ${escapeHtml(row.person_name)}</p>` : '',
       row.person_id ? `<p><strong>PersonId:</strong> ${escapeHtml(row.person_id)}</p>` : '',
       row.organisation ? `<p><strong>Klubb:</strong> ${escapeHtml(row.organisation)}</p>` : '',
+      row.app_version ? `<p><strong>Appversion:</strong> ${escapeHtml(row.app_version)}</p>` : '',
       `<p><strong>Datum:</strong> ${escapeHtml(timestamp)}</p>`,
       `<hr>`,
       `<p>${escapeHtml(row.message).replace(/\n/g, '<br>')}</p>`,

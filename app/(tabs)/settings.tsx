@@ -459,7 +459,7 @@ export default function SettingsScreen() {
           <View style={styles.logoutFooter}>
             <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
               <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
-              <Text style={styles.aboutButtonText}>Om OL-Kollen</Text>
+              <Text style={styles.aboutButtonText}>Om Kontrollen</Text>
               <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
             </Pressable>
             <AppButton label="Logga ut" onPress={confirmLogout} variant="secondary" />
@@ -468,7 +468,7 @@ export default function SettingsScreen() {
           <View style={styles.logoutFooter}>
             <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
               <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
-              <Text style={styles.aboutButtonText}>Om OL-Kollen</Text>
+              <Text style={styles.aboutButtonText}>Om Kontrollen</Text>
               <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
             </Pressable>
           </View>
