@@ -194,6 +194,24 @@ function extractOrganisationIds(html: string): string[] {
   for (const match of matches) {
     ids.push(match[1]);
   }
+
+  // Find the default (checked) organisation and put it first
+  const checkedMatch = html.match(
+    /checked="checked"[^>]*name="Data\.PersonOrganisation\.DefaultOrganisationId"[^>]*value="(\d+)"/i,
+  ) ?? html.match(
+    /name="Data\.PersonOrganisation\.DefaultOrganisationId"[^>]*checked="checked"[^>]*value="(\d+)"/i,
+  ) ?? html.match(
+    /name="Data\.PersonOrganisation\.DefaultOrganisationId"[^>]*value="(\d+)"[^>]*checked="checked"/i,
+  );
+  if (checkedMatch) {
+    const defaultId = checkedMatch[1];
+    const idx = ids.indexOf(defaultId);
+    if (idx > 0) {
+      ids.splice(idx, 1);
+      ids.unshift(defaultId);
+    }
+  }
+
   return ids;
 }
 
