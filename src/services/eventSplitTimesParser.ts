@@ -47,6 +47,7 @@ export function parseEventSplitTimesXml(xml: string, options: EventSplitTimesPar
       classLengthLabel: classLengthLabel ?? undefined,
       classLengthMeters: courseLengthMeters || undefined,
       classificationId: toNullableNumber(classInfo?.EventClassificationId) ?? toNullableNumber(classInfo?.ClassificationId) ?? undefined,
+      controlCodes: extractControlCodes(rows),
       rows: rows.sort((left, right) => compareRows(left, right)),
     });
   });
@@ -165,6 +166,7 @@ function buildSplitTimesRow({
   const splitNodes = toArray<Record<string, unknown>>(result?.SplitTime);
   const validSplitNodes = splitNodes.filter((splitNode) => !isAdditionalSplitTime(splitNode));
   const splitCumulativeSeconds = validSplitNodes.map((splitNode) => parseSeconds(getTextValue(splitNode.Time)));
+  const splitControlCodes = validSplitNodes.map((splitNode) => getNodeText(splitNode.ControlCode) ?? '').filter((_, i) => splitCumulativeSeconds[i] !== undefined);
   const totalTimeText = getTextValue(result?.Time);
   const totalTimeSeconds = parseSeconds(totalTimeText);
   const splitCumulativeWithFinishSeconds = appendFinishSplit(splitCumulativeSeconds, totalTimeSeconds);
@@ -186,6 +188,7 @@ function buildSplitTimesRow({
     primary: personName.fullName || getString(personNode.Name) || 'Okänd',
     raceNumber: raceNumber ?? undefined,
     splitCumulativeSeconds: splitCumulativeWithFinishSeconds,
+    splitControlCodes: splitControlCodes.length > 0 ? splitControlCodes : undefined,
     splitCount: splitCumulativeWithFinishSeconds.length,
     splitLossSeconds: [],
     status: status ?? undefined,
@@ -227,6 +230,13 @@ function getErrorThresholdPercent(expectedTimeSeconds: number) {
   }
 
   return bp[bp.length - 1][1];
+}
+
+function extractControlCodes(rows: EventSplitTimesRow[]): string[] {
+  // Find the first row with the most splits that has control codes
+  const maxSplits = rows.reduce((max, row) => Math.max(max, row.splitCount), 0);
+  const referenceRow = rows.find((row) => row.splitControlCodes && row.splitControlCodes.length > 0 && row.splitCount === maxSplits);
+  return referenceRow?.splitControlCodes ?? [];
 }
 
 function enrichRowsWithLosses(rows: EventSplitTimesRow[]) {

@@ -4,6 +4,7 @@ export type EventSplitTimesSection = {
   classLengthLabel?: string;
   classLengthMeters?: number | null;
   classificationId?: number;
+  controlCodes?: string[];
   rows: EventSplitTimesRow[];
 };
 
@@ -23,6 +24,7 @@ export type EventSplitTimesRow = {
   primary: string;
   referencePercent?: number;
   splitCumulativeSeconds: number[];
+  splitControlCodes?: string[];
   splitCount: number;
   splitLossSeconds: Array<number | null>;
   status?: string;

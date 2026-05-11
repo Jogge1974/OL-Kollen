@@ -46,6 +46,7 @@ type SplitPage = {
   key: string;
   label: string;
   splitIndex: number | null;
+  subtitle?: string;
 };
 
 type RowMetrics = {
@@ -331,9 +332,11 @@ export function SplitTimesModal({
                         <Pressable onPress={handlePreviousPage} hitSlop={10} style={[styles.metricHeaderArrowButton, styles.metricHeaderArrowLeft]}>
                           <Text style={styles.metricHeaderArrow}>{'<'}</Text>
                         </Pressable>
-                        <Text numberOfLines={1} style={styles.tableClassHeaderPage}>
-                          {selectedPage.label}
-                        </Text>
+                        <View style={styles.pageHeaderCenter}>
+                          <Text numberOfLines={1} style={styles.tableClassHeaderPage}>
+                            {selectedPage.label}{selectedPage.subtitle ? <Text style={styles.tableClassHeaderPageSubtitle}> {selectedPage.subtitle}</Text> : null}
+                          </Text>
+                        </View>
                         <Pressable onPress={handleNextPage} hitSlop={10} style={[styles.metricHeaderArrowButton, styles.metricHeaderArrowRight]}>
                           <Text style={styles.metricHeaderArrow}>{'>'}</Text>
                         </Pressable>
@@ -679,13 +682,29 @@ function buildSplitPages(section: EventSplitTimesSection | null): SplitPage[] {
   }
 
   const splitCount = section.rows.reduce((max, row) => Math.max(max, row.splitCount), 0);
+  const codes = section.controlCodes ?? [];
   const pages: SplitPage[] = [{ key: 'total', label: 'Totalt', splitIndex: null }];
 
   for (let index = 1; index <= splitCount; index += 1) {
+    let label: string;
+    let subtitle: string | undefined;
+
+    if (index === splitCount) {
+      const fromCode = codes[index - 1] || '';
+      label = 'Mål';
+      subtitle = fromCode ? `(${fromCode} - mål)` : undefined;
+    } else {
+      const fromCode = index === 1 ? 'start' : (codes[index - 2] || '');
+      const toCode = codes[index - 1] || '';
+      label = `Str ${index}`;
+      subtitle = fromCode && toCode ? `(${fromCode} - ${toCode})` : undefined;
+    }
+
     pages.push({
       key: `split-${index}`,
-      label: index === splitCount ? 'Mål' : `Sträcka ${index}`,
+      label,
       splitIndex: index,
+      subtitle,
     });
   }
 
@@ -1238,19 +1257,16 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 17,
   },
   metricHeaderArrowButton: {
-    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 0,
+    paddingHorizontal: 2,
     width: 24,
-    top: 0,
-    bottom: 0,
   },
   metricHeaderArrowLeft: {
-    left: 40,
+      left: 10
   },
-  metricHeaderArrowRight: {
-    right: 40,
+      metricHeaderArrowRight: {
+          right: 10
   },
   metricHeaderBlock: {
     flexDirection: 'row',
@@ -1504,16 +1520,22 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     color: colors.heroText,
     fontSize: 15,
     lineHeight: 18,
-    flex: 1,
-    paddingHorizontal: 10,
     textAlign: 'center',
+  },
+  tableClassHeaderPageSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  pageHeaderCenter: {
+    flex: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
   },
   tableClassHeaderPageNav: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'center',
-    paddingHorizontal: 0,
-    position: 'relative',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
   },
   tableClassHeaderText: {
     ...typography.bodyStrong,
