@@ -872,7 +872,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   liveresultatLink: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#BF360C' : '#E65100',
+    backgroundColor: isDark ? '#C48800' : '#F6A60A',
     borderRadius: 16,
     flexDirection: 'row',
     gap: spacing.xs,
@@ -886,7 +886,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   liveresultatButton: {
     alignItems: 'center',
-    backgroundColor: isDark ? '#BF360C' : '#E65100',
+    backgroundColor: isDark ? '#C48800' : '#F6A60A',
     borderRadius: 12,
     flexDirection: 'row',
     gap: spacing.xs,
