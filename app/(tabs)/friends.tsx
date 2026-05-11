@@ -10,6 +10,7 @@ import { useFocusEffect } from 'expo-router';
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
+import { fetchPersonEntriesXml } from '@/src/api/eventorApi';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
 import { Friend, useFriendsStore } from '@/src/store/friendsStore';
@@ -18,6 +19,15 @@ import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 const PERSON_SEARCH_URL = 'https://hvscmyudneihjbtitffy.supabase.co/functions/v1/person-search';
+
+import { XMLParser } from 'fast-xml-parser';
+
+const entryParser = new XMLParser({
+  attributeNamePrefix: '',
+  ignoreAttributes: false,
+  parseTagValue: false,
+  trimValues: true,
+});
 
 type PersonSearchResult = {
   birthYear: number | null;
@@ -49,12 +59,17 @@ export default function FriendsScreen() {
   // Subscribe reactively so FlatList re-renders when activity state changes
   const activityByFriendId = useFriendActivityStore((s) => s.activityByFriendId);
   const fetchTodayActivity = useFriendActivityStore((s) => s.fetchTodayActivity);
+
+  // Entry counts per friend (number of upcoming entries)
+  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, number>>({});
+
   useFocusEffect(
     React.useCallback(() => {
       if (friends.length > 0) {
         void fetchTodayActivity(friends.map((f) => String(f.personId)));
+        void fetchFriendEntryCounts(friends, user?.organisationIds?.[0] ?? null).then(setEntryCountByFriendId);
       }
-    }, [friends, fetchTodayActivity]),
+    }, [friends, fetchTodayActivity, user]),
   );
 
   const uniqueClubs = React.useMemo(() => new Set(friends.map((f) => f.club)).size, [friends]);
@@ -166,6 +181,7 @@ export default function FriendsScreen() {
             const hasActivity = entry != null && entry.date === today;
             const isResult = hasActivity && entry.type === 'friend-results';
             const activityColor = isResult ? colors.primary : colors.accent;
+            const entryCount = entryCountByFriendId[String(item.personId)] ?? 0;
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}
@@ -173,6 +189,16 @@ export default function FriendsScreen() {
             >
               {hasActivity ? (
                 <View style={[styles.activityDot, { backgroundColor: activityColor }]} />
+              ) : entryCount > 0 ? (
+                <View style={styles.entryDotsColumn}>
+                  <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  {entryCount >= 2 ? (
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  ) : null}
+                  {entryCount >= 3 ? (
+                    <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
+                  ) : null}
+                </View>
               ) : null}
               <View style={styles.friendInfo}>
                 <Text numberOfLines={1} style={styles.friendName}>{item.name}</Text>
@@ -348,6 +374,22 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       height: 10,
       width: 10,
     },
+    entryDotsColumn: {
+      alignItems: 'center',
+      gap: 2,
+      justifyContent: 'center',
+      width: 10,
+    },
+    entryDot: {
+      borderRadius: 3.5,
+      height: 7,
+      width: 7,
+    },
+    entryDotPlus: {
+      fontSize: 9,
+      fontWeight: '700',
+      lineHeight: 9,
+    },
     friendInfo: {
       flex: 1,
       gap: 2,
@@ -463,4 +505,52 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textSecondary,
     },
   });
+}
+
+function formatLocalIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+async function fetchFriendEntryCounts(friends: Friend[], organisationId: string | null): Promise<Record<string, number>> {
+  const todayIso = formatLocalIsoDate(new Date());
+  const fromDate = `${todayIso} 00:00:00`;
+  const futureDate = new Date();
+  futureDate.setMonth(futureDate.getMonth() + 9);
+  const toDate = `${formatLocalIsoDate(futureDate)} 23:59:59`;
+  const orgId = organisationId ?? '1';
+
+  const result: Record<string, number> = {};
+
+  await Promise.all(
+    friends.map(async (friend) => {
+      try {
+        const xml = await fetchPersonEntriesXml(String(friend.personId), orgId, fromDate, toDate);
+        const parsed = entryParser.parse(xml) as { EntryList?: { Entry?: unknown } };
+        const entries = parsed.EntryList?.Entry;
+        const entryArray = entries == null ? [] : Array.isArray(entries) ? entries : [entries];
+
+        // Count only entries with event date >= today
+        let count = 0;
+        for (const entry of entryArray) {
+          const event = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>).Event : null;
+          const startDate = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).StartDate : null;
+          const dateStr = typeof startDate === 'object' && startDate !== null ? (startDate as Record<string, unknown>).Date : null;
+          if (typeof dateStr === 'string' && dateStr >= todayIso) {
+            count++;
+          }
+        }
+
+        if (count > 0) {
+          result[String(friend.personId)] = count;
+        }
+      } catch {
+        // Silently skip on error
+      }
+    }),
+  );
+
+  return result;
 }

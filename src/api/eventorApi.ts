@@ -328,6 +328,55 @@ export async function fetchPersonResultsXml(personId: string, fromDate: string, 
   return xml;
 }
 
+export async function fetchPersonEntriesXml(personId: string, organisationId: string, fromDate: string, toDate: string) {
+  const searchParams = new URLSearchParams({
+    includeEventElement: 'true',
+    personIds: personId,
+    organisationIds: organisationId,
+    fromEventDate: fromDate,
+    toEventDate: toDate,
+  });
+  const requestUrl = buildEventorUrl(`/entries?${searchParams.toString()}`);
+
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return xml;
+}
+
+export async function fetchEventClassesXml(eventId: string) {
+  const normalizedEventId = normalizeEventId(eventId);
+  const params = new URLSearchParams({ eventId: normalizedEventId });
+  const requestUrl = buildEventorUrl(`/eventclasses?${params.toString()}`);
+
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  return xml;
+}
+
 function buildPublishedListRequest(
   kind: EventPublishedListKind,
   scope: EventPublishedListScope,

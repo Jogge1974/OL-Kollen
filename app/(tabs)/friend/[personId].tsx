@@ -13,7 +13,9 @@ import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/Run
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
+import { EntriesPanel } from '@/src/components/EntriesPanel';
 import { useHeadToHead } from '@/src/hooks/useHeadToHead';
+import { usePersonEntries } from '@/src/hooks/usePersonEntries';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useSverigelistan } from '@/src/hooks/useSverigelistan';
 import { useAuthStore } from '@/src/store/authStore';
@@ -44,8 +46,10 @@ export default function FriendDetailScreen() {
 
   const {
     availableYears,
+    excludeEventIds,
     isLoadingResults,
     isLoadingStarts,
+    organisationId,
     refetch,
     resultsCompetitionCount,
     resultsError,
@@ -81,6 +85,13 @@ export default function FriendDetailScreen() {
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const [isH2hExpanded, setIsH2hExpanded] = React.useState(false);
 
+  const {
+    entries: personEntries,
+    error: entriesError,
+    isLoading: isLoadingEntries,
+    refetch: refetchEntries,
+  } = usePersonEntries({ personId, organisationId, viewerOrganisationId: user?.organisationIds?.[0] ?? null, excludeEventIds });
+
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
   const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
@@ -103,10 +114,11 @@ export default function FriendDetailScreen() {
     setIsRefreshing(true);
     try {
       await Promise.all([refetch(), refetchSverigelistan()]);
+      refetchEntries();
     } finally {
       setIsRefreshing(false);
     }
-  }, [refetch]);
+  }, [refetch, refetchEntries]);
 
   const handleOpenResultList = React.useCallback(
     (eventId: string, classLabel: string, eventRaceId?: string | null) => {
@@ -338,6 +350,8 @@ export default function FriendDetailScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <EntriesPanel entries={personEntries} error={entriesError} isLoading={isLoadingEntries} organisationLabel={user?.organisationName ?? null} />
 
         <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
 

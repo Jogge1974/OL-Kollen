@@ -10,8 +10,10 @@ type UsePersonEventorListsInput = {
 
 type UsePersonEventorListsResult = {
   availableYears: number[];
+  excludeEventIds: Set<string>;
   isLoadingResults: boolean;
   isLoadingStarts: boolean;
+  organisationId: string | null;
   resultsCompetitionCount: number;
   resultsError: string | null;
   resultsFilter: PersonResultsFilter;
@@ -148,10 +150,36 @@ export function usePersonEventorLists({ personId }: UsePersonEventorListsInput):
     return filterPastStarts(rawStartsSections, allResultEventIds);
   }, [rawStartsSections, allResultEventIds]);
 
+  // Derive organisationId from any available row
+  const organisationId = React.useMemo(() => {
+    for (const section of rawStartsSections) {
+      for (const row of section.rows) {
+        if (row.organisationId) return row.organisationId;
+      }
+    }
+    for (const section of resultsSections) {
+      for (const row of section.rows) {
+        if (row.organisationId) return row.organisationId;
+      }
+    }
+    return null;
+  }, [rawStartsSections, resultsSections]);
+
+  // Combine eventIds from starts and results for exclusion in entries
+  const excludeEventIds = React.useMemo(() => {
+    const ids = new Set(allResultEventIds);
+    for (const section of startsSections) {
+      ids.add(section.eventId);
+    }
+    return ids;
+  }, [allResultEventIds, startsSections]);
+
   return {
     availableYears: buildAvailableYears(resultsYear),
+    excludeEventIds,
     isLoadingResults,
     isLoadingStarts,
+    organisationId,
     resultsCompetitionCount,
     refetch: async () => {
       setRefreshKey((value) => value + 1);
