@@ -11,6 +11,7 @@ export type Friend = {
   gender: string;
   name: string;
   personId: number;
+  pushOnEntry: boolean;
   pushOnResult: boolean;
   pushOnStart: boolean;
 };
@@ -27,8 +28,8 @@ type FriendsState = {
   hydrateFriends: (ownerPersonId: string) => Promise<void>;
   isHydrated: boolean;
   removeFriend: (personId: number) => Promise<void>;
-  setAllFriendsPush: (field: 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
-  updateFriendPush: (personId: number, field: 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
+  setAllFriendsPush: (field: 'pushOnEntry' | 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
+  updateFriendPush: (personId: number, field: 'pushOnEntry' | 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
 };
 
 function storageKey(ownerPersonId: string) {
@@ -50,6 +51,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     if (current.some((f) => f.personId === friend.personId)) return;
     const withDefaults: Friend = {
       ...friend,
+      pushOnEntry: friend.pushOnEntry ?? false,
       pushOnResult: friend.pushOnResult ?? true,
       pushOnStart: friend.pushOnStart ?? true,
     };
@@ -80,6 +82,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       const raw = Array.isArray(stored?.friends) ? stored.friends : [];
       const migrated = raw.map((f) => ({
         ...f,
+        pushOnEntry: f.pushOnEntry ?? false,
         pushOnResult: f.pushOnResult ?? true,
         pushOnStart: f.pushOnStart ?? true,
       }));

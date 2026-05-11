@@ -285,6 +285,24 @@ export default function SettingsScreen() {
                   <View style={styles.friendNotifToggles}>
                     <Pressable
                       onPress={() => {
+                        const allOn = friends.every((f) => f.pushOnEntry);
+                        void setAllFriendsPush('pushOnEntry', !allOn);
+                      }}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnEntry) ? styles.friendNotifPillActive : null]}
+                    >
+                      <Ionicons
+                        color={friends.every((f) => f.pushOnEntry) ? colors.primaryDeep : colors.textMuted}
+                        name={
+                          friends.every((f) => f.pushOnEntry) ? 'checkbox' :
+                          friends.some((f) => f.pushOnEntry) ? 'remove-outline' :
+                          'square-outline'
+                        }
+                        size={14}
+                      />
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnEntry) ? styles.friendNotifPillTextActive : null]}>Anm.</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
                         const allOn = friends.every((f) => f.pushOnStart);
                         void setAllFriendsPush('pushOnStart', !allOn);
                       }}
@@ -327,6 +345,13 @@ export default function SettingsScreen() {
                       <Text numberOfLines={1} style={styles.compactSettingText}>{friend.name}</Text>
                     </View>
                     <View style={styles.friendNotifToggles}>
+                      <Pressable
+                        onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
+                        style={[styles.friendNotifPill, friend.pushOnEntry ? styles.friendNotifPillActive : null]}
+                      >
+                        <Ionicons color={friend.pushOnEntry ? colors.primaryDeep : colors.textMuted} name="clipboard-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnEntry ? styles.friendNotifPillTextActive : null]}>Anm.</Text>
+                      </Pressable>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
                         style={[styles.friendNotifPill, friend.pushOnStart ? styles.friendNotifPillActive : null]}

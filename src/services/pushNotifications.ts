@@ -15,6 +15,7 @@ let isNotificationHandlerConfigured = false;
 
 type NotificationEventData = {
   eventId?: string | number;
+  friendPersonId?: string | number;
   friendPersonIds?: string[];
   type?: string;
 };

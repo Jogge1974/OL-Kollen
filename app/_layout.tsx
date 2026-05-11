@@ -98,7 +98,22 @@ function PushNotificationNavigator() {
       }
 
       // Navigate based on type
-      if (notifType === 'friend-results' || notifType === 'friend-start') {
+      if (notifType === 'friend-entry') {
+        // Navigate to the friend's detail page if we have a friendPersonId
+        const friendPersonId = typeof data.friendPersonId === 'string' ? data.friendPersonId : typeof data.friendPersonId === 'number' ? `${data.friendPersonId}` : null;
+        setTimeout(() => {
+          if (!isMounted) return;
+          try {
+            if (friendPersonId) {
+              router.push(`/(tabs)/friend/${friendPersonId}`);
+            } else {
+              router.push('/(tabs)/friends');
+            }
+          } catch {
+            // Ignore navigation errors
+          }
+        }, 300);
+      } else if (notifType === 'friend-results' || notifType === 'friend-start') {
         // Navigate to friends list so the user sees the badges
         setTimeout(() => {
           if (!isMounted) return;

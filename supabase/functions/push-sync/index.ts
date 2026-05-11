@@ -249,6 +249,7 @@ Deno.serve(async (request) => {
         friend_name: f.name,
         friend_person_id: String(f.personId),
         person_id: personId,
+        push_on_entry: f.pushOnEntry ?? false,
         push_on_result: f.pushOnResult ?? true,
         push_on_start: f.pushOnStart ?? true,
       }));

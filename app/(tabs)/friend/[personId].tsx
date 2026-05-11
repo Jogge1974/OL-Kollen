@@ -167,18 +167,25 @@ export default function FriendDetailScreen() {
             friend ? (
               <View style={styles.pushToggles}>
                 <Pressable
+                  onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
+                  style={[styles.pushPill, friend.pushOnEntry ? styles.pushPillActive : null]}
+                >
+                  <Ionicons color={friend.pushOnEntry ? colors.primaryDeep : colors.textMuted} name="clipboard-outline" size={11} />
+                  <Text style={[styles.pushPillText, friend.pushOnEntry ? styles.pushPillTextActive : null]}>Anm.</Text>
+                </Pressable>
+                <Pressable
                   onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
                   style={[styles.pushPill, friend.pushOnStart ? styles.pushPillActive : null]}
                 >
                   <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={11} />
-                  <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Starttid</Text>
+                  <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Start</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
                   style={[styles.pushPill, friend.pushOnResult ? styles.pushPillActive : null]}
                 >
                   <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={11} />
-                  <Text style={[styles.pushPillText, friend.pushOnResult ? styles.pushPillTextActive : null]}>Resultat</Text>
+                  <Text style={[styles.pushPillText, friend.pushOnResult ? styles.pushPillTextActive : null]}>Res.</Text>
                 </Pressable>
               </View>
             ) : undefined

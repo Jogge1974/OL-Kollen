@@ -118,6 +118,7 @@ export default function FriendsScreen() {
       gender: result.gender,
       name: result.name,
       personId: result.personId,
+      pushOnEntry: false,
       pushOnResult: true,
       pushOnStart: true,
     };
