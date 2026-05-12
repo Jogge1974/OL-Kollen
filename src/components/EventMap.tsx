@@ -2,8 +2,9 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Region } from 'react-native-maps';
+import { PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
@@ -27,7 +28,41 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.65,
 };
 
-export function EventMap({ error, events }: EventMapProps) {
+export function EventMap(props: EventMapProps) {
+  return (
+    <MapErrorBoundary>
+      <EventMapInner {...props} />
+    </MapErrorBoundary>
+  );
+}
+
+class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn('[EventMap] Render error caught:', error.message);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ alignItems: 'center', flex: 1, justifyContent: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 15, textAlign: 'center' }}>Kartan kunde inte laddas. Försök igen senare.</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function EventMapInner({ error, events }: EventMapProps) {
   const { colors, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, themeName), [colors, themeName]);
   const mapRef = React.useRef<MapView>(null);
@@ -120,7 +155,7 @@ export function EventMap({ error, events }: EventMapProps) {
       <View style={styles.container}>
         {canShowMap ? (
           <MapView
-            provider={PROVIDER_GOOGLE}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             ref={mapRef}
             initialRegion={initialRegion}
             onRegionChangeComplete={(region) => setCurrentRegion(region)}
@@ -206,8 +241,18 @@ export function EventMap({ error, events }: EventMapProps) {
   );
 }
 
+function isValidCoordinate(pos: { latitude: number; longitude: number } | null | undefined): pos is { latitude: number; longitude: number } {
+  if (!pos) return false;
+  const { latitude, longitude } = pos;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return false;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  if (latitude === 0 && longitude === 0) return false;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return false;
+  return true;
+}
+
 function createMarkerGroups(events: EventItem[], region: Region) {
-  const positionedEvents = events.filter((event) => event.centerPosition);
+  const positionedEvents = events.filter((event) => isValidCoordinate(event.centerPosition));
   const clusters: Array<{
     coordinate: { latitude: number; longitude: number };
     events: EventItem[];

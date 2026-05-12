@@ -49,6 +49,7 @@ export default function FriendsScreen() {
   const isLoggedIn = Boolean(user);
 
   const [searchVisible, setSearchVisible] = React.useState(false);
+  const [legendVisible, setLegendVisible] = React.useState(false);
   const [searchName, setSearchName] = React.useState('');
   const [searchClub, setSearchClub] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<PersonSearchResult[]>([]);
@@ -162,6 +163,11 @@ export default function FriendsScreen() {
           <Ionicons color={colors.primaryDeep} name="search-outline" size={14} />
           <Text style={styles.searchBadgeText}>Sök vänner</Text>
         </Pressable>
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={() => setLegendVisible(true)} style={({ pressed }) => [styles.searchBadge, pressed ? styles.searchBadgePressed : null]}>
+          <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={14} />
+          <Text style={styles.searchBadgeText}>Teckenförkl.</Text>
+        </Pressable>
       </View>
 
       {friends.length === 0 ? (
@@ -200,7 +206,9 @@ export default function FriendsScreen() {
                     <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
                   ) : null}
                 </View>
-              ) : null}
+              ) : (
+                <View style={styles.iconSpacer} />
+              )}
               <View style={styles.friendInfo}>
                 <Text numberOfLines={1} style={styles.friendName}>{item.name}</Text>
                 <Text numberOfLines={1} style={styles.friendClub}>
@@ -308,6 +316,82 @@ export default function FriendsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal animationType="fade" onRequestClose={() => setLegendVisible(false)} transparent visible={legendVisible}>
+        <View style={styles.searchOverlay}>
+          <Pressable style={styles.searchBackdrop} onPress={() => setLegendVisible(false)} />
+          <View style={styles.legendSheet}>
+            <View style={styles.searchHeader}>
+              <Text style={styles.searchTitle}>Teckenförklaring</Text>
+              <Pressable onPress={() => setLegendVisible(false)} style={styles.searchCloseButton}>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+                <Text style={styles.searchCloseText}>Stäng</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.legendList}>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendSample, { borderColor: colors.primary, borderWidth: 1.5 }]}>
+                  <View style={[styles.activityDot, { backgroundColor: colors.primary }]} />
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Resultat idag</Text>
+                  <Text style={styles.legendDesc}>Vännen har ett publicerat resultat idag</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={[styles.legendSample, { borderColor: colors.accent, borderWidth: 1.5 }]}>
+                  <View style={[styles.activityDot, { backgroundColor: colors.accent }]} />
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Startlista idag</Text>
+                  <Text style={styles.legendDesc}>Vännen har en start publicerad idag</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendSample}>
+                  <View style={styles.entryDotsColumn}>
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>1 anmälan</Text>
+                  <Text style={styles.legendDesc}>Vännen är anmäld till 1 kommande tävling</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendSample}>
+                  <View style={styles.entryDotsColumn}>
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>2 anmälningar</Text>
+                  <Text style={styles.legendDesc}>Vännen är anmäld till 2 kommande tävlingar</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendSample}>
+                  <View style={styles.entryDotsColumn}>
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>3+ anmälningar</Text>
+                  <Text style={styles.legendDesc}>Vännen är anmäld till 3 eller fler kommande tävlingar</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -373,6 +457,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     activityDot: {
       borderRadius: 5,
       height: 10,
+      width: 10,
+    },
+    iconSpacer: {
       width: 10,
     },
     entryDotsColumn: {
@@ -502,6 +589,44 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.primaryDeep,
     },
     searchResultSub: {
+      ...typography.caption,
+      color: colors.textSecondary,
+    },
+    legendSheet: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 24,
+      borderWidth: 1,
+      gap: spacing.md,
+      padding: spacing.lg,
+    },
+    legendList: {
+      gap: spacing.md,
+    },
+    legendRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    legendSample: {
+      alignItems: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      height: 44,
+      justifyContent: 'center',
+      width: 44,
+    },
+    legendTextWrap: {
+      flex: 1,
+      gap: 2,
+    },
+    legendLabel: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+    },
+    legendDesc: {
       ...typography.caption,
       color: colors.textSecondary,
     },

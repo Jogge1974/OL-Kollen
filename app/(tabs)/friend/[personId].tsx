@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -140,6 +140,8 @@ export default function FriendDetailScreen() {
     { label: 'Distrikt', value: 'district' },
   ];
 
+  const isContentLoading = isSverigelistanLoading || isLoadingResults || isLoadingStarts || isLoadingEntries || h2h.isLoading;
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
@@ -191,6 +193,13 @@ export default function FriendDetailScreen() {
             ) : undefined
           }
         />
+
+        <View style={styles.contentWrap}>
+          {isContentLoading ? (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator color={colors.primary} size="large" />
+            </View>
+          ) : null}
 
         {friend ? (
           <Pressable
@@ -358,7 +367,9 @@ export default function FriendDetailScreen() {
           </View>
         ) : null}
 
-        <EntriesPanel entries={personEntries} error={entriesError} isLoading={isLoadingEntries} organisationLabel={user?.organisationName ?? null} />
+        {!isContentLoading && personEntries.length > 0 ? (
+          <EntriesPanel entries={personEntries} error={entriesError} isLoading={false} organisationLabel={user?.organisationName ?? null} />
+        ) : null}
 
         <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
 
@@ -368,34 +379,34 @@ export default function FriendDetailScreen() {
               <Ionicons color={colors.textMuted} name="ribbon-outline" size={16} />
               <Text style={styles.resultsPanelTitle}>Resultat</Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearRow}>
-              {availableYears.map((year) => (
+            <View style={styles.filterRow}>
+              {filterChips.map((chip) => (
                 <Pressable
-                  key={year}
-                  onPress={() => setResultsYear(year)}
-                  style={[styles.yearChip, resultsYear === year ? styles.yearChipActive : null]}
+                  key={chip.value}
+                  onPress={() => setResultsFilter(chip.value)}
+                  style={[styles.filterChip, resultsFilter === chip.value ? styles.filterChipActive : null]}
                 >
-                  <Text style={[styles.yearChipText, resultsYear === year ? styles.yearChipTextActive : null]}>
-                    {year}
+                  <Text style={[styles.filterChipText, resultsFilter === chip.value ? styles.filterChipTextActive : null]}>
+                    {chip.label}
                   </Text>
                 </Pressable>
               ))}
-            </ScrollView>
+            </View>
           </View>
 
-          <View style={styles.filterRow}>
-            {filterChips.map((chip) => (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearRow}>
+            {availableYears.map((year) => (
               <Pressable
-                key={chip.value}
-                onPress={() => setResultsFilter(chip.value)}
-                style={[styles.filterChip, resultsFilter === chip.value ? styles.filterChipActive : null]}
+                key={year}
+                onPress={() => setResultsYear(year)}
+                style={[styles.yearChip, resultsYear === year ? styles.yearChipActive : null]}
               >
-                <Text style={[styles.filterChipText, resultsFilter === chip.value ? styles.filterChipTextActive : null]}>
-                  {chip.label}
+                <Text style={[styles.yearChipText, resultsYear === year ? styles.yearChipTextActive : null]}>
+                  {year}
                 </Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
 
           <PersonActivitySectionList
             emptyLabel="Inga resultat hittades."
@@ -408,6 +419,7 @@ export default function FriendDetailScreen() {
             onPressEvent={(eventId) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
             sections={resultsSections}
           />
+        </View>
         </View>
       </ScrollView>
 
@@ -524,6 +536,18 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingBottom: spacing.xxl,
       paddingHorizontal: spacing.sm,
       paddingTop: spacing.sm,
+    },
+    contentWrap: {
+      gap: spacing.lg,
+      position: 'relative',
+    },
+    loadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      backgroundColor: colors.background + '99',
+      justifyContent: 'center',
+      minHeight: 300,
+      zIndex: 10,
     },
     backButton: {
       alignItems: 'center',
@@ -835,7 +859,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       borderColor: colors.border,
       borderRadius: 24,
       borderWidth: 1,
-      gap: spacing.sm,
+      gap: spacing.md,
       padding: spacing.md,
     },
     resultsPanelHeader: {
@@ -856,49 +880,54 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     },
     yearRow: {
       flexDirection: 'row',
-      gap: 6,
+      gap: spacing.xs,
+      paddingBottom: 2,
     },
     yearChip: {
+      backgroundColor: colors.surfaceMuted,
       borderColor: colors.border,
       borderRadius: 999,
       borderWidth: 1,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 5,
     },
     yearChipActive: {
-      backgroundColor: colors.primaryDeep,
-      borderColor: colors.primaryDeep,
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     },
     yearChipText: {
-      ...typography.captionStrong,
-      color: colors.textSecondary,
+      color: colors.textPrimary,
+      fontFamily: typography.bodyStrong.fontFamily,
+      fontSize: 14,
+      lineHeight: 17,
     },
     yearChipTextActive: {
-      color: '#fff',
+      color: colors.heroText,
     },
     filterRow: {
       flexDirection: 'row',
-      gap: 6,
+      gap: spacing.xs,
     },
     filterChip: {
+      backgroundColor: colors.surfaceMuted,
       borderColor: colors.border,
       borderRadius: 999,
       borderWidth: 1,
-      paddingHorizontal: 10,
+      paddingHorizontal: spacing.sm,
       paddingVertical: 4,
     },
     filterChipActive: {
-      backgroundColor: isSoft
-        ? (isDark ? '#1E3058' : '#D0E0F0')
-        : (isDark ? '#1E4428' : '#E7F4D8'),
-      borderColor: colors.primary,
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
     },
     filterChipText: {
-      ...typography.captionStrong,
-      color: colors.textSecondary,
+      color: colors.textPrimary,
+      fontFamily: typography.bodyStrong.fontFamily,
+      fontSize: 11,
+      lineHeight: 13,
     },
     filterChipTextActive: {
-      color: colors.primaryDeep,
+      color: colors.heroText,
     },
   });
 }

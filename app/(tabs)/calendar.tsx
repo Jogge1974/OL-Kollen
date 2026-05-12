@@ -2,7 +2,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
@@ -21,6 +21,7 @@ export default function CalendarScreen() {
   const { colors, isDark, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const [filterVisible, setFilterVisible] = React.useState(false);
+  const [legendVisible, setLegendVisible] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'list' | 'map'>('list');
   const { applyFilters, error, events, filters, isLoading, isRefreshing, refresh } = useEventorEvents();
 
@@ -53,6 +54,10 @@ export default function CalendarScreen() {
                   <Text style={[styles.modeButtonText, viewMode === 'map' ? styles.modeButtonTextActive : null]}>Karta</Text>
                 </Pressable>
               </View>
+
+              <Pressable onPress={() => setLegendVisible(true)} style={styles.legendBadge}>
+                <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={16} />
+              </Pressable>
 
               <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
                 <Ionicons color={colors.primaryDeep} name="funnel-outline" size={16} />
@@ -96,6 +101,79 @@ export default function CalendarScreen() {
         value={filters}
         visible={filterVisible}
       />
+
+      <Modal animationType="fade" onRequestClose={() => setLegendVisible(false)} transparent visible={legendVisible}>
+        <View style={styles.legendOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setLegendVisible(false)} />
+          <View style={styles.legendSheet}>
+            <View style={styles.legendHeader}>
+              <Text style={styles.legendTitle}>Teckenförklaring</Text>
+              <Pressable onPress={() => setLegendVisible(false)} style={styles.legendCloseButton}>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+                <Text style={styles.legendCloseText}>Stäng</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.legendList}>
+              <View style={styles.legendRow}>
+                <View style={styles.legendCard}>
+                  <View style={[styles.legendCardAccent, { backgroundColor: colors.border }]} />
+                  <View style={styles.legendCardSkeleton}>
+                    <View style={[styles.skeletonBar, styles.skeletonTitle, { backgroundColor: colors.textMuted + '30' }]} />
+                    <View style={[styles.skeletonBar, styles.skeletonSub, { backgroundColor: colors.textMuted + '20' }]} />
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Tidigare tävlingar</Text>
+                  <Text style={styles.legendDesc}>Tävlingar som redan genomförts</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendCard}>
+                  <View style={[styles.legendCardAccent, { backgroundColor: colors.accent }]} />
+                  <View style={styles.legendCardSkeleton}>
+                    <View style={[styles.skeletonBar, styles.skeletonTitle, { backgroundColor: colors.textMuted + '30' }]} />
+                    <View style={[styles.skeletonBar, styles.skeletonSub, { backgroundColor: colors.textMuted + '20' }]} />
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Tävlingar idag</Text>
+                  <Text style={styles.legendDesc}>Pågående eller planerade idag</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendCard}>
+                  <View style={[styles.legendCardAccent, { backgroundColor: colors.accentLineWeekday }]} />
+                  <View style={styles.legendCardSkeleton}>
+                    <View style={[styles.skeletonBar, styles.skeletonTitle, { backgroundColor: colors.textMuted + '30' }]} />
+                    <View style={[styles.skeletonBar, styles.skeletonSub, { backgroundColor: colors.textMuted + '20' }]} />
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Kommande — vardag</Text>
+                  <Text style={styles.legendDesc}>Måndag till fredag</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendCard}>
+                  <View style={[styles.legendCardAccent, { backgroundColor: colors.accentLineToday }]} />
+                  <View style={styles.legendCardSkeleton}>
+                    <View style={[styles.skeletonBar, styles.skeletonTitle, { backgroundColor: colors.textMuted + '30' }]} />
+                    <View style={[styles.skeletonBar, styles.skeletonSub, { backgroundColor: colors.textMuted + '20' }]} />
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Kommande — helg</Text>
+                  <Text style={styles.legendDesc}>Lördag och söndag</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -235,6 +313,111 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   filterButtonText: {
     ...typography.buttonSmall,
     color: colors.textPrimary,
+  },
+  legendBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  legendOverlay: {
+    backgroundColor: 'rgba(20, 24, 30, 0.45)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  legendSheet: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  legendHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  legendTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+  },
+  legendCloseButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  legendCloseText: {
+    ...typography.captionStrong,
+    color: colors.primary,
+  },
+  legendList: {
+    gap: spacing.md,
+  },
+  legendRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  legendCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 48,
+    overflow: 'hidden',
+    position: 'relative',
+    width: 80,
+  },
+  legendCardAccent: {
+    borderBottomLeftRadius: 14,
+    borderTopLeftRadius: 14,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+    width: 6,
+  },
+  legendCardSkeleton: {
+    gap: 6,
+    justifyContent: 'center',
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingVertical: 10,
+  },
+  skeletonBar: {
+    borderRadius: 4,
+  },
+  skeletonTitle: {
+    height: 10,
+    width: '80%',
+  },
+  skeletonSub: {
+    height: 8,
+    width: '55%',
+  },
+  legendTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  legendLabel: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+  },
+  legendDesc: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
 });
 }
