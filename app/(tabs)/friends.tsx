@@ -67,7 +67,7 @@ export default function FriendsScreen() {
     React.useCallback(() => {
       if (friends.length > 0) {
         void fetchTodayActivity(friends.map((f) => String(f.personId)));
-        void fetchFriendEntryCounts(friends, user?.organisationIds?.[0] ?? null).then(setEntryCountByFriendId);
+        void fetchFriendEntryCounts(friends).then(setEntryCountByFriendId);
       }
     }, [friends, fetchTodayActivity, user]),
   );
@@ -515,37 +515,38 @@ function formatLocalIsoDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-async function fetchFriendEntryCounts(friends: Friend[], organisationId: string | null): Promise<Record<string, number>> {
+async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, number>> {
   const todayIso = formatLocalIsoDate(new Date());
   const fromDate = `${todayIso} 00:00:00`;
   const futureDate = new Date();
   futureDate.setMonth(futureDate.getMonth() + 9);
   const toDate = `${formatLocalIsoDate(futureDate)} 23:59:59`;
-  const orgId = organisationId ?? '1';
 
   const result: Record<string, number> = {};
 
   await Promise.all(
     friends.map(async (friend) => {
       try {
-        const xml = await fetchPersonEntriesXml(String(friend.personId), orgId, fromDate, toDate);
+        const xml = await fetchPersonEntriesXml(String(friend.personId), null, fromDate, toDate);
         const parsed = entryParser.parse(xml) as { EntryList?: { Entry?: unknown } };
         const entries = parsed.EntryList?.Entry;
         const entryArray = entries == null ? [] : Array.isArray(entries) ? entries : [entries];
 
-        // Count only entries with event date >= today
-        let count = 0;
+        // Count unique events with event date >= today
+        const seenEventIds = new Set<string>();
         for (const entry of entryArray) {
           const event = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>).Event : null;
+          const eventIdNode = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).EventId : null;
+          const eventId = typeof eventIdNode === 'string' ? eventIdNode : typeof eventIdNode === 'number' ? String(eventIdNode) : null;
           const startDate = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).StartDate : null;
           const dateStr = typeof startDate === 'object' && startDate !== null ? (startDate as Record<string, unknown>).Date : null;
-          if (typeof dateStr === 'string' && dateStr >= todayIso) {
-            count++;
+          if (typeof dateStr === 'string' && dateStr >= todayIso && eventId && !seenEventIds.has(eventId)) {
+            seenEventIds.add(eventId);
           }
         }
 
-        if (count > 0) {
-          result[String(friend.personId)] = count;
+        if (seenEventIds.size > 0) {
+          result[String(friend.personId)] = seenEventIds.size;
         }
       } catch {
         // Silently skip on error

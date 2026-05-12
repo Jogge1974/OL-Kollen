@@ -368,7 +368,7 @@ export default function FriendDetailScreen() {
               <Ionicons color={colors.textMuted} name="ribbon-outline" size={16} />
               <Text style={styles.resultsPanelTitle}>Resultat</Text>
             </View>
-            <View style={styles.yearRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearRow}>
               {availableYears.map((year) => (
                 <Pressable
                   key={year}
@@ -380,7 +380,7 @@ export default function FriendDetailScreen() {
                   </Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
 
           <View style={styles.filterRow}>

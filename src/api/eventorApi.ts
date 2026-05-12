@@ -328,14 +328,16 @@ export async function fetchPersonResultsXml(personId: string, fromDate: string, 
   return xml;
 }
 
-export async function fetchPersonEntriesXml(personId: string, organisationId: string, fromDate: string, toDate: string) {
+export async function fetchPersonEntriesXml(personId: string, organisationId: string | null, fromDate: string, toDate: string) {
   const searchParams = new URLSearchParams({
     includeEventElement: 'true',
     personIds: personId,
-    organisationIds: organisationId,
     fromEventDate: fromDate,
     toEventDate: toDate,
   });
+  if (organisationId) {
+    searchParams.set('organisationIds', organisationId);
+  }
   const requestUrl = buildEventorUrl(`/entries?${searchParams.toString()}`);
 
   const response = await fetch(requestUrl, {
