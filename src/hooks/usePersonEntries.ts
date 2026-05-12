@@ -66,8 +66,16 @@ export function usePersonEntries({ personId, organisationId, viewerOrganisationI
         const xml = await fetchPersonEntriesXml(personId, organisationId, fromDate, toDate);
         const rawEntries = parseEntriesXml(xml);
 
+        // Deduplicate by eventId — multi-stage events may produce multiple entries
+        const seenEventIds = new Set<string>();
+        const uniqueEntries = rawEntries.filter((e) => {
+          if (seenEventIds.has(e.eventId)) return false;
+          seenEventIds.add(e.eventId);
+          return true;
+        });
+
         // Filter: only future events (>= today) and not already in starts/results
-        const filtered = rawEntries.filter((e) => e.eventDate >= todayIso && !excludeEventIds.has(e.eventId));
+        const filtered = uniqueEntries.filter((e) => e.eventDate >= todayIso && !excludeEventIds.has(e.eventId));
 
         // Sort by date ascending
         filtered.sort((a, b) => a.eventDate.localeCompare(b.eventDate));
@@ -138,14 +146,7 @@ function parseEntriesXml(xml: string): RawEntry[] {
 
 function buildEventName(event: Record<string, unknown> | null): string {
   if (!event) return '';
-  const mainName = getString(event.Name) ?? '';
-  const race = firstOf(event.EventRace);
-  const raceRecord = getRecord(race);
-  const raceName = raceRecord ? getString(raceRecord.Name) : null;
-  if (raceName && raceName.length > 0) {
-    return `${mainName}, ${raceName}`;
-  }
-  return mainName;
+  return getString(event.Name) ?? '';
 }
 
 // --------------- Enrichment ---------------

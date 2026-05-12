@@ -22,7 +22,7 @@ type TokenRow = {
 };
 
 type EntryStateRow = {
-  entry_id: string;
+  event_id: string;
   friend_person_id: string;
 };
 
@@ -52,7 +52,6 @@ async function fetchEventorXml(path: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 type ParsedEntry = {
-  entryId: string;
   personId: string;
   eventId: string;
   eventName: string;
@@ -60,18 +59,15 @@ type ParsedEntry = {
 };
 
 function parseEntriesXml(xml: string): ParsedEntry[] {
-  const results: ParsedEntry[] = [];
+  // Deduplicate by personId+eventId — a multi-stage event may produce
+  // several <Entry> blocks but we only care about the event level.
+  const seen = new Map<string, ParsedEntry>();
 
   // Split on <Entry> blocks
   const entryBlocks = xml.split(/<Entry\b/);
 
   for (let i = 1; i < entryBlocks.length; i++) {
     const block = entryBlocks[i];
-
-    // EntryId
-    const entryIdMatch = block.match(/<EntryId>(\d+)<\/EntryId>/);
-    if (!entryIdMatch) continue;
-    const entryId = entryIdMatch[1];
 
     // PersonId from Competitor
     const personIdMatch = block.match(/<Competitor\b[\s\S]*?<PersonId>(\d+)<\/PersonId>/);
@@ -90,17 +86,21 @@ function parseEntriesXml(xml: string): ParsedEntry[] {
     const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
 
     // Entry's own ModifyDate (at end of <Entry>, after </Event>)
-    // We look for the last ModifyDate in the block (the entry-level one, not event-level)
     const modifyMatches = [...block.matchAll(/<ModifyDate>\s*<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>\s*<\/ModifyDate>/g)];
     const lastModify = modifyMatches[modifyMatches.length - 1];
     const modifyDate = lastModify
       ? `${lastModify[1].trim()}T${lastModify[2].trim()}`
       : '';
 
-    results.push({ entryId, personId, eventId, eventName, modifyDate });
+    // Keep the latest modifyDate per person+event
+    const key = `${personId}::${eventId}`;
+    const existing = seen.get(key);
+    if (!existing || modifyDate > existing.modifyDate) {
+      seen.set(key, { personId, eventId, eventName, modifyDate });
+    }
   }
 
-  return results;
+  return [...seen.values()];
 }
 
 // ---------------------------------------------------------------------------
@@ -162,12 +162,12 @@ Deno.serve(async (request) => {
       return jsonOk({ checkedFriends: 0, ok: true, pushCount: 0 });
     }
 
-    // 3. Time window: entries modified in the last 25 minutes
-    //    (cron runs every 20 min, 25 min window gives overlap to avoid misses)
+    // 3. Date window: entries for events from today up to 9 months ahead.
+    //    We rely on friend_entry_state to deduplicate already-notified entries.
     const now = new Date();
-    const windowStart = new Date(now.getTime() - 25 * 60 * 1000);
-    const fromModifyDate = formatEventorDateTime(windowStart);
-    const toModifyDate = formatEventorDateTime(now);
+    const fromEventDate = formatEventorDate(now);
+    const toDate = new Date(now.getTime() + 270 * 24 * 60 * 60 * 1000);
+    const toEventDate = formatEventorDate(toDate);
 
     // 4. Fetch entries for each friend from Eventor
     const allParsedEntries: ParsedEntry[] = [];
@@ -179,10 +179,8 @@ Deno.serve(async (request) => {
       await Promise.all(
         batch.map(async (friendId) => {
           try {
-            // Use a dummy organisationIds=1 (required param but doesn't filter personIds)
-            const path = `/entries?personIds=${friendId}&organisationIds=1&includeEventElement=true` +
-              `&fromModifyDate=${encodeURIComponent(fromModifyDate)}` +
-              `&toModifyDate=${encodeURIComponent(toModifyDate)}`;
+            const path = `/entries?personIds=${friendId}&includeEventElement=true` +
+              `&fromEventDate=${fromEventDate}&toEventDate=${toEventDate}`;
             const xml = await fetchEventorXml(path);
             const entries = parseEntriesXml(xml);
             for (const entry of entries) {
@@ -199,25 +197,27 @@ Deno.serve(async (request) => {
       return jsonOk({ checkedFriends: uniqueFriendIds.length, ok: true, pushCount: 0, entriesFound: 0 });
     }
 
-    // 5. Check which entries have already been notified
-    const entryIds = allParsedEntries.map((e) => e.entryId);
+    // 5. Check which entries have already been notified (dedup by event)
+    const eventIds = allParsedEntries.map((e) => e.eventId);
+    const friendIds = allParsedEntries.map((e) => e.personId);
     const { data: existingStates } = await supabase
       .from('friend_entry_state')
-      .select('entry_id, friend_person_id')
-      .in('entry_id', entryIds);
+      .select('event_id, friend_person_id')
+      .in('event_id', eventIds)
+      .in('friend_person_id', friendIds);
 
     const notifiedSet = new Set<string>();
     for (const row of (existingStates ?? []) as EntryStateRow[]) {
-      notifiedSet.add(`${row.friend_person_id}::${row.entry_id}`);
+      notifiedSet.add(`${row.friend_person_id}::${row.event_id}`);
     }
 
     // 6. Build notifications
     const allMessages: Array<{ body: string; data: Record<string, unknown>; sound: 'default'; title: string; to: string }> = [];
-    const stateInserts: Array<{ entry_id: string; event_id: string; event_name: string; friend_person_id: string }> = [];
+    const stateInserts: Array<{ event_id: string; event_name: string; friend_person_id: string }> = [];
     const insertedKeys = new Set<string>();
 
     for (const entry of allParsedEntries) {
-      const stateKey = `${entry.personId}::${entry.entryId}`;
+      const stateKey = `${entry.personId}::${entry.eventId}`;
       if (notifiedSet.has(stateKey)) continue;
 
       // Find all watchers for this friend
@@ -253,11 +253,10 @@ Deno.serve(async (request) => {
         }
       }
 
-      // Record state (once per friend+entry combo)
+      // Record state (once per friend+event combo)
       if (!insertedKeys.has(stateKey)) {
         insertedKeys.add(stateKey);
         stateInserts.push({
-          entry_id: entry.entryId,
           event_id: entry.eventId,
           event_name: entry.eventName,
           friend_person_id: entry.personId,
@@ -274,7 +273,7 @@ Deno.serve(async (request) => {
     if (stateInserts.length > 0) {
       await supabase
         .from('friend_entry_state')
-        .upsert(stateInserts, { onConflict: 'friend_person_id,entry_id' });
+        .upsert(stateInserts, { onConflict: 'friend_person_id,event_id' });
     }
 
     return jsonOk({
@@ -303,10 +302,8 @@ function jsonOk(data: Record<string, unknown>) {
   });
 }
 
-function formatEventorDateTime(date: Date): string {
-  // Eventor expects Swedish local time: YYYY-MM-DD HH:MM:SS
+function formatEventorDate(date: Date): string {
+  // Eventor expects YYYY-MM-DD for event date filters
   const pad = (n: number) => String(n).padStart(2, '0');
-  // Convert UTC to Swedish time (CET/CEST)
-  const swedish = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Stockholm' }));
-  return `${swedish.getFullYear()}-${pad(swedish.getMonth() + 1)}-${pad(swedish.getDate())} ${pad(swedish.getHours())}:${pad(swedish.getMinutes())}:${pad(swedish.getSeconds())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
