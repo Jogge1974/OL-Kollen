@@ -164,9 +164,8 @@ export default function FriendsScreen() {
           <Text style={styles.searchBadgeText}>Sök vänner</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={() => setLegendVisible(true)} style={({ pressed }) => [styles.searchBadge, pressed ? styles.searchBadgePressed : null]}>
-          <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={14} />
-          <Text style={styles.searchBadgeText}>Teckenförkl.</Text>
+        <Pressable onPress={() => setLegendVisible(true)} style={({ pressed }) => [styles.legendInfoBadge, pressed ? { opacity: 0.7 } : null]}>
+          <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={20} />
         </Pressable>
       </View>
 
@@ -428,6 +427,16 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     searchBadgeText: {
       ...typography.captionStrong,
       color: colors.primaryDeep,
+    },
+    legendInfoBadge: {
+      alignItems: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: 999,
+      borderWidth: 1,
+      height: 36,
+      justifyContent: 'center',
+      width: 36,
     },
     emptyContainer: {
       alignItems: 'center',

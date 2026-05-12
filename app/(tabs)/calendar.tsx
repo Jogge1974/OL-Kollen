@@ -56,7 +56,7 @@ export default function CalendarScreen() {
               </View>
 
               <Pressable onPress={() => setLegendVisible(true)} style={styles.legendBadge}>
-                <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={16} />
+                <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={20} />
               </Pressable>
 
               <Pressable onPress={() => setFilterVisible(true)} style={styles.filterButton}>
