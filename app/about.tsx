@@ -20,6 +20,8 @@ export default function AboutScreen() {
   const user = useAuthStore((state) => state.user);
   const [feedbackName, setFeedbackName] = React.useState(user?.fullName ?? '');
   const [feedbackText, setFeedbackText] = React.useState('');
+  const [wantsReply, setWantsReply] = React.useState(false);
+  const [replyEmail, setReplyEmail] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
   const scrollRef = React.useRef<ScrollView>(null);
   const feedbackCardY = React.useRef(0);
@@ -34,6 +36,11 @@ export default function AboutScreen() {
 
     if (!name || !text) {
       Alert.alert('Fyll i alla fält', 'Både namn och meddelande behöver fyllas i.');
+      return;
+    }
+
+    if (wantsReply && !replyEmail.trim()) {
+      Alert.alert('E-postadress saknas', 'Fyll i din e-postadress om du önskar svar.');
       return;
     }
 
@@ -53,6 +60,8 @@ export default function AboutScreen() {
         person_name: user?.fullName ?? null,
         organisation: user?.organisationName ?? null,
         app_version: Constants.expoConfig?.version ?? null,
+        wants_reply: wantsReply,
+        reply_email: wantsReply ? replyEmail.trim() : null,
       });
 
       if (error) {
@@ -61,6 +70,8 @@ export default function AboutScreen() {
       }
 
       setFeedbackText('');
+      setWantsReply(false);
+      setReplyEmail('');
       Alert.alert('Tack!', 'Din synpunkt har skickats.');
     } catch {
       Alert.alert('Något gick fel', 'Det gick inte att skicka synpunkten. Försök igen senare.');
@@ -135,6 +146,27 @@ export default function AboutScreen() {
             textAlignVertical="top"
             value={feedbackText}
           />
+
+          <Pressable onPress={() => setWantsReply((v) => !v)} style={styles.checkboxRow}>
+            <View style={[styles.checkbox, wantsReply ? styles.checkboxChecked : null]}>
+              {wantsReply ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
+            </View>
+            <Text style={styles.checkboxLabel}>Önskar du svar på synpunkten?</Text>
+          </Pressable>
+
+          {wantsReply ? (
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              label="E-postadress"
+              onChangeText={setReplyEmail}
+              onClearText={() => setReplyEmail('')}
+              onFocus={() => scrollToFeedback()}
+              placeholder="din@epost.se"
+              value={replyEmail}
+            />
+          ) : null}
 
           <AppButton
             disabled={isSending}
@@ -227,6 +259,29 @@ function createStyles(colors: ColorPalette) {
   feedbackTextInput: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  checkboxRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  checkbox: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primaryDeep,
+    borderColor: colors.primaryDeep,
+  },
+  checkboxLabel: {
+    ...typography.body,
+    color: colors.textPrimary,
   },
   flex: {
     flex: 1,

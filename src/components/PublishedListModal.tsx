@@ -1,7 +1,7 @@
 ﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -62,6 +62,7 @@ export function PublishedListModal({
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollRetryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [anchorOffsets, setAnchorOffsets] = React.useState<Record<string, number>>({});
+  const anchorOffsetsRef = React.useRef<Record<string, number>>({});
   const [nestedAnalysisState, setNestedAnalysisState] = React.useState<AnalysisModalState | null>(null);
   const [nestedState, setNestedState] = React.useState<PublishedListModalState | null>(null);
   const [selectedAnchorKey, setSelectedAnchorKey] = React.useState<string | null>(null);
@@ -87,6 +88,7 @@ export function PublishedListModal({
 
   React.useEffect(() => {
     setAnchorOffsets({});
+    anchorOffsetsRef.current = {};
     setSelectedAnchorKey(currentState?.initialAnchorKey ?? pickerAnchors[0]?.key ?? null);
     setPendingChoice(null);
   }, [currentState?.initialAnchorKey, currentState?.title, pickerAnchors]);
@@ -106,8 +108,13 @@ export function PublishedListModal({
   }, []);
 
   const scrollToAnchorKey = React.useCallback(
-    (anchorKey: string, retries = 6) => {
-      const offset = anchorOffsets[anchorKey];
+    (anchorKey: string, retries = 20) => {
+      if (Platform.OS === 'android') {
+        // Android: filtering handled via visibleSections, no scroll needed
+        return;
+      }
+
+      const offset = anchorOffsetsRef.current[anchorKey];
 
       if (typeof offset === 'number') {
         scrollRef.current?.scrollTo({
@@ -127,9 +134,9 @@ export function PublishedListModal({
 
       scrollRetryTimerRef.current = setTimeout(() => {
         scrollToAnchorKey(anchorKey, retries - 1);
-      }, 50);
+      }, 100);
     },
-    [anchorOffsets],
+    [],
   );
 
   React.useEffect(() => {
@@ -138,18 +145,23 @@ export function PublishedListModal({
     }
 
     scrollToAnchorKey(selectedAnchorKey);
-  }, [scrollToAnchorKey, selectedAnchorKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAnchorKey]);
 
   const handleAnchorPress = React.useCallback(
     (anchorKey: string) => {
       setSelectedAnchorKey(anchorKey);
-      scrollToAnchorKey(anchorKey);
+      if (Platform.OS === 'android') {
+        // Android: scroll to top when filtering to new section
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      }
     },
-    [scrollToAnchorKey],
+    [],
   );
 
   const handleAnchorLayout = React.useCallback((anchorKey: string, event: LayoutChangeEvent) => {
     const nextOffset = event.nativeEvent.layout.y;
+    anchorOffsetsRef.current = { ...anchorOffsetsRef.current, [anchorKey]: nextOffset };
     setAnchorOffsets((current) => (current[anchorKey] === nextOffset ? current : { ...current, [anchorKey]: nextOffset }));
   }, []);
 
@@ -227,7 +239,7 @@ export function PublishedListModal({
 
           {shouldShowPicker ? (
             <View style={styles.classPickerContainer}>
-              <ScrollView horizontal contentContainerStyle={styles.classPickerRow} showsHorizontalScrollIndicator={false}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.classPickerRow}>
                 {pickerAnchors.map((anchor) => (
                   <Pressable
                     key={anchor.key}
@@ -249,7 +261,13 @@ export function PublishedListModal({
             ) : null}
 
             {!currentState?.isLoading && !currentState?.error && currentState
-              ? currentState.sections.map((section) => (
+              ? currentState.sections
+                  .filter((section) => {
+                    // Android: show only the selected section
+                    if (Platform.OS !== 'android' || !selectedAnchorKey) return true;
+                    return `section:${section.title}` === selectedAnchorKey;
+                  })
+                  .map((section) => (
                   <PublishedTableSection
                     eventId={currentState.eventId}
                     key={section.title}
@@ -578,7 +596,10 @@ function PublishedTableSection({
   );
 
   return (
-    <View onLayout={scope === 'public' ? (event) => onAnchorLayout(`section:${section.title}`, event) : undefined} style={styles.tableSection}>
+    <View
+      onLayout={scope === 'public' ? (event) => onAnchorLayout(`section:${section.title}`, event) : undefined}
+      style={styles.tableSection}
+    >
       <View style={styles.tableClassHeader}>
         <View style={styles.tableClassHeaderTopRow}>
           <Text numberOfLines={1} style={styles.tableClassHeaderText}>

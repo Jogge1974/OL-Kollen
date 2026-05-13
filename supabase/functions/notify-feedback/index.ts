@@ -9,6 +9,8 @@ type FeedbackRow = {
   person_name: string | null;
   organisation: string | null;
   app_version: string | null;
+  wants_reply: boolean;
+  reply_email: string | null;
 };
 
 type WebhookPayload = {
@@ -55,6 +57,8 @@ Deno.serve(async (request) => {
       row.person_id ? `PersonId: ${row.person_id}` : null,
       row.organisation ? `Klubb: ${row.organisation}` : null,
       row.app_version ? `Appversion: ${row.app_version}` : null,
+      row.wants_reply ? `Önskar svar: Ja` : null,
+      row.wants_reply && row.reply_email ? `Svara till: ${row.reply_email}` : null,
     ]
       .filter(Boolean)
       .join('\n');
@@ -77,6 +81,8 @@ Deno.serve(async (request) => {
       row.person_id ? `<p><strong>PersonId:</strong> ${escapeHtml(row.person_id)}</p>` : '',
       row.organisation ? `<p><strong>Klubb:</strong> ${escapeHtml(row.organisation)}</p>` : '',
       row.app_version ? `<p><strong>Appversion:</strong> ${escapeHtml(row.app_version)}</p>` : '',
+      row.wants_reply ? `<p><strong>&Ouml;nskar svar:</strong> Ja</p>` : '',
+      row.wants_reply && row.reply_email ? `<p><strong>Svara till:</strong> <a href="mailto:${escapeHtml(row.reply_email)}">${escapeHtml(row.reply_email)}</a></p>` : '',
       `<p><strong>Datum:</strong> ${escapeHtml(timestamp)}</p>`,
       `<hr>`,
       `<p>${escapeHtml(row.message).replace(/\n/g, '<br>')}</p>`,
