@@ -32,6 +32,7 @@ export function resolveCalendarFilterTemplate(template: CalendarFilterTemplate, 
     classificationIds: [...template.classificationIds].sort((a, b) => a - b),
     districtIds: [...template.districtIds].sort((a, b) => a - b),
     fromDate: formatApiDate(getRelativeDate(now, template.fromOffsetDays)),
+    showEntryCountsInList: false,
     toDate: formatApiDate(getRelativeDate(now, template.toOffsetDays)),
   };
 }

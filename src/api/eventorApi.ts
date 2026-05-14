@@ -270,6 +270,61 @@ export async function fetchEventCompetitorCount(eventId: string, organisationId:
   };
 }
 
+export type CompetitorCountEntry = {
+  totalEntries: number;
+  organisationEntries: number | null;
+};
+
+export async function fetchBatchCompetitorCounts(
+  eventIds: string[],
+  organisationId: string | null,
+): Promise<Record<string, CompetitorCountEntry>> {
+  if (eventIds.length === 0) return {};
+
+  const normalizedIds = eventIds.map(normalizeEventId);
+  const params = new URLSearchParams({ eventIds: normalizedIds.join(',') });
+
+  if (organisationId) {
+    params.set('organisationIds', organisationId);
+  }
+
+  const requestUrl = buildEventorUrl(`/competitorcount?${params.toString()}`);
+  const response = await fetch(requestUrl, {
+    headers: {
+      Accept: 'application/xml',
+      ApiKey: getEventorApiKey(),
+    },
+    method: 'GET',
+  });
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(mapEventorError(response.status, xml));
+  }
+
+  const parsed = parser.parse(xml) as {
+    CompetitorCountList?: {
+      CompetitorCount?: unknown;
+    };
+  };
+
+  const result: Record<string, CompetitorCountEntry> = {};
+
+  for (const node of toArray<Record<string, unknown>>(parsed.CompetitorCountList?.CompetitorCount)) {
+    const eventId = String(node.eventId ?? '');
+    if (!eventId) continue;
+
+    const orgNode = toArray<Record<string, unknown>>(node.OrganisationCompetitorCount)[0] ?? null;
+
+    result[eventId] = {
+      totalEntries: toNullableNumber(node.numberOfEntries) ?? 0,
+      organisationEntries: orgNode ? (toNullableNumber(orgNode.numberOfEntries) ?? 0) : null,
+    };
+  }
+
+  return result;
+}
+
 function normalizeEventId(eventId: string) {
   return eventId.split('::')[0] ?? eventId;
 }

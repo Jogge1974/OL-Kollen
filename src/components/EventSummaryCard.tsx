@@ -11,15 +11,17 @@ import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
+import { CompetitorCountEntry } from '@/src/api/eventorApi';
 import { normalizeEventId } from '@/src/utils/eventId';
 
 type EventSummaryCardProps = {
+  entryCount?: CompetitorCountEntry;
   item: EventItem;
   mode?: 'list' | 'overlay';
   onOpenList: React.Dispatch<React.SetStateAction<PublishedListModalState | null>>;
 };
 
-export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSummaryCardProps) {
+export function EventSummaryCard({ entryCount, item, mode = 'list', onOpenList }: EventSummaryCardProps) {
   const pathname = usePathname();
   const { colors, isDark, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
@@ -118,6 +120,19 @@ export function EventSummaryCard({ item, mode = 'list', onOpenList }: EventSumma
           />
           <Text style={[styles.publicationBadgeText, mode === 'overlay' ? styles.publicationBadgeTextOverlay : null, publicationIndicator === 'Resultatlista' ? styles.publicationBadgeResultText : null]}>{publicationIndicator}</Text>
         </Pressable>
+      ) : entryCount ? (
+        <View
+          style={[
+            styles.publicationBadge,
+            mode === 'list' ? styles.publicationIndicatorList : styles.publicationIndicatorOverlay,
+            styles.entryCountBadge,
+          ]}
+        >
+          <Ionicons color={colors.textSecondary} name="people-outline" size={mode === 'overlay' ? 13 : 12} />
+          <Text style={styles.entryCountText}>
+            {entryCount.totalEntries}{entryCount.organisationEntries != null ? ` (${entryCount.organisationEntries})` : ''}
+          </Text>
+        </View>
       ) : null}
 
       <Pressable
@@ -339,6 +354,17 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   publicationBadgeTextOverlay: {
     fontSize: 11,
     lineHeight: 13,
+  },
+  entryCountBadge: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  entryCountText: {
+    color: colors.textSecondary,
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 10,
+    lineHeight: 12,
   },
   favoriteBadge: {
     alignItems: 'center',

@@ -2,7 +2,7 @@
 
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Checkbox from 'expo-checkbox';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
 import { CLASSIFICATION_OPTIONS, createDefaultCalendarFilters, resolveCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
@@ -130,13 +130,13 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   };
 
   const handleReset = () => {
-    setDraft(createDefaultCalendarFilters(undefined, calendarDefaultFilterTemplate));
+    setDraft({ ...createDefaultCalendarFilters(undefined, calendarDefaultFilterTemplate), showEntryCountsInList: draft.showEntryCountsInList });
     setValidationError(null);
     setActiveDateField(null);
   };
 
   const applyTemplate = (template: typeof calendarDefaultFilterTemplate) => {
-    setDraft(resolveCalendarFilterTemplate(template));
+    setDraft({ ...resolveCalendarFilterTemplate(template), showEntryCountsInList: draft.showEntryCountsInList });
     setValidationError(null);
     setActiveDateField(null);
   };
@@ -164,12 +164,15 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
       toDate: draft.toDate,
     });
 
-    const defaultSignature = JSON.stringify(resolveCalendarFilterTemplate(calendarDefaultFilterTemplate));
+    const makeSignature = (fv: EventFilterValues) =>
+      JSON.stringify({ classificationIds: fv.classificationIds, districtIds: fv.districtIds, fromDate: fv.fromDate, toDate: fv.toDate });
+
+    const defaultSignature = makeSignature(resolveCalendarFilterTemplate(calendarDefaultFilterTemplate));
     if (signature === defaultSignature) {
       return 'standard';
     }
 
-    const foundPreset = calendarFilterPresets.find((preset) => JSON.stringify(resolveCalendarFilterTemplate(preset.template)) === signature);
+    const foundPreset = calendarFilterPresets.find((preset) => makeSignature(resolveCalendarFilterTemplate(preset.template)) === signature);
     return foundPreset?.id ?? null;
   }, [calendarDefaultFilterTemplate, calendarFilterPresets, draft.classificationIds, draft.districtIds, draft.fromDate, draft.toDate]);
 
@@ -290,6 +293,23 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
             </View>
 
             {validationError ? <Text style={styles.errorText}>{validationError}</Text> : null}
+
+            <View style={styles.section}>
+              <View style={styles.filterCard}>
+                <View style={styles.switchRow}>
+                  <View style={styles.switchLabelWrap}>
+                    <Text style={styles.filterHeading}>Visa anmälningar i listan</Text>
+                    <Text style={styles.helperText}>Listan tar lite längre tid att ladda</Text>
+                  </View>
+                  <Switch
+                    ios_backgroundColor={isDark ? colors.border : '#C8C8C8'}
+                    trackColor={{ false: isDark ? colors.border : '#C8C8C8', true: colors.primary }}
+                    value={draft.showEntryCountsInList}
+                    onValueChange={(value) => setDraft({ ...draft, showEntryCountsInList: value })}
+                  />
+                </View>
+              </View>
+            </View>
 
             <View style={styles.footer}>
               <AppButton label="Uppdatera" onPress={handleApply} />
@@ -600,6 +620,16 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   errorText: {
     ...typography.captionStrong,
     color: colors.error,
+  },
+  switchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  switchLabelWrap: {
+    flex: 1,
+    gap: 2,
+    marginRight: spacing.sm,
   },
   footer: {
     gap: spacing.sm,

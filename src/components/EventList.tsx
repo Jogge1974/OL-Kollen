@@ -5,12 +5,14 @@ import { FlatList, ListRenderItemInfo, RefreshControl, StyleSheet, Text } from '
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
+import { CompetitorCountEntry } from '@/src/api/eventorApi';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
 
 type EventListProps = {
+  entryCounts?: Record<string, CompetitorCountEntry>;
   error: string | null;
   events: EventItem[];
   onRefresh: () => void;
@@ -21,7 +23,7 @@ const CARD_HEIGHT = 78;
 const CARD_GAP = 7;
 const ITEM_HEIGHT = CARD_HEIGHT + CARD_GAP;
 
-export function EventList({ error, events, onRefresh, refreshing }: EventListProps) {
+export function EventList({ entryCounts, error, events, onRefresh, refreshing }: EventListProps) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const listRef = React.useRef<FlatList<EventItem>>(null);
@@ -69,7 +71,10 @@ export function EventList({ error, events, onRefresh, refreshing }: EventListPro
           });
         }}
         refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary} onRefresh={onRefresh} />}
-        renderItem={({ item }: ListRenderItemInfo<EventItem>) => <EventSummaryCard item={item} onOpenList={setActiveListModal} />}
+        renderItem={({ item }: ListRenderItemInfo<EventItem>) => {
+          const entryCount = entryCounts?.[item.id.split('::')[0]] ?? undefined;
+          return <EventSummaryCard entryCount={entryCount} item={item} onOpenList={setActiveListModal} />;
+        }}
         ListFooterComponent={error ? <Text style={styles.footerError}>{error}</Text> : null}
         showsVerticalScrollIndicator={false}
       />

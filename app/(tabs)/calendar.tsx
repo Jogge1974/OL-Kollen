@@ -13,6 +13,7 @@ import { FilterModal } from '@/src/components/FilterModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { useEventorEvents } from '@/src/hooks/useEventorEvents';
+import { useCalendarEntryCounts } from '@/src/hooks/useCalendarEntryCounts';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -24,6 +25,7 @@ export default function CalendarScreen() {
   const [legendVisible, setLegendVisible] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'list' | 'map'>('list');
   const { applyFilters, error, events, filters, isLoading, isRefreshing, refresh } = useEventorEvents();
+  const { counts: entryCounts } = useCalendarEntryCounts(events, filters.showEntryCountsInList);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -86,7 +88,7 @@ export default function CalendarScreen() {
         ) : null}
 
         {!isLoading && events.length > 0 && viewMode === 'list' ? (
-          <EventList error={error} events={events} onRefresh={() => void refresh()} refreshing={isRefreshing} />
+          <EventList entryCounts={entryCounts} error={error} events={events} onRefresh={() => void refresh()} refreshing={isRefreshing} />
         ) : null}
 
         {!isLoading && events.length > 0 && viewMode === 'map' ? <EventMap error={error} events={events} /> : null}
