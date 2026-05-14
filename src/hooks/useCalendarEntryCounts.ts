@@ -5,30 +5,19 @@ import { useAuthStore } from '@/src/store/authStore';
 import { EventItem } from '@/src/types/eventor';
 import { normalizeEventId } from '@/src/utils/eventId';
 
-function getLocalIsoDate() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export function useCalendarEntryCounts(events: EventItem[], enabled: boolean) {
   const user = useAuthStore((state) => state.user);
   const organisationId = user?.organisationIds?.[0] ?? null;
   const [counts, setCounts] = React.useState<Record<string, CompetitorCountEntry>>({});
   const [isLoading, setIsLoading] = React.useState(false);
 
-  const eligibleEventIds = React.useMemo(() => {
+  const eventIds = React.useMemo(() => {
     if (!enabled) return [];
-    const today = getLocalIsoDate();
-    return events
-      .filter((e) => e.startDate >= today && !e.hasPublishedResults && !e.hasPublishedStarts)
-      .map((e) => normalizeEventId(e.id));
+    return events.map((e) => normalizeEventId(e.id));
   }, [enabled, events]);
 
   React.useEffect(() => {
-    if (eligibleEventIds.length === 0) {
+    if (eventIds.length === 0) {
       setCounts({});
       return;
     }
@@ -36,7 +25,7 @@ export function useCalendarEntryCounts(events: EventItem[], enabled: boolean) {
     let cancelled = false;
     setIsLoading(true);
 
-    fetchBatchCompetitorCounts(eligibleEventIds, organisationId)
+    fetchBatchCompetitorCounts(eventIds, organisationId)
       .then((result) => {
         if (!cancelled) setCounts(result);
       })
@@ -48,7 +37,7 @@ export function useCalendarEntryCounts(events: EventItem[], enabled: boolean) {
       });
 
     return () => { cancelled = true; };
-  }, [eligibleEventIds.join(','), organisationId]);
+  }, [eventIds.join(','), organisationId]);
 
   return { counts, isLoading };
 }

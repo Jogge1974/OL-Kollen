@@ -120,15 +120,11 @@ export function EventSummaryCard({ entryCount, item, mode = 'list', onOpenList }
           />
           <Text style={[styles.publicationBadgeText, mode === 'overlay' ? styles.publicationBadgeTextOverlay : null, publicationIndicator === 'Resultatlista' ? styles.publicationBadgeResultText : null]}>{publicationIndicator}</Text>
         </Pressable>
-      ) : entryCount ? (
-        <View
-          style={[
-            styles.publicationBadge,
-            mode === 'list' ? styles.publicationIndicatorList : styles.publicationIndicatorOverlay,
-            styles.entryCountBadge,
-          ]}
-        >
-          <Ionicons color={colors.textSecondary} name="people-outline" size={mode === 'overlay' ? 13 : 12} />
+      ) : null}
+
+      {entryCount && entryCount.totalEntries > 0 ? (
+        <View style={[styles.entryCountBadge, mode === 'overlay' ? styles.entryCountBadgeOverlay : null]}>
+          <Ionicons color={colors.textSecondary} name="people-outline" size={11} />
           <Text style={styles.entryCountText}>
             {entryCount.totalEntries}{entryCount.organisationEntries != null ? ` (${entryCount.organisationEntries})` : ''}
           </Text>
@@ -356,9 +352,15 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 13,
   },
   entryCountBadge: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderWidth: 1,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 3,
+    position: 'absolute',
+    right: 38,
+    top: 10,
+  },
+  entryCountBadgeOverlay: {
+    right: 42,
   },
   entryCountText: {
     color: colors.textSecondary,
