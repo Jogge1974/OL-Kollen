@@ -202,12 +202,12 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     <Text style={styles.sectionHeaderTitle}>Sträcklängdsanalys</Text>
                     <Ionicons color={colors.primary} name="bar-chart-outline" size={18} />
                   </View>
-                  <Text style={styles.legCategoryHint}>Relativt din egen snittfart ({analysis.summary.referencePercentLabel})</Text>
+                  <Text style={styles.legCategoryHint}>Relativt din förväntade fart (topp 25% × din nivå)</Text>
                   {analysis.legCategories.map((cat) => (
                     <View key={cat.categoryLabel} style={styles.thirdRow}>
                       <View style={styles.thirdLabelWrap}>
                         <Text style={styles.thirdLabel}>{cat.categoryLabel}</Text>
-                        <Text style={styles.thirdDescription}>{cat.description} ({cat.legCount} str.)</Text>
+                        <Text style={styles.thirdDescription}>{cat.description} · {cat.legWinCount}/{cat.legCount} vunna</Text>
                       </View>
                       <View style={styles.thirdBarTrack}>
                         <View

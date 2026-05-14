@@ -62,9 +62,11 @@ export type EventAnalysisView = {
 
 export type EventAnalysisLegCategory = {
   avgPercent: number;
+  avgSplitPlace: number;
   categoryLabel: string;
   description: string;
   legCount: number;
+  legWinCount: number;
   legs: string;
   relativePercent: number;
 };
@@ -586,13 +588,14 @@ function buildLegCategories(
   speedFactor: number,
 ): EventAnalysisLegCategory[] {
   const splitCount = bestSplitTimes.length;
-  const referencePercent = (speedFactor - 1) * 100;
-  const buckets: Record<LegCategoryBucket, { indices: number[]; percents: number[] }> = {
-    Kort: { indices: [], percents: [] },
-    Medelkort: { indices: [], percents: [] },
-    Medel: { indices: [], percents: [] },
-    Medellång: { indices: [], percents: [] },
-    Lång: { indices: [], percents: [] },
+  const okRows = rows.filter((row) => row.status === 'OK' && row.totalTimeSeconds !== null);
+  const referenceSplitTimes = getReferenceSplitTimesLocal(okRows, splitCount);
+  const buckets: Record<LegCategoryBucket, { indices: number[]; percents: number[]; places: number[]; wins: number }> = {
+    Kort: { indices: [], percents: [], places: [], wins: 0 },
+    Medelkort: { indices: [], percents: [], places: [], wins: 0 },
+    Medel: { indices: [], percents: [], places: [], wins: 0 },
+    Medellång: { indices: [], percents: [], places: [], wins: 0 },
+    Lång: { indices: [], percents: [], places: [], wins: 0 },
   };
 
   for (let i = 0; i < splitCount; i += 1) {
@@ -601,11 +604,21 @@ function buildLegCategories(
     if (!category) continue;
 
     const targetSplit = getSplitTime(target, i + 1);
-    if (targetSplit === null || winnerTime === null || winnerTime <= 0) continue;
+    const referenceTime = referenceSplitTimes[i];
+    if (targetSplit === null || referenceTime === null || referenceTime <= 0) continue;
 
-    const percent = ((targetSplit - winnerTime) / winnerTime) * 100;
+    const expectedTime = speedFactor * referenceTime;
+    const percent = expectedTime > 0 ? ((targetSplit - expectedTime) / expectedTime) * 100 : 0;
+    const splitValues = rows
+      .map((row) => getSplitTime(row, i + 1))
+      .filter((value): value is number => value !== null)
+      .sort((left, right) => left - right);
+    const place = rankAscending(splitValues, targetSplit);
+
     buckets[category].indices.push(i);
     buckets[category].percents.push(percent);
+    buckets[category].places.push(place);
+    if (place === 1) buckets[category].wins += 1;
   }
 
   const order: LegCategoryBucket[] = ['Kort', 'Medelkort', 'Medel', 'Medellång', 'Lång'];
@@ -615,17 +628,19 @@ function buildLegCategories(
     const bucket = buckets[cat];
     if (bucket.indices.length === 0) continue;
 
-    const avg = bucket.percents.reduce((sum, v) => sum + v, 0) / bucket.percents.length;
-    const relative = avg - referencePercent;
+    const avgPercent = bucket.percents.reduce((sum, v) => sum + v, 0) / bucket.percents.length;
+    const avgPlace = bucket.places.reduce((sum, v) => sum + v, 0) / bucket.places.length;
     const legLabels = bucket.indices.map((idx) => getLegLabel(idx, splitCount));
 
     result.push({
-      avgPercent: Math.round(avg),
+      avgPercent: Math.round(avgPercent),
+      avgSplitPlace: Math.round(avgPlace * 10) / 10,
       categoryLabel: cat,
-      description: describeLegCategory(relative),
+      description: describeLegCategory(avgPercent),
       legCount: bucket.indices.length,
+      legWinCount: bucket.wins,
       legs: legLabels.join(', '),
-      relativePercent: Math.round(relative),
+      relativePercent: Math.round(avgPercent),
     });
   }
 
@@ -634,8 +649,8 @@ function buildLegCategories(
 
 function describeLegCategory(relativePercent: number): string {
   if (relativePercent < -5) return 'Stark';
-  if (relativePercent < 5) return 'Normal';
-  if (relativePercent < 15) return 'Svag';
+  if (relativePercent <= 5) return 'Normal';
+  if (relativePercent <= 15) return 'Svag';
   return 'Mycket svag';
 }
 
