@@ -344,8 +344,8 @@ export default function FriendsScreen() {
                   <View style={[styles.activityDot, { backgroundColor: colors.accent }]} />
                 </View>
                 <View style={styles.legendTextWrap}>
-                  <Text style={styles.legendLabel}>Startlista idag</Text>
-                  <Text style={styles.legendDesc}>Vännen har en start publicerad idag</Text>
+                  <Text style={styles.legendLabel}>Har startat, enl. startlista, idag</Text>
+                  <Text style={styles.legendDesc}>Vännen har en startat i en tävling idag</Text>
                 </View>
               </View>
 

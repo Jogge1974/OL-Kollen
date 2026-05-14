@@ -15,6 +15,7 @@ type PushSyncResponse = {
 
 export function PushSyncController() {
   const user = useAuthStore((state) => state.user);
+  const isRestoringProfile = useAuthStore((state) => state.isRestoringProfile);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const notificationSettings = usePreferencesStore((state) => state.notificationSettings);
   const favoriteClasses = usePreferencesStore((state) => state.favoriteClasses);
@@ -35,6 +36,11 @@ export function PushSyncController() {
       return;
     }
 
+    // Don't sync while the login flow is still restoring server data
+    if (isRestoringProfile) {
+      return;
+    }
+
     const fingerprint = JSON.stringify({
       calendarDefaultFilterTemplate,
       calendarFilterPresets,
@@ -46,6 +52,13 @@ export function PushSyncController() {
     });
 
     if (lastFingerprintRef.current === fingerprint) {
+      return;
+    }
+
+    // After login/restore: record the current state without syncing.
+    // Only subsequent user-initiated changes should trigger a sync.
+    if (lastFingerprintRef.current === null) {
+      lastFingerprintRef.current = fingerprint;
       return;
     }
 
@@ -110,7 +123,7 @@ export function PushSyncController() {
     return () => {
       isCancelled = true;
     };
-  }, [calendarDefaultFilterTemplate, calendarFilterPresets, favoriteClasses, favoriteEvents, friends, notificationSettings, user]);
+  }, [calendarDefaultFilterTemplate, calendarFilterPresets, favoriteClasses, favoriteEvents, friends, isRestoringProfile, notificationSettings, user]);
 
   return null;
 }

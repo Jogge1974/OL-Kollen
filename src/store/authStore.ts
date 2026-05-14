@@ -8,6 +8,7 @@ import { clearStoredEventorWebSessionCookie } from '@/src/services/eventorWebSes
 import { registerForPushNotificationsAsync } from '@/src/services/pushNotifications';
 import { getStoredJson, removeStoredValue, setStoredJson } from '@/src/services/secureStorage';
 import { hasSupabaseRuntimeConfig, invokeSupabaseFunction } from '@/src/services/supabase';
+import { useFriendsStore } from '@/src/store/friendsStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { AuthenticatedUser, EventorLoginInput, PersistedAuthSession } from '@/src/types/user';
 
@@ -18,6 +19,7 @@ type AuthState = {
   error: string | null;
   hydrateSession: () => Promise<void>;
   isHydrated: boolean;
+  isRestoringProfile: boolean;
   isSubmitting: boolean;
   rememberedUsername: string;
   signInWithEventor: (input: EventorLoginInput & { rememberMe: boolean; saveEncryptedLogin: boolean }) => Promise<void>;
@@ -50,6 +52,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   isHydrated: false,
+  isRestoringProfile: false,
   isSubmitting: false,
   rememberedUsername: '',
   signInWithEventor: async ({ password, rememberMe, saveEncryptedLogin, username }) => {
@@ -72,8 +75,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         await setStoredJson(REMEMBERED_USERNAME_KEY, username);
       }
 
+      const willRestore = hasSupabaseRuntimeConfig() && Boolean(enrichedUser.personId);
+
       set((state) => ({
         error: null,
+        isRestoringProfile: willRestore,
         isSubmitting: false,
         rememberedUsername: rememberMe ? username : state.rememberedUsername,
         user: enrichedUser,
@@ -89,7 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       // Fetch server-side profile (favorites, preferences, notification settings) and restore
-      if (hasSupabaseRuntimeConfig() && enrichedUser.personId) {
+      if (willRestore) {
         try {
           const response = await invokeSupabaseFunction<{
             ok: boolean;
@@ -101,6 +107,16 @@ export const useAuthStore = create<AuthState>((set) => ({
               id: string;
               name: string;
               startDate: string;
+            }>;
+            friends?: Array<{
+              birthYear: number | null;
+              club: string;
+              gender: string;
+              name: string;
+              personId: number;
+              pushOnEntry: boolean;
+              pushOnResult: boolean;
+              pushOnStart: boolean;
             }>;
             preferences?: {
               calendarDefaultFilterTemplate?: unknown;
@@ -131,9 +147,13 @@ export const useAuthStore = create<AuthState>((set) => ({
               notificationSettings: response.notificationSettings ?? null,
               preferences: response.preferences ?? null,
             });
+
+            await useFriendsStore.getState().restoreFromServer(enrichedUser.personId, response.friends ?? []);
           }
         } catch {
           // Best-effort: don't block login if fetch fails
+        } finally {
+          set({ isRestoringProfile: false });
         }
       }
     } catch (error) {

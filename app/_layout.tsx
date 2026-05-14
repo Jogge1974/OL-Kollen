@@ -25,6 +25,7 @@ export default function RootLayout() {
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const hydrateSession = useAuthStore((state) => state.hydrateSession);
   const user = useAuthStore((state) => state.user);
+  const isRestoringProfile = useAuthStore((state) => state.isRestoringProfile);
   const isPreferencesHydrated = usePreferencesStore((state) => state.isHydrated);
   const hydratePreferences = usePreferencesStore((state) => state.hydratePreferences);
   const isFriendsHydrated = useFriendsStore((state) => state.isHydrated);
@@ -42,15 +43,17 @@ export default function RootLayout() {
 
   React.useEffect(() => {
     if (!isHydrated) return;
+    // Don't hydrate friends from local storage while signIn is restoring from server
+    if (isRestoringProfile) return;
     if (user?.personId) {
       void hydrateFriends(user.personId);
     } else {
       clearFriends();
     }
-  }, [isHydrated, user?.personId, hydrateFriends, clearFriends]);
+  }, [isHydrated, isRestoringProfile, user?.personId, hydrateFriends, clearFriends]);
 
-  // Friends hydration depends on user; treat as ready when logged out or user has no personId
-  const friendsReady = isFriendsHydrated || (isHydrated && !user) || (isHydrated && !!user && !user.personId);
+  // Friends hydration depends on user; treat as ready when logged out, no personId, or restore in progress (friends will be set by restoreFromServer)
+  const friendsReady = isFriendsHydrated || isRestoringProfile || (isHydrated && !user) || (isHydrated && !!user && !user.personId);
 
   console.log('[DEBUG] Layout state:', { fontsLoaded, isHydrated, isPreferencesHydrated, friendsReady, isFriendsHydrated, hasUser: !!user });
 

@@ -178,7 +178,7 @@ export default function SettingsScreen() {
           expanded={isCalendarFiltersExpanded}
           icon="funnel-outline"
           onPress={() => setIsCalendarFiltersExpanded((current) => !current)}
-          title="Kalenderfilter"
+          title={calendarFilterPresets.length > 0 ? `Kalenderfilter (${calendarFilterPresets.length})` : 'Kalenderfilter'}
           variant="compact"
         >
           <View style={styles.sectionContent}>

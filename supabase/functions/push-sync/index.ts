@@ -92,7 +92,7 @@ Deno.serve(async (request) => {
 
     // --- FETCH PROFILE: return favorites + preferences for this person ---
     if (action === 'fetch-profile') {
-      const [{ data: serverFavorites, error: fetchError }, { data: userRow, error: userError }, { data: notifRow, error: notifError }] =
+      const [{ data: serverFavorites, error: fetchError }, { data: userRow, error: userError }, { data: notifRow, error: notifError }, { data: friendRows, error: friendError }] =
         await Promise.all([
           supabase
             .from('favorite_event_watches')
@@ -108,6 +108,10 @@ Deno.serve(async (request) => {
             .select('push_on_start_list, push_on_result_list')
             .eq('person_id', personId)
             .maybeSingle(),
+          supabase
+            .from('friend_watches')
+            .select('friend_person_id, friend_name, friend_club, friend_gender, friend_birth_year, push_on_entry, push_on_result, push_on_start')
+            .eq('person_id', personId),
         ]);
 
       if (fetchError) {
@@ -128,6 +132,16 @@ Deno.serve(async (request) => {
             id: row.event_id,
             name: row.event_name ?? '',
             startDate: row.event_date ?? '',
+          })),
+          friends: (friendRows ?? []).map((row) => ({
+            birthYear: row.friend_birth_year ?? null,
+            club: row.friend_club ?? '',
+            gender: row.friend_gender ?? '',
+            name: row.friend_name ?? '',
+            personId: Number(row.friend_person_id),
+            pushOnEntry: Boolean(row.push_on_entry),
+            pushOnResult: Boolean(row.push_on_result),
+            pushOnStart: Boolean(row.push_on_start),
           })),
           preferences: preferencesJson,
           notificationSettings: notifRow

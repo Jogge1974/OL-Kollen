@@ -15,7 +15,7 @@ export const DEFAULT_CALENDAR_FILTER_TEMPLATE: CalendarFilterTemplate = {
   classificationIds: [1, 2],
   districtIds: [],
   fromOffsetDays: -2,
-  showEntryCountsInList: false,
+  showEntryCountsInList: true,
   toOffsetDays: 10,
 };
 
@@ -34,7 +34,7 @@ export function resolveCalendarFilterTemplate(template: CalendarFilterTemplate, 
     classificationIds: [...template.classificationIds].sort((a, b) => a - b),
     districtIds: [...template.districtIds].sort((a, b) => a - b),
     fromDate: formatApiDate(getRelativeDate(now, template.fromOffsetDays)),
-    showEntryCountsInList: template.showEntryCountsInList ?? false,
+    showEntryCountsInList: template.showEntryCountsInList ?? true,
     toDate: formatApiDate(getRelativeDate(now, template.toOffsetDays)),
   };
 }
