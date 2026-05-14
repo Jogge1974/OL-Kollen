@@ -345,7 +345,7 @@ export default function FriendsScreen() {
                 </View>
                 <View style={styles.legendTextWrap}>
                   <Text style={styles.legendLabel}>Har startat, enl. startlista, idag</Text>
-                  <Text style={styles.legendDesc}>Vännen har en startat i en tävling idag</Text>
+                  <Text style={styles.legendDesc}>Vännen har startat i en tävling idag</Text>
                 </View>
               </View>
 
