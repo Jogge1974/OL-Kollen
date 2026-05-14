@@ -42,19 +42,17 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-zåäö0-9]/g, '');
 }
 
-function isNameMatch(eventorName: string, liveName: string): boolean {
+function nameSimilarity(eventorName: string, liveName: string): number {
   const a = normalize(eventorName);
   const b = normalize(liveName);
 
-  if (a === b) return true;
+  if (a === b) return 1;
 
   const maxLen = Math.max(a.length, b.length);
-  if (maxLen === 0) return false;
+  if (maxLen === 0) return 0;
 
   const distance = levenshteinDistance(a, b);
-  const similarity = 1 - distance / maxLen;
-
-  return similarity >= 0.6;
+  return 1 - distance / maxLen;
 }
 
 export async function findLiveCompetition(eventName: string, eventDate: string): Promise<LiveresultatMatch | null> {
@@ -70,15 +68,25 @@ export async function findLiveCompetition(eventName: string, eventDate: string):
 
     const competitions: LiveCompetition[] = await competitionsResponse.json();
 
+    let bestMatch: LiveCompetition | null = null;
+    let bestSimilarity = 0;
+
     for (const comp of competitions) {
       if (comp.date !== eventDate) continue;
-      if (isNameMatch(eventName, comp.name)) {
-        return {
-          liveCompetitionId: comp.id,
-          liveName: comp.name,
-          url: `https://orientering.liveidrott.se/competitions/${comp.id}`,
-        };
+
+      const similarity = nameSimilarity(eventName, comp.name);
+      if (similarity >= 0.6 && similarity > bestSimilarity) {
+        bestSimilarity = similarity;
+        bestMatch = comp;
       }
+    }
+
+    if (bestMatch) {
+      return {
+        liveCompetitionId: bestMatch.id,
+        liveName: bestMatch.name,
+        url: `https://orientering.liveidrott.se/competitions/${bestMatch.id}`,
+      };
     }
 
     return null;

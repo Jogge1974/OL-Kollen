@@ -54,9 +54,40 @@ export type EventAnalysisView = {
   classEntriesCount: number | null;
   classLabel: string;
   legCount: number;
+  legCategories: EventAnalysisLegCategory[];
   rows: EventAnalysisLeg[];
   summary: EventAnalysisSummary;
   targetPersonId: string | null;
+};
+
+export type EventAnalysisLegCategory = {
+  avgPercent: number;
+  categoryLabel: string;
+  description: string;
+  legCount: number;
+  legs: string;
+};
+
+export type EventAnalysisHeadToHead = {
+  legs: EventAnalysisH2HLeg[];
+  opponentName: string;
+  opponentOrganisation: string;
+  opponentPersonId: string | null;
+  targetName: string;
+  targetWins: number;
+  opponentWins: number;
+  draws: number;
+};
+
+export type EventAnalysisH2HLeg = {
+  legLabel: string;
+  targetSplitLabel: string | null;
+  targetTotalLabel: string | null;
+  opponentSplitLabel: string | null;
+  opponentTotalLabel: string | null;
+  splitDiffLabel: string | null;
+  totalDiffLabel: string | null;
+  result: 'win' | 'loss' | 'draw' | null;
 };
 
 export function buildEventAnalysis(section: EventSplitTimesSection, targetPersonId?: string | null): EventAnalysisView | null {
@@ -107,6 +138,8 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
 
   const { firstThird, secondThird, thirdThird } = buildThirdProgress(rows, target, speedFactor);
 
+  const legCategories = buildLegCategories(rows, target, bestSplitTimes);
+
   const winner = rows.find((row) => row.position === '1') ?? officialRows[0] ?? null;
   const winnerName = winner ? winner.primary : null;
   const winnerTimeLabel = winner?.totalTimeSeconds != null ? formatTime(winner.totalTimeSeconds) : null;
@@ -116,6 +149,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
     classEntriesCount: section.classEntriesCount ?? null,
     classLabel: section.classLabel,
     legCount: splitCount,
+    legCategories,
     rows: legs,
     summary: {
       adjustedTotalPlaceIfAllAvoidLoss,
@@ -529,4 +563,140 @@ function formatStatus(status?: string | null) {
   };
 
   return statusMap[normalized] ?? normalized;
+}
+
+// --- Leg categories by winning time ---
+
+type LegCategoryBucket = 'Kort' | 'Medelkort' | 'Medel' | 'Medellång' | 'Lång';
+
+function classifyLegByWinnerTime(winnerTimeSeconds: number | null): LegCategoryBucket | null {
+  if (winnerTimeSeconds === null || winnerTimeSeconds <= 0) return null;
+  if (winnerTimeSeconds < 70) return 'Kort';
+  if (winnerTimeSeconds < 150) return 'Medelkort';
+  if (winnerTimeSeconds < 250) return 'Medel';
+  if (winnerTimeSeconds < 390) return 'Medellång';
+  return 'Lång';
+}
+
+function buildLegCategories(
+  rows: EventSplitTimesRow[],
+  target: EventSplitTimesRow,
+  bestSplitTimes: Array<number | null>,
+): EventAnalysisLegCategory[] {
+  const splitCount = bestSplitTimes.length;
+  const buckets: Record<LegCategoryBucket, { indices: number[]; percents: number[] }> = {
+    Kort: { indices: [], percents: [] },
+    Medelkort: { indices: [], percents: [] },
+    Medel: { indices: [], percents: [] },
+    Medellång: { indices: [], percents: [] },
+    Lång: { indices: [], percents: [] },
+  };
+
+  for (let i = 0; i < splitCount; i += 1) {
+    const winnerTime = bestSplitTimes[i];
+    const category = classifyLegByWinnerTime(winnerTime);
+    if (!category) continue;
+
+    const targetSplit = getSplitTime(target, i + 1);
+    if (targetSplit === null || winnerTime === null || winnerTime <= 0) continue;
+
+    const percent = ((targetSplit - winnerTime) / winnerTime) * 100;
+    buckets[category].indices.push(i);
+    buckets[category].percents.push(percent);
+  }
+
+  const order: LegCategoryBucket[] = ['Kort', 'Medelkort', 'Medel', 'Medellång', 'Lång'];
+  const result: EventAnalysisLegCategory[] = [];
+
+  for (const cat of order) {
+    const bucket = buckets[cat];
+    if (bucket.indices.length === 0) continue;
+
+    const avg = bucket.percents.reduce((sum, v) => sum + v, 0) / bucket.percents.length;
+    const legLabels = bucket.indices.map((idx) => getLegLabel(idx, splitCount));
+
+    result.push({
+      avgPercent: Math.round(avg),
+      categoryLabel: cat,
+      description: describeLegCategory(avg),
+      legCount: bucket.indices.length,
+      legs: legLabels.join(', '),
+    });
+  }
+
+  return result;
+}
+
+function describeLegCategory(avgPercent: number): string {
+  if (avgPercent < 5) return 'Stark';
+  if (avgPercent < 15) return 'Normal';
+  if (avgPercent < 30) return 'Svag';
+  return 'Mycket svag';
+}
+
+// --- Head-to-Head ---
+
+export function buildHeadToHead(
+  section: EventSplitTimesSection,
+  targetPersonId: string,
+  opponentPersonId: string,
+): EventAnalysisHeadToHead | null {
+  const rows = section.rows.map(ensureFinishSplitRow);
+  const target = rows.find((row) => row.personId === targetPersonId);
+  const opponent = rows.find((row) => row.personId === opponentPersonId);
+
+  if (!target || !opponent) return null;
+
+  const splitCount = Math.max(target.splitCount, opponent.splitCount);
+  const legs: EventAnalysisH2HLeg[] = [];
+  let targetWins = 0;
+  let opponentWins = 0;
+  let draws = 0;
+
+  for (let i = 0; i < splitCount; i += 1) {
+    const legLabel = getLegLabel(i, splitCount);
+    const targetSplit = getSplitTime(target, i + 1);
+    const opponentSplit = getSplitTime(opponent, i + 1);
+    const targetTotal = getTotalAtLeg(target, i);
+    const opponentTotal = getTotalAtLeg(opponent, i);
+
+    let result: 'win' | 'loss' | 'draw' | null = null;
+    if (targetSplit !== null && opponentSplit !== null) {
+      if (targetSplit < opponentSplit) {
+        result = 'win';
+        targetWins += 1;
+      } else if (targetSplit > opponentSplit) {
+        result = 'loss';
+        opponentWins += 1;
+      } else {
+        result = 'draw';
+        draws += 1;
+      }
+    }
+
+    const splitDiff = targetSplit !== null && opponentSplit !== null ? targetSplit - opponentSplit : null;
+    const totalDiff = targetTotal !== null && opponentTotal !== null ? targetTotal - opponentTotal : null;
+
+    legs.push({
+      legLabel,
+      targetSplitLabel: targetSplit !== null ? formatTime(targetSplit) : null,
+      targetTotalLabel: targetTotal !== null ? formatTime(targetTotal) : null,
+      opponentSplitLabel: opponentSplit !== null ? formatTime(opponentSplit) : null,
+      opponentTotalLabel: opponentTotal !== null ? formatTime(opponentTotal) : null,
+      splitDiffLabel: splitDiff !== null ? `${splitDiff <= 0 ? '-' : '+'}${formatTime(Math.abs(splitDiff))}` : null,
+      totalDiffLabel: totalDiff !== null ? `${totalDiff <= 0 ? '-' : '+'}${formatTime(Math.abs(totalDiff))}` : null,
+      result,
+    });
+  }
+
+  return {
+    legs,
+    opponentName: opponent.primary,
+    opponentOrganisation: opponent.organisation,
+    opponentPersonId: opponent.personId ?? null,
+    targetName: target.primary,
+    targetWins,
+    opponentWins,
+    draws,
+  };
 }

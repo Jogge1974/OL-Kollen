@@ -6,7 +6,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
-import { buildEventAnalysis } from '@/src/services/eventAnalysis';
+import { buildEventAnalysis, buildHeadToHead, EventAnalysisHeadToHead } from '@/src/services/eventAnalysis';
 import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
 import { getClassificationTone } from '@/src/theme/colors';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
@@ -30,6 +30,8 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
   const { colors, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const currentState = state;
+  const [legTab, setLegTab] = React.useState<'splits' | 'h2h'>('splits');
+  const [h2hOpponentId, setH2hOpponentId] = React.useState<string | null>(null);
 
   const selectedSection = React.useMemo(
     () => currentState?.sections.find((section) => section.classLabel === currentState?.initialClassLabel) ?? currentState?.sections[0] ?? null,
@@ -40,6 +42,23 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
     () => (selectedSection ? buildEventAnalysis(selectedSection, currentState?.initialPersonId ?? null) : null),
     [currentState?.initialPersonId, selectedSection],
   );
+
+  const h2hData = React.useMemo<EventAnalysisHeadToHead | null>(() => {
+    if (!selectedSection || !analysis?.targetPersonId || !h2hOpponentId) return null;
+    return buildHeadToHead(selectedSection, analysis.targetPersonId, h2hOpponentId);
+  }, [selectedSection, analysis?.targetPersonId, h2hOpponentId]);
+
+  const h2hCandidates = React.useMemo(() => {
+    if (!selectedSection || !analysis?.targetPersonId) return [];
+    return selectedSection.rows
+      .filter((row) => row.personId !== analysis.targetPersonId && row.status === 'OK' && row.personId)
+      .map((row) => ({ personId: row.personId!, label: row.primary ?? row.personId!, organisation: row.organisation }));
+  }, [selectedSection, analysis?.targetPersonId]);
+
+  React.useEffect(() => {
+    setLegTab('splits');
+    setH2hOpponentId(null);
+  }, [currentState?.eventId, currentState?.initialPersonId]);
 
   if (!currentState) {
     return null;
@@ -162,55 +181,165 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                 ))}
               </View>
 
-              <View style={styles.tableCard}>
-                <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionHeaderTitle}>Sträcka för sträcka</Text>
-                </View>
-
-                <View style={styles.legHeaderRow}>
-                  <Text style={[styles.legHeaderCell, styles.legHeaderNo]}>#</Text>
-                  <Text style={[styles.legHeaderCell, styles.legHeaderMetric]}>Sträcka</Text>
-                  <Text style={[styles.legHeaderCell, styles.legHeaderMetric]}>Totalt</Text>
-                  <Text style={[styles.legHeaderCell, styles.legHeaderLoss]}>Bomtid</Text>
-                  <Text style={[styles.legHeaderCell, styles.legHeaderLossPlace]}>Bomfri plac.</Text>
-                </View>
-
-                {analysis.rows.map((row) => (
-                  <View key={row.legLabel} style={styles.legRow}>
-                    <View style={[styles.legCell, styles.legCellNo]}>
-                      <Text style={styles.legNo}>{row.legLabel}</Text>
-                    </View>
-
-                    <View style={[styles.legCell, styles.legCellMetric]}>
-                      <Text style={[styles.legPrimary, getPlacementToneStyle(row.splitPlace, styles)]}>
-                        {row.splitTimeLabel ?? '-'}
-                        {row.splitPlace !== null ? ` (${row.splitPlace})` : ''}
-                      </Text>
-                      <Text style={styles.legSecondary}>
-                        {row.splitDiffLabel ?? '-'}
-                        {row.splitLossSeconds && row.splitLossSeconds > 0 ? <Text style={styles.lossDot}> ●</Text> : null}
-                      </Text>
-                    </View>
-
-                    <View style={[styles.legCell, styles.legCellMetric]}>
-                      <Text style={[styles.legPrimary, getPlacementToneStyle(row.totalPlace, styles)]}>
-                        {row.totalTimeLabel ?? '-'}
-                        {row.totalPlace !== null ? ` (${row.totalPlace})` : ''}
-                      </Text>
-                      <Text style={styles.legSecondary}>
-                        {row.totalDiffLabel ?? '-'}
-                      </Text>
-                    </View>
-
-                    <View style={[styles.legCell, styles.legCellLoss]}>
-                      <Text style={[styles.legPrimary, row.estimatedTimeLossLabel ? styles.lossPrimary : null]}>{row.estimatedTimeLossLabel ?? '-'}</Text>
-                    </View>
-
-                    <View style={[styles.legCell, styles.legCellLossPlace]}>
-                      <Text style={styles.legPrimary}>{row.legPlaceWithoutLoss !== null ? `${row.legPlaceWithoutLoss}` : '-'}</Text>
-                    </View>
+              {/* === BANAN STRÄCKINDELAD === */}
+              {analysis.legCategories.length > 0 ? (
+                <View style={styles.thirdCard}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionHeaderTitle}>Banan sträckindelad</Text>
+                    <Ionicons color={colors.primary} name="bar-chart-outline" size={18} />
                   </View>
-                ))}
+                  <Text style={styles.legCategoryHint}>Sträckor kategoriserade efter sträckbästa tid</Text>
+                  {analysis.legCategories.map((cat) => (
+                    <View key={cat.categoryLabel} style={styles.thirdRow}>
+                      <View style={styles.thirdLabelWrap}>
+                        <Text style={styles.thirdLabel}>{cat.categoryLabel}</Text>
+                        <Text style={styles.thirdDescription}>{cat.description} ({cat.legCount} str.)</Text>
+                      </View>
+                      <View style={styles.thirdBarTrack}>
+                        <View
+                          style={[
+                            styles.thirdBarFill,
+                            cat.avgPercent > 15 ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
+                            { width: `${Math.min(100, Math.max(12, Math.abs(cat.avgPercent)))}%` },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.thirdPercent, cat.avgPercent > 15 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
+                        +{cat.avgPercent}%
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {/* === STRÄCKA FÖR STRÄCKA / HEAD-TO-HEAD TABS === */}
+              <View style={styles.tableCard}>
+                <View style={styles.tabRow}>
+                  <Pressable onPress={() => setLegTab('splits')} style={[styles.tab, legTab === 'splits' ? styles.tabActive : null]}>
+                    <Text style={[styles.tabText, legTab === 'splits' ? styles.tabTextActive : null]}>Sträcka för sträcka</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setLegTab('h2h')} style={[styles.tab, legTab === 'h2h' ? styles.tabActive : null]}>
+                    <Text style={[styles.tabText, legTab === 'h2h' ? styles.tabTextActive : null]}>Head-to-Head</Text>
+                  </Pressable>
+                </View>
+
+                {legTab === 'splits' ? (
+                  <>
+                    <View style={styles.legHeaderRow}>
+                      <Text style={[styles.legHeaderCell, styles.legHeaderNo]}>#</Text>
+                      <Text style={[styles.legHeaderCell, styles.legHeaderMetric]}>Sträcka</Text>
+                      <Text style={[styles.legHeaderCell, styles.legHeaderMetric]}>Totalt</Text>
+                      <Text style={[styles.legHeaderCell, styles.legHeaderLoss]}>Bomtid</Text>
+                      <Text style={[styles.legHeaderCell, styles.legHeaderLossPlace]}>Bomfri plac.</Text>
+                    </View>
+
+                    {analysis.rows.map((row) => (
+                      <View key={row.legLabel} style={styles.legRow}>
+                        <View style={[styles.legCell, styles.legCellNo]}>
+                          <Text style={styles.legNo}>{row.legLabel}</Text>
+                        </View>
+                        <View style={[styles.legCell, styles.legCellMetric]}>
+                          <Text style={[styles.legPrimary, getPlacementToneStyle(row.splitPlace, styles)]}>
+                            {row.splitTimeLabel ?? '-'}
+                            {row.splitPlace !== null ? ` (${row.splitPlace})` : ''}
+                          </Text>
+                          <Text style={styles.legSecondary}>
+                            {row.splitDiffLabel ?? '-'}
+                            {row.splitLossSeconds && row.splitLossSeconds > 0 ? <Text style={styles.lossDot}> ●</Text> : null}
+                          </Text>
+                        </View>
+                        <View style={[styles.legCell, styles.legCellMetric]}>
+                          <Text style={[styles.legPrimary, getPlacementToneStyle(row.totalPlace, styles)]}>
+                            {row.totalTimeLabel ?? '-'}
+                            {row.totalPlace !== null ? ` (${row.totalPlace})` : ''}
+                          </Text>
+                          <Text style={styles.legSecondary}>{row.totalDiffLabel ?? '-'}</Text>
+                        </View>
+                        <View style={[styles.legCell, styles.legCellLoss]}>
+                          <Text style={[styles.legPrimary, row.estimatedTimeLossLabel ? styles.lossPrimary : null]}>{row.estimatedTimeLossLabel ?? '-'}</Text>
+                        </View>
+                        <View style={[styles.legCell, styles.legCellLossPlace]}>
+                          <Text style={styles.legPrimary}>{row.legPlaceWithoutLoss !== null ? `${row.legPlaceWithoutLoss}` : '-'}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {/* H2H opponent picker */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.h2hPickerRow}>
+                      {h2hCandidates.map((candidate) => (
+                        <Pressable
+                          key={candidate.personId}
+                          onPress={() => setH2hOpponentId(candidate.personId)}
+                          style={[styles.h2hChip, h2hOpponentId === candidate.personId ? styles.h2hChipActive : null]}
+                        >
+                          <Text numberOfLines={1} style={[styles.h2hChipText, h2hOpponentId === candidate.personId ? styles.h2hChipTextActive : null]}>
+                            {candidate.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+
+                    {h2hData ? (
+                      <>
+                        <View style={styles.h2hSummaryRow}>
+                          <View style={styles.h2hSummaryCell}>
+                            <Text style={[styles.h2hSummaryValue, styles.h2hWin]}>{h2hData.targetWins}</Text>
+                            <Text style={styles.h2hSummaryLabel}>{h2hData.targetName.split(' ')[0]}</Text>
+                          </View>
+                          <View style={styles.h2hSummaryCell}>
+                            <Text style={styles.h2hSummaryValue}>{h2hData.draws}</Text>
+                            <Text style={styles.h2hSummaryLabel}>Lika</Text>
+                          </View>
+                          <View style={styles.h2hSummaryCell}>
+                            <Text style={[styles.h2hSummaryValue, styles.h2hLoss]}>{h2hData.opponentWins}</Text>
+                            <Text style={styles.h2hSummaryLabel}>{h2hData.opponentName.split(' ')[0]}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.h2hHeaderRow}>
+                          <Text style={[styles.h2hHeaderCell, styles.h2hCellNo]}>#</Text>
+                          <Text style={[styles.h2hHeaderCell, styles.h2hCellTime]}>Du</Text>
+                          <Text style={[styles.h2hHeaderCell, styles.h2hCellTime]}>Motståndare</Text>
+                          <Text style={[styles.h2hHeaderCell, styles.h2hCellDiff, { textAlign: 'right' }]}>Diff</Text>
+                        </View>
+
+                        {h2hData.legs.map((leg) => (
+                          <View
+                            key={leg.legLabel}
+                            style={[
+                              styles.h2hRow,
+                              leg.result === 'win' ? styles.h2hRowWin : leg.result === 'loss' ? styles.h2hRowLoss : leg.result === 'draw' ? styles.h2hRowDraw : null,
+                            ]}
+                          >
+                            <View style={[styles.h2hCell, styles.h2hCellNo]}>
+                              <Text style={styles.legNo}>{leg.legLabel}</Text>
+                            </View>
+                            <View style={[styles.h2hCell, styles.h2hCellTime]}>
+                              <Text style={styles.legPrimary}>{leg.targetSplitLabel ?? '-'}</Text>
+                              <Text style={styles.legSecondary}>{leg.targetTotalLabel ?? '-'}</Text>
+                            </View>
+                            <View style={[styles.h2hCell, styles.h2hCellTime]}>
+                              <Text style={styles.legPrimary}>{leg.opponentSplitLabel ?? '-'}</Text>
+                              <Text style={styles.legSecondary}>{leg.opponentTotalLabel ?? '-'}</Text>
+                            </View>
+                            <View style={[styles.h2hCell, styles.h2hCellDiff]}>
+                              <Text style={[styles.legPrimary, leg.result === 'win' ? styles.h2hWin : leg.result === 'loss' ? styles.h2hLoss : null]}>
+                                {leg.splitDiffLabel ?? '-'}
+                              </Text>
+                              <Text style={[styles.legSecondary, leg.result === 'win' ? styles.h2hWin : leg.result === 'loss' ? styles.h2hLoss : null]}>
+                                {leg.totalDiffLabel ?? '-'}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    ) : (
+                      <Text style={styles.h2hPlaceholder}>Välj en löpare ovan för att jämföra</Text>
+                    )}
+                  </>
+                )}
               </View>
             </ScrollView>
           ) : null}
@@ -699,6 +828,139 @@ function createStyles(colors: ColorPalette) {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  legCategoryHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: -4,
+  },
+  tabRow: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 0,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  tabActive: {
+    borderBottomColor: colors.primaryDeep,
+    borderBottomWidth: 2,
+  },
+  tabText: {
+    ...typography.captionStrong,
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  tabTextActive: {
+    color: colors.primaryDeep,
+  },
+  h2hPickerRow: {
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  h2hChip: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  h2hChipActive: {
+    backgroundColor: colors.primaryDeep,
+    borderColor: colors.primaryDeep,
+  },
+  h2hChipText: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 12,
+  },
+  h2hChipTextActive: {
+    color: '#FFFFFF',
+  },
+  h2hSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing.sm,
+  },
+  h2hSummaryCell: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  h2hSummaryValue: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    fontSize: 22,
+  },
+  h2hSummaryLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  h2hWin: {
+    color: colors.primary,
+  },
+  h2hLoss: {
+    color: colors.error,
+  },
+  h2hHeaderRow: {
+    borderBottomColor: colors.borderSoft,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  h2hHeaderCell: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  h2hCellNo: {
+    flexBasis: '12%',
+  },
+  h2hCellTime: {
+    flex: 1,
+  },
+  h2hCellDiff: {
+    alignItems: 'flex-end',
+    flexBasis: '22%',
+  },
+  h2hRow: {
+    borderBottomColor: colors.borderSoft,
+    borderBottomWidth: 1,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  h2hRowWin: {
+    borderLeftColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  h2hRowLoss: {
+    borderLeftColor: colors.error,
+    backgroundColor: colors.error + '10',
+  },
+  h2hRowDraw: {
+    borderLeftColor: '#F5A623',
+    backgroundColor: '#F5A62310',
+  },
+  h2hCell: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  h2hPlaceholder: {
+    ...typography.caption,
+    color: colors.textMuted,
+    paddingVertical: spacing.lg,
+    textAlign: 'center',
   },
 });
 }
