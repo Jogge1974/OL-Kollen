@@ -598,7 +598,7 @@ function buildLegCategories(
     Lång: { indices: [], percents: [], places: [], wins: 0 },
   };
 
-  for (let i = 0; i < splitCount; i += 1) {
+  for (let i = 0; i < splitCount - 1; i += 1) {
     const winnerTime = bestSplitTimes[i];
     const category = classifyLegByWinnerTime(winnerTime);
     if (!category) continue;

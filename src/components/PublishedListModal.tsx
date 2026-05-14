@@ -263,8 +263,8 @@ export function PublishedListModal({
             {!currentState?.isLoading && !currentState?.error && currentState
               ? currentState.sections
                   .filter((section) => {
-                    // Android: show only the selected section
-                    if (Platform.OS !== 'android' || !selectedAnchorKey) return true;
+                    // Android: show only the selected section (public scope with picker only)
+                    if (Platform.OS !== 'android' || !selectedAnchorKey || currentState.scope === 'organisation') return true;
                     return `section:${section.title}` === selectedAnchorKey;
                   })
                   .map((section) => (

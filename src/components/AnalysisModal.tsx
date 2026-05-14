@@ -207,7 +207,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     <View key={cat.categoryLabel} style={styles.thirdRow}>
                       <View style={styles.thirdLabelWrap}>
                         <Text style={styles.thirdLabel}>{cat.categoryLabel}</Text>
-                        <Text style={styles.thirdDescription}>{cat.description} · {cat.legWinCount}/{cat.legCount} vunna</Text>
+                        <Text style={styles.thirdDescription}>{cat.description} ({cat.legCount} str.)</Text>
                       </View>
                       <View style={styles.thirdBarTrack}>
                         <View

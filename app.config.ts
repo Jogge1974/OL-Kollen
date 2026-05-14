@@ -17,7 +17,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     infoPlist: {
-      ITSAppUsesNonExemptEncryption: false,
+          ITSAppUsesNonExemptEncryption: false,
+          CFBundleDevelopmentRegion: 'sv',
+          CFBundleLocalizations: ['sv'],
     },
     bundleIdentifier: 'se.mastol.kontrollen',
     buildNumber: '11',
