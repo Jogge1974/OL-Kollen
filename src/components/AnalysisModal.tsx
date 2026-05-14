@@ -32,6 +32,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
   const currentState = state;
   const [legTab, setLegTab] = React.useState<'splits' | 'h2h'>('splits');
   const [h2hOpponentId, setH2hOpponentId] = React.useState<string | null>(null);
+  const [h2hPickerExpanded, setH2hPickerExpanded] = React.useState(false);
 
   const selectedSection = React.useMemo(
     () => currentState?.sections.find((section) => section.classLabel === currentState?.initialClassLabel) ?? currentState?.sections[0] ?? null,
@@ -50,14 +51,27 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
 
   const h2hCandidates = React.useMemo(() => {
     if (!selectedSection || !analysis?.targetPersonId) return [];
+    const winnerTime = selectedSection.rows.find((r) => r.position === '1')?.totalTimeSeconds ?? null;
     return selectedSection.rows
       .filter((row) => row.personId !== analysis.targetPersonId && row.status === 'OK' && row.personId)
-      .map((row) => ({ personId: row.personId!, label: row.primary ?? row.personId!, organisation: row.organisation }));
+      .map((row) => {
+        const diffSeconds = row.totalTimeSeconds != null && winnerTime != null ? row.totalTimeSeconds - winnerTime : null;
+        const diffLabel = diffSeconds != null && diffSeconds > 0 ? `+${formatSecondsToTime(diffSeconds)}` : diffSeconds === 0 ? '±0' : null;
+        return {
+          personId: row.personId!,
+          label: row.primary ?? row.personId!,
+          organisation: row.organisation,
+          position: row.position ?? '-',
+          timeLabel: row.totalTimeLabel ?? '-',
+          diffLabel,
+        };
+      });
   }, [selectedSection, analysis?.targetPersonId]);
 
   React.useEffect(() => {
     setLegTab('splits');
     setH2hOpponentId(null);
+    setH2hPickerExpanded(false);
   }, [currentState?.eventId, currentState?.initialPersonId]);
 
   if (!currentState) {
@@ -185,10 +199,10 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
               {analysis.legCategories.length > 0 ? (
                 <View style={styles.thirdCard}>
                   <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionHeaderTitle}>Banan sträckindelad</Text>
+                    <Text style={styles.sectionHeaderTitle}>Sträcklängdsanalys</Text>
                     <Ionicons color={colors.primary} name="bar-chart-outline" size={18} />
                   </View>
-                  <Text style={styles.legCategoryHint}>Sträckor kategoriserade efter sträckbästa tid</Text>
+                  <Text style={styles.legCategoryHint}>Relativt din egen snittfart ({analysis.summary.referencePercentLabel})</Text>
                   {analysis.legCategories.map((cat) => (
                     <View key={cat.categoryLabel} style={styles.thirdRow}>
                       <View style={styles.thirdLabelWrap}>
@@ -199,13 +213,13 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                         <View
                           style={[
                             styles.thirdBarFill,
-                            cat.avgPercent > 15 ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
-                            { width: `${Math.min(100, Math.max(12, Math.abs(cat.avgPercent)))}%` },
+                            cat.relativePercent > 5 ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
+                            { width: `${Math.min(100, Math.max(12, Math.abs(cat.relativePercent) + 10))}%` },
                           ]}
                         />
                       </View>
-                      <Text style={[styles.thirdPercent, cat.avgPercent > 15 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
-                        +{cat.avgPercent}%
+                      <Text style={[styles.thirdPercent, cat.relativePercent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
+                        {cat.relativePercent > 0 ? '+' : ''}{cat.relativePercent}%
                       </Text>
                     </View>
                   ))}
@@ -230,7 +244,6 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                       <Text style={[styles.legHeaderCell, styles.legHeaderMetric]}>Sträcka</Text>
                       <Text style={[styles.legHeaderCell, styles.legHeaderMetric]}>Totalt</Text>
                       <Text style={[styles.legHeaderCell, styles.legHeaderLoss]}>Bomtid</Text>
-                      <Text style={[styles.legHeaderCell, styles.legHeaderLossPlace]}>Bomfri plac.</Text>
                     </View>
 
                     {analysis.rows.map((row) => (
@@ -258,28 +271,37 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                         <View style={[styles.legCell, styles.legCellLoss]}>
                           <Text style={[styles.legPrimary, row.estimatedTimeLossLabel ? styles.lossPrimary : null]}>{row.estimatedTimeLossLabel ?? '-'}</Text>
                         </View>
-                        <View style={[styles.legCell, styles.legCellLossPlace]}>
-                          <Text style={styles.legPrimary}>{row.legPlaceWithoutLoss !== null ? `${row.legPlaceWithoutLoss}` : '-'}</Text>
-                        </View>
                       </View>
                     ))}
                   </>
                 ) : (
                   <>
                     {/* H2H opponent picker */}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.h2hPickerRow}>
-                      {h2hCandidates.map((candidate) => (
-                        <Pressable
-                          key={candidate.personId}
-                          onPress={() => setH2hOpponentId(candidate.personId)}
-                          style={[styles.h2hChip, h2hOpponentId === candidate.personId ? styles.h2hChipActive : null]}
-                        >
-                          <Text numberOfLines={1} style={[styles.h2hChipText, h2hOpponentId === candidate.personId ? styles.h2hChipTextActive : null]}>
-                            {candidate.label}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
+                    <Pressable onPress={() => setH2hPickerExpanded(!h2hPickerExpanded)} style={styles.h2hPickerToggle}>
+                      <Text style={styles.h2hPickerToggleText}>
+                        {h2hOpponentId ? h2hCandidates.find((c) => c.personId === h2hOpponentId)?.label ?? 'Välj duellant' : 'Välj duellant'}
+                      </Text>
+                      <Ionicons color={colors.textSecondary} name={h2hPickerExpanded ? 'chevron-up' : 'chevron-down'} size={16} />
+                    </Pressable>
+                    {h2hPickerExpanded ? (
+                      <ScrollView style={styles.h2hPickerList} nestedScrollEnabled>
+                        {h2hCandidates.map((candidate) => (
+                          <Pressable
+                            key={candidate.personId}
+                            onPress={() => { setH2hOpponentId(candidate.personId); setH2hPickerExpanded(false); }}
+                            style={[styles.h2hPickerItem, h2hOpponentId === candidate.personId ? styles.h2hPickerItemActive : null]}
+                          >
+                            <Text style={styles.h2hPickerPosition}>{candidate.position}</Text>
+                            <View style={styles.h2hPickerNameWrap}>
+                              <Text numberOfLines={1} style={styles.h2hPickerName}>{candidate.label}</Text>
+                              <Text numberOfLines={1} style={styles.h2hPickerOrg}>{candidate.organisation}</Text>
+                            </View>
+                            <Text style={styles.h2hPickerTime}>{candidate.timeLabel}</Text>
+                            <Text style={styles.h2hPickerDiff}>{candidate.diffLabel ?? ''}</Text>
+                          </Pressable>
+                        ))}
+                      </ScrollView>
+                    ) : null}
 
                     {h2hData ? (
                       <>
@@ -336,7 +358,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                         ))}
                       </>
                     ) : (
-                      <Text style={styles.h2hPlaceholder}>Välj en löpare ovan för att jämföra</Text>
+                      <Text style={styles.h2hPlaceholder}>Välj en duellant för att jämföra</Text>
                     )}
                   </>
                 )}
@@ -403,6 +425,14 @@ function MetricLine({ label, value }: { label: string; value: string }) {
       </Text>
     </View>
   );
+}
+
+function formatSecondsToTime(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function getPlacementToneStyle(place: number | null, styles: ReturnType<typeof createStyles>) {
@@ -857,29 +887,75 @@ function createStyles(colors: ColorPalette) {
   tabTextActive: {
     color: colors.primaryDeep,
   },
-  h2hPickerRow: {
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-  },
-  h2hChip: {
+  h2hPickerToggle: {
+    alignItems: 'center',
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
-    borderRadius: 999,
+    borderRadius: 8,
     borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: spacing.sm,
   },
-  h2hChipActive: {
-    backgroundColor: colors.primaryDeep,
-    borderColor: colors.primaryDeep,
-  },
-  h2hChipText: {
+  h2hPickerToggleText: {
     ...typography.captionStrong,
     color: colors.textPrimary,
-    fontSize: 12,
+    fontSize: 13,
   },
-  h2hChipTextActive: {
-    color: '#FFFFFF',
+  h2hPickerList: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: spacing.xs,
+    maxHeight: 220,
+    overflow: 'hidden',
+  },
+  h2hPickerItem: {
+    alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  h2hPickerItemActive: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  h2hPickerPosition: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 12,
+    width: 22,
+  },
+  h2hPickerNameWrap: {
+    flex: 1,
+  },
+  h2hPickerName: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 13,
+  },
+  h2hPickerOrg: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  h2hPickerTime: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 12,
+    width: 52,
+    textAlign: 'right',
+  },
+  h2hPickerDiff: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
+    width: 46,
+    textAlign: 'right',
   },
   h2hSummaryRow: {
     flexDirection: 'row',

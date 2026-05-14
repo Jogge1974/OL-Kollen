@@ -66,6 +66,7 @@ export type EventAnalysisLegCategory = {
   description: string;
   legCount: number;
   legs: string;
+  relativePercent: number;
 };
 
 export type EventAnalysisHeadToHead = {
@@ -138,7 +139,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
 
   const { firstThird, secondThird, thirdThird } = buildThirdProgress(rows, target, speedFactor);
 
-  const legCategories = buildLegCategories(rows, target, bestSplitTimes);
+  const legCategories = buildLegCategories(rows, target, bestSplitTimes, speedFactor);
 
   const winner = rows.find((row) => row.position === '1') ?? officialRows[0] ?? null;
   const winnerName = winner ? winner.primary : null;
@@ -582,8 +583,10 @@ function buildLegCategories(
   rows: EventSplitTimesRow[],
   target: EventSplitTimesRow,
   bestSplitTimes: Array<number | null>,
+  speedFactor: number,
 ): EventAnalysisLegCategory[] {
   const splitCount = bestSplitTimes.length;
+  const referencePercent = (speedFactor - 1) * 100;
   const buckets: Record<LegCategoryBucket, { indices: number[]; percents: number[] }> = {
     Kort: { indices: [], percents: [] },
     Medelkort: { indices: [], percents: [] },
@@ -613,24 +616,26 @@ function buildLegCategories(
     if (bucket.indices.length === 0) continue;
 
     const avg = bucket.percents.reduce((sum, v) => sum + v, 0) / bucket.percents.length;
+    const relative = avg - referencePercent;
     const legLabels = bucket.indices.map((idx) => getLegLabel(idx, splitCount));
 
     result.push({
       avgPercent: Math.round(avg),
       categoryLabel: cat,
-      description: describeLegCategory(avg),
+      description: describeLegCategory(relative),
       legCount: bucket.indices.length,
       legs: legLabels.join(', '),
+      relativePercent: Math.round(relative),
     });
   }
 
   return result;
 }
 
-function describeLegCategory(avgPercent: number): string {
-  if (avgPercent < 5) return 'Stark';
-  if (avgPercent < 15) return 'Normal';
-  if (avgPercent < 30) return 'Svag';
+function describeLegCategory(relativePercent: number): string {
+  if (relativePercent < -5) return 'Stark';
+  if (relativePercent < 5) return 'Normal';
+  if (relativePercent < 15) return 'Svag';
   return 'Mycket svag';
 }
 
