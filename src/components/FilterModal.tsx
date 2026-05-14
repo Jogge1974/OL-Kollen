@@ -130,13 +130,13 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   };
 
   const handleReset = () => {
-    setDraft({ ...createDefaultCalendarFilters(undefined, calendarDefaultFilterTemplate), showEntryCountsInList: draft.showEntryCountsInList });
+    setDraft(createDefaultCalendarFilters(undefined, calendarDefaultFilterTemplate));
     setValidationError(null);
     setActiveDateField(null);
   };
 
   const applyTemplate = (template: typeof calendarDefaultFilterTemplate) => {
-    setDraft({ ...resolveCalendarFilterTemplate(template), showEntryCountsInList: draft.showEntryCountsInList });
+    setDraft(resolveCalendarFilterTemplate(template));
     setValidationError(null);
     setActiveDateField(null);
   };

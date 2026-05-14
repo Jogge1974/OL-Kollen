@@ -81,6 +81,7 @@ function normalizeCalendarFilterTemplate(template?: Partial<CalendarFilterTempla
     classificationIds: normalizeNumberArray(template?.classificationIds, fallback.classificationIds),
     districtIds: normalizeNumberArray(template?.districtIds, fallback.districtIds),
     fromOffsetDays: normalizeOffset(template?.fromOffsetDays, fallback.fromOffsetDays),
+    showEntryCountsInList: template?.showEntryCountsInList === true,
     toOffsetDays: normalizeOffset(template?.toOffsetDays, fallback.toOffsetDays),
   };
 }

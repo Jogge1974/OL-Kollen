@@ -1,10 +1,10 @@
 import * as React from 'react';
 
 import Checkbox from 'expo-checkbox';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { CLASSIFICATION_OPTIONS } from '@/src/features/calendar/calendarFilters';
-import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
+import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { CalendarFilterTemplate } from '@/src/types/preferences';
@@ -18,6 +18,7 @@ type CalendarFilterTemplateEditorProps = {
 };
 
 export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption, onChange, template }: CalendarFilterTemplateEditorProps) {
+  const { isDark } = useTheme();
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const visibleDistrictOptions = React.useMemo(
@@ -133,6 +134,21 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
               ))}
             </View>
           ))}
+        </View>
+      </View>
+
+      <View style={styles.filterCard}>
+        <View style={styles.switchRow}>
+          <View style={styles.switchLabelWrap}>
+            <Text style={styles.filterHeading}>Visa anmälningar i listan</Text>
+            <Text style={styles.helperText}>Listan tar lite längre tid att ladda</Text>
+          </View>
+          <Switch
+            ios_backgroundColor={isDark ? colors.border : '#C8C8C8'}
+            trackColor={{ false: isDark ? colors.border : '#C8C8C8', true: colors.primary }}
+            value={template.showEntryCountsInList ?? false}
+            onValueChange={(value) => onChange({ ...template, showEntryCountsInList: value })}
+          />
         </View>
       </View>
     </View>
@@ -333,6 +349,16 @@ function createStyles(colors: ColorPalette) {
   helperText: {
     ...typography.caption,
     color: colors.textMuted,
+  },
+  switchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  switchLabelWrap: {
+    flex: 1,
+    gap: 2,
+    marginRight: spacing.sm,
   },
 });
 }

@@ -19,6 +19,7 @@ export type CalendarFilterTemplate = {
   classificationIds: number[];
   districtIds: number[];
   fromOffsetDays: number;
+  showEntryCountsInList?: boolean;
   toOffsetDays: number;
 };
 

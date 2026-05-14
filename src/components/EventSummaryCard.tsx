@@ -365,8 +365,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   entryCountText: {
     color: colors.textSecondary,
     fontFamily: 'Manrope_600SemiBold',
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 11,
+    lineHeight: 13,
   },
   favoriteBadge: {
     alignItems: 'center',

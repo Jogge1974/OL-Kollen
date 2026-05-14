@@ -15,6 +15,7 @@ export const DEFAULT_CALENDAR_FILTER_TEMPLATE: CalendarFilterTemplate = {
   classificationIds: [1, 2],
   districtIds: [],
   fromOffsetDays: -2,
+  showEntryCountsInList: false,
   toOffsetDays: 10,
 };
 
@@ -23,6 +24,7 @@ export function createDefaultCalendarFilterTemplate(): CalendarFilterTemplate {
     classificationIds: [...DEFAULT_CALENDAR_FILTER_TEMPLATE.classificationIds],
     districtIds: [...DEFAULT_CALENDAR_FILTER_TEMPLATE.districtIds],
     fromOffsetDays: DEFAULT_CALENDAR_FILTER_TEMPLATE.fromOffsetDays,
+    showEntryCountsInList: DEFAULT_CALENDAR_FILTER_TEMPLATE.showEntryCountsInList,
     toOffsetDays: DEFAULT_CALENDAR_FILTER_TEMPLATE.toOffsetDays,
   };
 }
@@ -32,7 +34,7 @@ export function resolveCalendarFilterTemplate(template: CalendarFilterTemplate, 
     classificationIds: [...template.classificationIds].sort((a, b) => a - b),
     districtIds: [...template.districtIds].sort((a, b) => a - b),
     fromDate: formatApiDate(getRelativeDate(now, template.fromOffsetDays)),
-    showEntryCountsInList: false,
+    showEntryCountsInList: template.showEntryCountsInList ?? false,
     toDate: formatApiDate(getRelativeDate(now, template.toOffsetDays)),
   };
 }
