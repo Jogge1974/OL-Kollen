@@ -71,6 +71,12 @@ function EventMapInner({ error, events }: EventMapProps) {
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [selectedMarkerKey, setSelectedMarkerKey] = React.useState<string | null>(null);
   const [currentRegion, setCurrentRegion] = React.useState<Region>(() => getFallbackRegion(createMarkerGroups(events, DEFAULT_REGION)));
+  const regionTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleRegionChange = React.useCallback((region: Region) => {
+    if (regionTimerRef.current) clearTimeout(regionTimerRef.current);
+    regionTimerRef.current = setTimeout(() => setCurrentRegion(region), 300);
+  }, []);
+  React.useEffect(() => () => { if (regionTimerRef.current) clearTimeout(regionTimerRef.current); }, []);
   const markerGroups = React.useMemo(() => createMarkerGroups(events, currentRegion), [currentRegion, events]);
   const [initialRegion, setInitialRegion] = React.useState<Region>(() => getFallbackRegion(createMarkerGroups(events, DEFAULT_REGION)));
   const [locationHint, setLocationHint] = React.useState<string | null>(null);
@@ -158,7 +164,7 @@ function EventMapInner({ error, events }: EventMapProps) {
             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             ref={mapRef}
             initialRegion={initialRegion}
-            onRegionChangeComplete={(region) => setCurrentRegion(region)}
+            onRegionChangeComplete={handleRegionChange}
             onPress={() => {
               if (ignoreNextMapPressRef.current) {
                 ignoreNextMapPressRef.current = false;
@@ -185,7 +191,7 @@ function EventMapInner({ error, events }: EventMapProps) {
                     ignoreNextMapPressRef.current = true;
                     setSelectedMarkerKey(group.key);
                   }}
-                  tracksViewChanges
+                  tracksViewChanges={isSelected}
                 >
                   <View
                     style={[
@@ -312,10 +318,21 @@ function getFallbackRegion(groups: Array<{ coordinate: { latitude: number; longi
 
   const latitudes = groups.map((group) => group.coordinate.latitude);
   const longitudes = groups.map((group) => group.coordinate.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
+
+  let minLatitude = latitudes[0];
+  let maxLatitude = latitudes[0];
+  let minLongitude = longitudes[0];
+  let maxLongitude = longitudes[0];
+
+  for (let i = 1; i < latitudes.length; i += 1) {
+    if (latitudes[i] < minLatitude) minLatitude = latitudes[i];
+    if (latitudes[i] > maxLatitude) maxLatitude = latitudes[i];
+  }
+
+  for (let i = 1; i < longitudes.length; i += 1) {
+    if (longitudes[i] < minLongitude) minLongitude = longitudes[i];
+    if (longitudes[i] > maxLongitude) maxLongitude = longitudes[i];
+  }
 
   return {
     latitude: (minLatitude + maxLatitude) / 2,

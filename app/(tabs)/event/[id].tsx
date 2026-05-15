@@ -320,7 +320,10 @@ export default function EventDetailScreen() {
         ) : null}
 
         <View style={[styles.panel, styles.navigationPanel]}>
-          {event.centerPosition ? (
+          {event.centerPosition &&
+           Number.isFinite(event.centerPosition.latitude) &&
+           Number.isFinite(event.centerPosition.longitude) &&
+           !(event.centerPosition.latitude === 0 && event.centerPosition.longitude === 0) ? (
             <View style={styles.navigationContent}>
               {canShowNativeMap ? (
                 <MapView
