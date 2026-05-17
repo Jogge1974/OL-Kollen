@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { extractPublicationFlags, fetchEventDetailXml, isPublicationAfterFavorite } from '../_shared/eventor.ts';
-import { sendExpoPushMessages } from '../_shared/expoPush.ts';
+import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
 
 type WatchRow = {
   created_at: string;
@@ -144,12 +144,13 @@ Deno.serve(async (request) => {
 
       // Send all push messages for this event in one batch
       if (messages.length > 0) {
-        await sendExpoPushMessages(
+        const { invalidTokens } = await sendExpoPushMessages(
           messages.map((message) => ({
             ...message,
             sound: 'default',
           })),
         );
+        await deactivateInvalidTokens(supabase, invalidTokens);
 
         pushCount += messages.length;
       }

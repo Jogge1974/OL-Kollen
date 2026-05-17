@@ -70,15 +70,9 @@ function EventMapInner({ error, events }: EventMapProps) {
   const [activeListModal, setActiveListModal] = React.useState<PublishedListModalState | null>(null);
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [selectedMarkerKey, setSelectedMarkerKey] = React.useState<string | null>(null);
-  const [currentRegion, setCurrentRegion] = React.useState<Region>(() => getFallbackRegion(createMarkerGroups(events, DEFAULT_REGION)));
-  const regionTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleRegionChange = React.useCallback((region: Region) => {
-    if (regionTimerRef.current) clearTimeout(regionTimerRef.current);
-    regionTimerRef.current = setTimeout(() => setCurrentRegion(region), 300);
-  }, []);
-  React.useEffect(() => () => { if (regionTimerRef.current) clearTimeout(regionTimerRef.current); }, []);
-  const markerGroups = React.useMemo(() => createMarkerGroups(events, currentRegion), [currentRegion, events]);
-  const [initialRegion, setInitialRegion] = React.useState<Region>(() => getFallbackRegion(createMarkerGroups(events, DEFAULT_REGION)));
+  const [mapReady, setMapReady] = React.useState(false);
+  const markerGroups = React.useMemo(() => createMarkerGroups(events), [events]);
+  const [initialRegion] = React.useState<Region>(() => getFallbackRegion(markerGroups));
   const [locationHint, setLocationHint] = React.useState<string | null>(null);
   const canShowMap = canRenderNativeMap();
 
@@ -88,9 +82,6 @@ function EventMapInner({ error, events }: EventMapProps) {
   }, []);
 
   React.useEffect(() => {
-    const fallbackRegion = getFallbackRegion(markerGroups);
-    setInitialRegion(fallbackRegion);
-    setCurrentRegion((current) => current ?? fallbackRegion);
     setSelectedMarkerKey((current) => (current && markerGroups.some((group) => group.key === current) ? current : null));
   }, [markerGroups]);
 
@@ -128,8 +119,6 @@ function EventMapInner({ error, events }: EventMapProps) {
           longitudeDelta: 0.45,
         };
 
-        setInitialRegion(nextRegion);
-        setCurrentRegion(nextRegion);
         requestAnimationFrame(() => {
           mapRef.current?.animateToRegion(nextRegion, 500);
         });
@@ -164,7 +153,7 @@ function EventMapInner({ error, events }: EventMapProps) {
             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             ref={mapRef}
             initialRegion={initialRegion}
-            onRegionChangeComplete={handleRegionChange}
+            onMapReady={() => setMapReady(true)}
             onPress={() => {
               if (ignoreNextMapPressRef.current) {
                 ignoreNextMapPressRef.current = false;
@@ -178,10 +167,8 @@ function EventMapInner({ error, events }: EventMapProps) {
             showsUserLocation
             style={styles.map}
           >
-            {markerGroups.map((group) => {
-              const isSelected = selectedMarkerKey === group.key;
+            {mapReady ? markerGroups.map((group) => {
               const tone = getClassificationTone(group.events[0]?.classificationId ?? 2, themeName);
-              const markerColor = isSelected ? colors.accent : tone.accent;
 
               return (
                 <Marker
@@ -191,25 +178,24 @@ function EventMapInner({ error, events }: EventMapProps) {
                     ignoreNextMapPressRef.current = true;
                     setSelectedMarkerKey(group.key);
                   }}
-                  tracksViewChanges={isSelected}
+                  tracksViewChanges={false}
                 >
                   <View
                     style={[
                       styles.markerPin,
                       {
-                        backgroundColor: markerColor,
-                        borderColor: isSelected ? colors.primaryDeep : colors.surface,
+                        backgroundColor: tone.accent,
+                        borderColor: colors.surface,
                       },
-                      isSelected ? styles.markerPinActive : null,
                     ]}
                   >
-                    <Ionicons color={isSelected ? colors.primaryDeep : colors.heroText} name="flag" size={group.events.length > 1 ? 11 : 13} />
-                    {group.events.length > 1 ? <Text style={[styles.markerCount, isSelected ? styles.markerCountActive : null]}>{group.events.length}</Text> : null}
+                    <Ionicons color={colors.heroText} name="flag" size={group.events.length > 1 ? 11 : 13} />
+                    {group.events.length > 1 ? <Text style={styles.markerCount}>{group.events.length}</Text> : null}
                   </View>
-                  <View style={[styles.markerTip, { borderTopColor: markerColor }]} />
+                  <View style={[styles.markerTip, { borderTopColor: tone.accent }]} />
                 </Marker>
               );
-            })}
+            }) : null}
           </MapView>
         ) : (
           <View style={styles.mapFallback}>
@@ -257,15 +243,16 @@ function isValidCoordinate(pos: { latitude: number; longitude: number } | null |
   return true;
 }
 
-function createMarkerGroups(events: EventItem[], region: Region) {
+function createMarkerGroups(events: EventItem[]) {
   const positionedEvents = events.filter((event) => isValidCoordinate(event.centerPosition));
   const clusters: Array<{
     coordinate: { latitude: number; longitude: number };
     events: EventItem[];
   }> = [];
 
-  const latitudeThreshold = Math.max(region.latitudeDelta * 0.08, 0.0012);
-  const longitudeThreshold = Math.max(region.longitudeDelta * 0.08, 0.0012);
+  // Fixed thresholds – events within ~1km are clustered together
+  const latitudeThreshold = 0.009;
+  const longitudeThreshold = 0.012;
 
   positionedEvents.forEach((event) => {
     const coordinate = event.centerPosition!;

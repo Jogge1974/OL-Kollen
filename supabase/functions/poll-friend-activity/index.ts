@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { sendExpoPushMessages } from '../_shared/expoPush.ts';
+import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -546,7 +546,8 @@ Deno.serve(async (request) => {
     }
 
     if (allMessages.length > 0) {
-      await sendExpoPushMessages(allMessages);
+      const { invalidTokens } = await sendExpoPushMessages(allMessages);
+      await deactivateInvalidTokens(supabase, invalidTokens);
     }
 
     // 7. Upsert activity state (deduplicate by friend_person_id + event_id)

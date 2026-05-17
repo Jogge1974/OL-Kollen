@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { sendExpoPushMessages } from '../_shared/expoPush.ts';
+import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -266,7 +266,8 @@ Deno.serve(async (request) => {
 
     // 7. Send pushes
     if (allMessages.length > 0) {
-      await sendExpoPushMessages(allMessages);
+      const { invalidTokens } = await sendExpoPushMessages(allMessages);
+      await deactivateInvalidTokens(supabase, invalidTokens);
     }
 
     // 8. Record notified entries
