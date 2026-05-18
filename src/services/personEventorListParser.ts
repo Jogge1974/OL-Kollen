@@ -214,6 +214,7 @@ function parseMultiDayPersonActivitySections({
         eventDate: raceInfo?.date ?? row.eventDate,
         eventId: raceInfo ? `${eventId}::${raceInfo.id}` : row.eventId,
         eventName: raceInfo?.name ? `${eventName} - ${raceInfo.name}` : row.eventName,
+        favouriteId: raceInfo ? `${eventId}::${raceInfo.id}` : row.favouriteId,
       });
 
       sectionsByRace.set(sectionKey, section);

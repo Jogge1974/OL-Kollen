@@ -72,7 +72,7 @@ export default function EventDetailScreen() {
   }, [event]);
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
-  const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId, event?.eventForm ?? null);
+  const { counts } = useEventCompetitorCount(event?.id ?? null, organisationId, event?.eventForm ?? null, selectedEventRaceId);
   const canShowNativeMap = canRenderNativeMap();
   const normalizedEventId = React.useMemo(() => normalizeEventId(event?.id ?? ''), [event?.id]);
   const pmDocument = React.useMemo(() => {
@@ -80,8 +80,8 @@ export default function EventDetailScreen() {
   }, [documents]);
   const isLoggedIn = Boolean(user);
   const isFavorite = React.useMemo(
-    () => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === normalizedEventId),
-    [favoriteEvents, normalizedEventId],
+    () => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === event?.id),
+    [favoriteEvents, event?.id],
   );
   const showResultActions = event?.hasPublishedResults ?? false;
   const secondaryKind: EventPublishedListKind = event?.hasPublishedStarts ? 'starts' : 'entries';
@@ -124,7 +124,7 @@ export default function EventDetailScreen() {
       dateLabel: event.dateLabel,
       hasPublishedResults: event.hasPublishedResults,
       hasPublishedStarts: event.hasPublishedStarts,
-      id: normalizedEventId,
+      id: event.id,
       name: event.name,
       organiserLabel: event.organiserNames.join(', '),
       startDate: event.startDate,

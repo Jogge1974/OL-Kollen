@@ -247,7 +247,7 @@ export async function fetchOrganisationDirectory() {
   return organisationDirectoryPromise;
 }
 
-export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null, eventForm?: string | null): Promise<EventCompetitorCount> {
+export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null, eventForm?: string | null, eventRaceId?: string | null): Promise<EventCompetitorCount> {
   const normalizedEventId = normalizeEventId(eventId);
   if (isRelayEventForm(eventForm)) {
     const relayTotalCount = await fetchRelayTeamCount(normalizedEventId);
@@ -260,7 +260,7 @@ export async function fetchEventCompetitorCount(eventId: string, organisationId:
     };
   }
 
-  const counts = await fetchSingleCompetitorCount(normalizedEventId, organisationId);
+  const counts = await fetchSingleCompetitorCount(normalizedEventId, organisationId, eventRaceId);
 
   return {
     organisationEntries: counts.organisationNumberOfEntries,
@@ -497,7 +497,7 @@ function mapEventClassNamesXml(xml: string) {
   }, {});
 }
 
-async function fetchSingleCompetitorCount(eventId: string, organisationId: string | null) {
+async function fetchSingleCompetitorCount(eventId: string, organisationId: string | null, eventRaceId?: string | null) {
   const params = new URLSearchParams({ eventIds: eventId });
 
   if (organisationId) {
@@ -518,7 +518,7 @@ async function fetchSingleCompetitorCount(eventId: string, organisationId: strin
     throw new Error(mapEventorError(response.status, xml));
   }
 
-  return mapCompetitorCountXml(xml);
+  return mapCompetitorCountXml(xml, eventRaceId);
 }
 
 async function loadOrganisationDirectory(): Promise<OrganisationDirectory> {
@@ -595,13 +595,19 @@ async function loadOrganisationDirectory(): Promise<OrganisationDirectory> {
   return directory;
 }
 
-function mapCompetitorCountXml(xml: string) {
+function mapCompetitorCountXml(xml: string, eventRaceId?: string | null) {
   const parsed = parser.parse(xml) as {
     CompetitorCountList?: {
       CompetitorCount?: unknown;
     };
   };
-  const countNode = toArray<Record<string, unknown>>(parsed.CompetitorCountList?.CompetitorCount)[0] ?? {};
+  const allNodes = toArray<Record<string, unknown>>(parsed.CompetitorCountList?.CompetitorCount);
+
+  // If an eventRaceId is specified, prefer the node that matches it;
+  // otherwise fall back to the node without eventRaceId (the event total).
+  const countNode = eventRaceId
+    ? allNodes.find((node) => String(node.eventRaceId ?? '') === eventRaceId) ?? allNodes.find((node) => !node.eventRaceId) ?? allNodes[0] ?? {}
+    : allNodes.find((node) => !node.eventRaceId) ?? allNodes[0] ?? {};
   const organisationNode = toArray<Record<string, unknown>>(countNode.OrganisationCompetitorCount)[0] ?? {};
 
   return {

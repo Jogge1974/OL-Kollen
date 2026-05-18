@@ -10,7 +10,7 @@ const emptyCounts: EventCompetitorCount = {
   totalStarts: null,
 };
 
-export function useEventCompetitorCount(eventId: string | null, organisationId: string | null, eventForm: string | null = null) {
+export function useEventCompetitorCount(eventId: string | null, organisationId: string | null, eventForm: string | null = null, eventRaceId: string | null = null) {
   const normalizedId = React.useMemo(() => eventId?.split('::')[0] ?? null, [eventId]);
   const [counts, setCounts] = React.useState<EventCompetitorCount>(emptyCounts);
   const [error, setError] = React.useState<string | null>(null);
@@ -28,7 +28,7 @@ export function useEventCompetitorCount(eventId: string | null, organisationId: 
     setError(null);
 
     try {
-      const nextCounts = await fetchEventCompetitorCount(normalizedId, organisationId, eventForm);
+      const nextCounts = await fetchEventCompetitorCount(normalizedId, organisationId, eventForm, eventRaceId);
       setCounts(nextCounts);
     } catch (loadError) {
       setCounts(emptyCounts);
@@ -36,7 +36,7 @@ export function useEventCompetitorCount(eventId: string | null, organisationId: 
     } finally {
       setIsLoading(false);
     }
-  }, [normalizedId, organisationId, eventForm]);
+  }, [normalizedId, organisationId, eventForm, eventRaceId]);
 
   React.useEffect(() => {
     void loadCounts();

@@ -18,6 +18,14 @@ export type PersonEntry = {
   className: string | null;
   totalEntries: number | null;
   organisationEntries: number | null;
+  /** For multi-stage events: one sub-entry per race the person is entered in */
+  races: PersonEntryRace[];
+};
+
+export type PersonEntryRace = {
+  eventRaceId: string;
+  raceName: string;
+  raceDate: string;
 };
 
 type UsePersonEntriesInput = {
@@ -66,7 +74,7 @@ export function usePersonEntries({ personId, organisationId, viewerOrganisationI
         const xml = await fetchPersonEntriesXml(personId, organisationId, fromDate, toDate);
         const rawEntries = parseEntriesXml(xml);
 
-        // Deduplicate by eventId — multi-stage events may produce multiple entries
+        // Deduplicate by eventId — multi-stage events counted as one
         const seenEventIds = new Set<string>();
         const uniqueEntries = rawEntries.filter((e) => {
           if (seenEventIds.has(e.eventId)) return false;
@@ -119,6 +127,7 @@ type RawEntry = {
   eventName: string;
   eventDate: string;
   eventClassId: string | null;
+  races: PersonEntryRace[];
 };
 
 function parseEntriesXml(xml: string): RawEntry[] {
@@ -127,8 +136,9 @@ function parseEntriesXml(xml: string): RawEntry[] {
   };
 
   const entryNodes = toArray<Record<string, unknown>>(parsed.EntryList?.Entry);
+  const result: RawEntry[] = [];
 
-  return entryNodes.map((entry) => {
+  for (const entry of entryNodes) {
     const event = getRecord(entry.Event);
     const eventId = getNodeText(event?.EventId) ?? '';
     const eventName = buildEventName(event);
@@ -140,8 +150,20 @@ function parseEntriesXml(xml: string): RawEntry[] {
 
     const eventRaceId = getNodeText(entry.EventRaceId) ?? null;
 
-    return { eventId, eventRaceId, eventName, eventDate, eventClassId };
-  });
+    // Collect all EventRace children for multi-stage events
+    const eventRaces = toArray<Record<string, unknown>>(event?.EventRace);
+    const races: PersonEntryRace[] = eventRaces.length > 1
+      ? eventRaces.map((race) => ({
+          eventRaceId: getNodeText(race.EventRaceId) ?? '',
+          raceName: getString(race.Name) ?? '',
+          raceDate: getString(getRecord(race.RaceDate)?.Date) ?? eventDate,
+        })).filter((r) => r.eventRaceId !== '')
+      : [];
+
+    result.push({ eventId, eventRaceId, eventName, eventDate, eventClassId, races });
+  }
+
+  return result;
 }
 
 function buildEventName(event: Record<string, unknown> | null): string {
@@ -191,6 +213,7 @@ async function enrichEntries(rawEntries: RawEntry[], viewerOrganisationId: strin
       className: classInfo?.name ?? null,
       totalEntries: counts.total,
       organisationEntries: counts.org,
+      races: entry.races,
     };
   });
 }

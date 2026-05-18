@@ -139,7 +139,6 @@ function normalizeFavoriteClassName(className: string) {
 function normalizeFavoriteEventSummary(event: FavoriteEventSummary): FavoriteEventSummary {
   return {
     ...event,
-    id: normalizeEventId(event.id),
   };
 }
 
@@ -150,7 +149,7 @@ function mergeFavoriteEventSummaries(existing: FavoriteEventSummary, incoming: F
     dateLabel: existing.dateLabel || incoming.dateLabel,
     hasPublishedResults: existing.hasPublishedResults || incoming.hasPublishedResults,
     hasPublishedStarts: existing.hasPublishedStarts || incoming.hasPublishedStarts,
-    id: normalizeEventId(existing.id),
+    id: existing.id,
     organiserLabel: existing.organiserLabel || incoming.organiserLabel,
     name: existing.name || incoming.name,
     startDate: existing.startDate || incoming.startDate,
@@ -376,8 +375,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     });
   },
   isFavorite: (eventId: string) => {
-    const normalizedEventId = normalizeEventId(eventId);
-    return get().favoriteEvents.some((event) => event.id === normalizedEventId);
+    return get().favoriteEvents.some((event) => event.id === eventId);
   },
   isHydrated: false,
   moveCalendarFilterPreset: async (presetId, direction) => {
@@ -451,8 +449,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   removeFavorite: async (eventId: string) => {
     const current = get();
-    const normalizedEventId = normalizeEventId(eventId);
-    const favoriteEvents = current.favoriteEvents.filter((event) => event.id !== normalizedEventId);
+    const favoriteEvents = current.favoriteEvents.filter((event) => event.id !== eventId);
 
     set({ favoriteEvents });
     await persistCurrentPreferences({

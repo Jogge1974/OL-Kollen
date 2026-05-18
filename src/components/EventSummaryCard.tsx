@@ -12,7 +12,6 @@ import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { EventItem } from '@/src/types/eventor';
 import { CompetitorCountEntry } from '@/src/api/eventorApi';
-import { normalizeEventId } from '@/src/utils/eventId';
 
 type EventSummaryCardProps = {
   entryCount?: CompetitorCountEntry;
@@ -29,10 +28,9 @@ export function EventSummaryCard({ entryCount, item, mode = 'list', onOpenList }
   const accentStyle = getAccentStyle(item.startDate, colors);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
-  const normalizedItemId = React.useMemo(() => normalizeEventId(item.id), [item.id]);
   const isFavorite = React.useMemo(
-    () => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === normalizedItemId),
-    [favoriteEvents, normalizedItemId],
+    () => favoriteEvents.some((favoriteEvent) => favoriteEvent.id === item.id),
+    [favoriteEvents, item.id],
   );
   const publicationIndicator = item.hasPublishedResults ? 'Resultatlista' : item.hasPublishedStarts ? 'Startlista' : null;
   const organiserLabel = item.organiserNames.join(', ');
@@ -44,7 +42,7 @@ export function EventSummaryCard({ entryCount, item, mode = 'list', onOpenList }
       dateLabel: item.dateLabel,
       hasPublishedResults: item.hasPublishedResults,
       hasPublishedStarts: item.hasPublishedStarts,
-        id: normalizedItemId,
+        id: item.id,
       name: item.name,
       organiserLabel,
       startDate: item.startDate,
