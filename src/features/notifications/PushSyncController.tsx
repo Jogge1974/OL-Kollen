@@ -55,13 +55,6 @@ export function PushSyncController() {
       return;
     }
 
-    // After login/restore: record the current state without syncing.
-    // Only subsequent user-initiated changes should trigger a sync.
-    if (lastFingerprintRef.current === null) {
-      lastFingerprintRef.current = fingerprint;
-      return;
-    }
-
     let isCancelled = false;
 
     const runSync = async () => {
