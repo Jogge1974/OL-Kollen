@@ -290,15 +290,21 @@ Deno.serve(async (request) => {
         .from('device_push_tokens')
         .select('person_id, push_token')
         .eq('is_active', true)
-        .not('push_token', 'is', null),
+        .not('push_token', 'is', null)
+        .order('updated_at', { ascending: false }),
     ]);
 
     if (watchesErr) throw watchesErr;
     if (tokensErr) throw tokensErr;
 
     const allWatches = (watches ?? []) as FriendWatchRow[];
+    // Build token map: only keep the most recently seen token per device.
+    // If multiple persons share a device, only the last active one gets push.
     const tokensByPerson = new Map<string, string[]>();
+    const seenTokens = new Set<string>();
     for (const row of (tokens ?? []) as TokenRow[]) {
+      if (seenTokens.has(row.push_token)) continue;
+      seenTokens.add(row.push_token);
       const arr = tokensByPerson.get(row.person_id) ?? [];
       arr.push(row.push_token);
       tokensByPerson.set(row.person_id, arr);

@@ -141,7 +141,8 @@ Deno.serve(async (request) => {
         .from('device_push_tokens')
         .select('person_id, push_token')
         .eq('is_active', true)
-        .not('push_token', 'is', null),
+        .not('push_token', 'is', null)
+        .order('updated_at', { ascending: false }),
     ]);
 
     if (watchesErr) throw watchesErr;
@@ -149,7 +150,10 @@ Deno.serve(async (request) => {
 
     const allWatches = (watches ?? []) as FriendWatchRow[];
     const tokensByPerson = new Map<string, string[]>();
+    const seenTokens = new Set<string>();
     for (const row of (tokens ?? []) as TokenRow[]) {
+      if (seenTokens.has(row.push_token)) continue;
+      seenTokens.add(row.push_token);
       const arr = tokensByPerson.get(row.person_id) ?? [];
       arr.push(row.push_token);
       tokensByPerson.set(row.person_id, arr);
@@ -198,13 +202,18 @@ Deno.serve(async (request) => {
     }
 
     // 5. Check which entries have already been notified (dedup by event)
-    const eventIds = allParsedEntries.map((e) => e.eventId);
-    const friendIds = allParsedEntries.map((e) => e.personId);
-    const { data: existingStates } = await supabase
+    const eventIds = [...new Set(allParsedEntries.map((e) => e.eventId))];
+    const friendIds = [...new Set(allParsedEntries.map((e) => e.personId))];
+    const { data: existingStates, error: stateQueryErr } = await supabase
       .from('friend_entry_state')
       .select('event_id, friend_person_id')
       .in('event_id', eventIds)
       .in('friend_person_id', friendIds);
+
+    if (stateQueryErr) {
+      console.error('[poll-friend-entries] Failed to query entry state — aborting to prevent duplicate pushes:', stateQueryErr);
+      return jsonOk({ checkedFriends: uniqueFriendIds.length, entriesFound: allParsedEntries.length, ok: false, error: 'state_query_failed', pushCount: 0 });
+    }
 
     const notifiedSet = new Set<string>();
     for (const row of (existingStates ?? []) as EntryStateRow[]) {
@@ -257,6 +266,7 @@ Deno.serve(async (request) => {
       if (!insertedKeys.has(stateKey)) {
         insertedKeys.add(stateKey);
         stateInserts.push({
+          entry_id: entry.eventId,
           event_id: entry.eventId,
           event_name: entry.eventName,
           friend_person_id: entry.personId,
@@ -264,17 +274,23 @@ Deno.serve(async (request) => {
       }
     }
 
-    // 7. Send pushes
+    // 7. Record notified entries BEFORE sending pushes to prevent duplicates
+    //    if the push succeeds but state recording fails.
+    if (stateInserts.length > 0) {
+      const { error: upsertErr } = await supabase
+        .from('friend_entry_state')
+        .upsert(stateInserts, { onConflict: 'friend_person_id,event_id' });
+
+      if (upsertErr) {
+        console.error('[poll-friend-entries] Failed to record entry state — aborting to prevent duplicate pushes:', upsertErr);
+        return jsonOk({ checkedFriends: uniqueFriendIds.length, entriesFound: allParsedEntries.length, ok: false, error: 'state_upsert_failed', pushCount: 0 });
+      }
+    }
+
+    // 8. Send pushes (state already recorded, so even if this fails we won't re-send)
     if (allMessages.length > 0) {
       const { invalidTokens } = await sendExpoPushMessages(allMessages);
       await deactivateInvalidTokens(supabase, invalidTokens);
-    }
-
-    // 8. Record notified entries
-    if (stateInserts.length > 0) {
-      await supabase
-        .from('friend_entry_state')
-        .upsert(stateInserts, { onConflict: 'friend_person_id,event_id' });
     }
 
     return jsonOk({

@@ -185,26 +185,30 @@ export function PersonActivitySectionList({
                         <Ionicons color={colors.primaryDeep} name="trophy-outline" size={12} />
                         <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextPrimary]}>Resultatlista</Text>
                       </Pressable>
-                      <Pressable
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          onOpenSplitTimes?.(row.eventId, row.classLabel);
-                        }}
-                        style={[styles.resultActionButton, styles.resultActionButtonMuted]}
-                      >
-                        <Ionicons color={colors.primaryDeep} name="time-outline" size={12} />
-                        <Text style={styles.resultActionButtonText}>Sträcktider</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          onOpenAnalysis?.(row.eventId, row.classLabel, row.personId ?? null);
-                        }}
-                        style={[styles.resultActionButton, styles.resultActionButtonAnalysis]}
-                      >
-                        <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
-                        <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextAnalysis]}>Analys</Text>
-                      </Pressable>
+                      {!row.isRelay && (
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            onOpenSplitTimes?.(row.eventId, row.classLabel);
+                          }}
+                          style={[styles.resultActionButton, styles.resultActionButtonMuted]}
+                        >
+                          <Ionicons color={colors.primaryDeep} name="time-outline" size={12} />
+                          <Text style={styles.resultActionButtonText}>Sträcktider</Text>
+                        </Pressable>
+                      )}
+                      {!row.isRelay && (
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            onOpenAnalysis?.(row.eventId, row.classLabel, row.personId ?? null);
+                          }}
+                          style={[styles.resultActionButton, styles.resultActionButtonAnalysis]}
+                        >
+                          <Ionicons color={colors.primaryDeep} name="analytics-outline" size={14} />
+                          <Text style={[styles.resultActionButtonText, styles.resultActionButtonTextAnalysis]}>Analys</Text>
+                        </Pressable>
+                      )}
                     </View>
                   </View>
                 )}
@@ -237,6 +241,10 @@ function buildResultLeft(row: PersonActivitySection['rows'][number]) {
 function buildResultRight(row: PersonActivitySection['rows'][number]) {
   if (row.status && row.status !== 'OK') {
     return formatResultStatus(row.status);
+  }
+
+  if (row.isRelay) {
+    return '';
   }
 
   return `Tid: ${row.time ?? '-'} ${row.diff ?? '-'}, Plac: ${row.position ?? '-'}`;

@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -142,6 +142,21 @@ export default function FriendDetailScreen() {
 
   const isContentLoading = isSverigelistanLoading || isLoadingResults || isLoadingStarts || isLoadingEntries || h2h.isLoading;
 
+  // Keep overlay visible until React has finished rendering the content
+  const [isRenderReady, setIsRenderReady] = React.useState(false);
+  React.useEffect(() => {
+    if (isContentLoading) {
+      setIsRenderReady(false);
+      return;
+    }
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setIsRenderReady(true);
+    });
+    return () => handle.cancel();
+  }, [isContentLoading]);
+
+  const showOverlay = isContentLoading || !isRenderReady;
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
@@ -195,7 +210,7 @@ export default function FriendDetailScreen() {
         />
 
         <View style={styles.contentWrap}>
-          {isContentLoading ? (
+          {showOverlay ? (
             <View style={styles.loadingOverlay}>
               <ActivityIndicator color={colors.primary} size="large" />
             </View>

@@ -404,6 +404,11 @@ export default function SverigelistaScreen() {
               initialNumToRender={12}
               keyExtractor={(item) => item}
               keyboardShouldPersistTaps="handled"
+              onScrollToIndexFailed={(info) => {
+                setTimeout(() => {
+                  clubSearchListRef.current?.scrollToIndex({ animated: false, index: info.index, viewPosition: 0.35 });
+                }, 200);
+              }}
               ListEmptyComponent={<Text style={styles.searchEmptyText}>Inga klubbar matchar sökningen.</Text>}
               renderItem={({ item }) => {
                 const isSelected = item === selectedClubName;

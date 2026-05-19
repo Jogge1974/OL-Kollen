@@ -516,6 +516,8 @@ function formatRelayResultsXml(
       )
       .filter((row): row is PublishedListRow & { sortKey: number } => Boolean(row));
 
+    fillMissingRelayOverallDiffs(teamRows);
+
     return {
       classLabel,
       courseLengthLabel,
@@ -741,14 +743,14 @@ function buildRelayResultMemberRow(
   const raceId = raceNumber ? raceLookup.raceIdByNumber.get(raceNumber) ?? getNodeText(result?.EventRaceId) ?? undefined : getNodeText(result?.EventRaceId) ?? undefined;
   const leg = getNodeText(result?.Leg) ?? getNodeText(result?.LegOrder) ?? `${memberIndex + 1}`;
   const legTimeText = getTextValue(result?.Time) ?? null;
-  const legDiffText = getTextValue(result?.TimeBehind) ?? getTextValue(result?.TimeDiff) ?? null;
-  const legPosition = getNodeText(result?.Position) ?? getNodeText(result?.ResultPosition) ?? null;
+  const legDiffText = getLegNodeText(result?.TimeBehind) ?? getLegNodeText(result?.TimeDiff) ?? null;
+  const legPosition = getLegNodeText(result?.Position) ?? getNodeText(result?.ResultPosition) ?? null;
   const overall = getRecord(result?.OverallResult) ?? getRecord(memberResult.OverallResult);
   const nestedResult = getRecord(memberResult.Result);
   const nestedOverall = getRecord(memberResult.OverallResult);
   const overallTimeText = getTextValue(overall?.Time) ?? null;
-  const overallDiffText = getTextValue(overall?.TimeBehind) ?? getTextValue(overall?.TimeDiff) ?? null;
-  const overallPosition = getNodeText(overall?.Position) ?? getNodeText(overall?.ResultPosition) ?? null;
+  const overallDiffText = getLegNodeText(overall?.TimeBehind) ?? getLegNodeText(overall?.TimeDiff) ?? null;
+  const overallPosition = getLegNodeText(overall?.Position) ?? getNodeText(overall?.ResultPosition) ?? null;
   const status = getStatusText(
     result?.CompetitorStatus ??
       result?.Status ??
@@ -798,6 +800,88 @@ function buildRelayResultMemberRow(
     time: formatRelayTime(legTimeText) ?? undefined,
     timeSeconds: parseRelayDurationToSeconds(legTimeText) ?? undefined,
   };
+}
+
+/**
+ * For each leg, find the best overallTimeSeconds across all teams and compute
+ * overallDiff for members that don't already have one from the XML.
+ */
+function fillMissingRelayOverallDiffs(teamRows: (PublishedListRow & { sortKey: number })[]) {
+  // Collect best overallTimeSeconds per leg across all teams
+  const bestByLeg = new Map<string, number>();
+
+  for (const row of teamRows) {
+    for (const member of row.relayMembers ?? []) {
+      const leg = member.leg ?? '';
+      const seconds = member.overallTimeSeconds;
+      if (seconds != null && seconds > 0) {
+        const current = bestByLeg.get(leg);
+        if (current == null || seconds < current) {
+          bestByLeg.set(leg, seconds);
+        }
+      }
+    }
+  }
+
+  // Fill in missing overallDiff
+  for (const row of teamRows) {
+    for (const member of row.relayMembers ?? []) {
+      if (member.overallDiff) continue;
+      const leg = member.leg ?? '';
+      const seconds = member.overallTimeSeconds;
+      const best = bestByLeg.get(leg);
+      if (seconds == null || best == null) continue;
+      const diff = seconds - best;
+      if (diff > 0) {
+        member.overallDiff = `+${formatSeconds(diff)}`;
+      }
+    }
+  }
+
+  // Fill in missing leg diffs and positions from leg times
+  const legTimesByLeg = new Map<string, number[]>();
+  for (const row of teamRows) {
+    for (const member of row.relayMembers ?? []) {
+      const leg = member.leg ?? '';
+      const seconds = member.timeSeconds;
+      if (seconds != null && seconds > 0) {
+        const arr = legTimesByLeg.get(leg) ?? [];
+        arr.push(seconds);
+        legTimesByLeg.set(leg, arr);
+      }
+    }
+  }
+
+  // Sort each leg's times to determine positions and best time
+  const sortedLegTimes = new Map<string, number[]>();
+  for (const [leg, times] of legTimesByLeg) {
+    sortedLegTimes.set(leg, [...times].sort((a, b) => a - b));
+  }
+
+  for (const row of teamRows) {
+    for (const member of row.relayMembers ?? []) {
+      const leg = member.leg ?? '';
+      const seconds = member.timeSeconds;
+      if (seconds == null) continue;
+      const sorted = sortedLegTimes.get(leg);
+      if (!sorted || sorted.length === 0) continue;
+
+      if (!member.position) {
+        const pos = sorted.indexOf(seconds) + 1;
+        if (pos > 0) {
+          member.position = `${pos}`;
+        }
+      }
+
+      if (!member.diff) {
+        const best = sorted[0];
+        const diff = seconds - best;
+        if (diff > 0) {
+          member.diff = `+${formatSeconds(diff)}`;
+        }
+      }
+    }
+  }
 }
 
 function formatRelayTime(value: string | null) {
@@ -1261,6 +1345,20 @@ function getNodeText(value: unknown) {
 
   const record = getRecord(value);
   return getString(record?.['#text']);
+}
+
+/**
+ * Extract text from a node that may be an array of typed elements (e.g. Position/TimeBehind
+ * with type="Leg" and type="Course"). Prefers the "Leg" typed element.
+ */
+function getLegNodeText(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const legItem = value.find(
+      (item) => typeof item === 'object' && item !== null && (item as Record<string, unknown>).type === 'Leg',
+    );
+    return getNodeText(legItem ?? value[0]) ?? null;
+  }
+  return getNodeText(value) ?? null;
 }
 
 function getRecord(value: unknown) {

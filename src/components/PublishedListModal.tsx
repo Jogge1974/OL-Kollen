@@ -1037,13 +1037,13 @@ function PublishedTableSection({
                               ) : (
                                 <>
                                   <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
-                                    {' '}
+                                    {member.overallTime ?? ''}
+                                  </Text>
+                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultPositionCell]}>
+                                    {member.overallPosition ?? ''}
                                   </Text>
                                   <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultValueCell]}>
-                                    {' '}
-                                  </Text>
-                                  <Text numberOfLines={1} style={[styles.relayMemberCellText, styles.relayResultStatusCell]}>
-                                    {' '}
+                                    {member.overallDiff ?? ''}
                                   </Text>
                                 </>
                               )}

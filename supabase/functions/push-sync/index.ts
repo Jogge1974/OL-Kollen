@@ -222,6 +222,13 @@ Deno.serve(async (request) => {
     }
 
     if (payload.device) {
+      // Deactivate any other person's token on the same device
+      await supabase
+        .from('device_push_tokens')
+        .update({ is_active: false, push_token: null, updated_at: new Date().toISOString() })
+        .eq('device_id', payload.device.deviceId)
+        .neq('person_id', personId);
+
       await supabase.from('device_push_tokens').upsert(
         {
           device_id: payload.device.deviceId,

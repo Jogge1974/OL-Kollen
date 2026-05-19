@@ -272,6 +272,14 @@ function extractRowsFromClassNode(
   const classEntriesCount = classEntriesCountRaw;
   const personNodes = toArray<Record<string, unknown>>(kind === 'results' ? classNode.PersonResult : classNode.PersonStart);
 
+  // Relay events use TeamResult instead of PersonResult
+  if (kind === 'results' && personNodes.length === 0) {
+    const teamResults = toArray<Record<string, unknown>>(classNode.TeamResult);
+    if (teamResults.length > 0) {
+      return extractRelayResultRows(teamResults, classLabel, classEntriesCount, context);
+    }
+  }
+
   return personNodes.flatMap<PersonActivityRow>((personNode) => {
     const person = getRecord(personNode.Person);
     const personName = getPersonNameParts(person);
@@ -374,6 +382,44 @@ function compareRows(left: PersonActivityRow, right: PersonActivityRow, kind: 'r
   return `${left.eventName}${left.classLabel}${left.time ?? ''}`.localeCompare(`${right.eventName}${right.classLabel}${right.time ?? ''}`, 'sv');
 }
 
+function extractRelayResultRows(
+  teamResults: Record<string, unknown>[],
+  classLabel: string,
+  classEntriesCount: number | null,
+  context: {
+    eventDate: string;
+    eventId: string;
+    eventName: string;
+    classificationId: number;
+  },
+): PersonActivityRow[] {
+  return teamResults.flatMap<PersonActivityRow>((teamResult) => {
+    const teamName = getString(teamResult.Name) ?? getString(teamResult.TeamName) ?? '-';
+    const teamOrganisation = getRecord(teamResult.Organisation);
+    const teamOrganisationId = getNodeText(teamOrganisation?.OrganisationId) ?? getNodeText(teamOrganisation?.Id) ?? undefined;
+    const teamOrganisationName = getString(teamOrganisation?.Name) ?? '-';
+    const memberResults = toArray<Record<string, unknown>>(teamResult.TeamMemberResult);
+
+    const firstMember = memberResults[0];
+    const person = firstMember ? getRecord(firstMember.Person) : null;
+    const personId = getNodeText(person?.PersonId) ?? getNodeText(person?.Id) ?? undefined;
+    const memberOrg = firstMember ? getRecord(firstMember.Organisation) : null;
+
+    return [{
+      classLabel,
+      classEntriesCount,
+      eventDate: context.eventDate,
+      eventId: context.eventId,
+      eventName: context.eventName,
+      isRelay: true,
+      organisation: teamName !== '-' ? `${teamOrganisationName} (${teamName})` : teamOrganisationName,
+      organisationId: getNodeText(memberOrg?.OrganisationId) ?? getNodeText(memberOrg?.Id) ?? teamOrganisationId,
+      personId: personId ?? undefined,
+      sortKey: 0,
+    }];
+  });
+}
+
 function calculatePace(timeSeconds: number, courseLengthMeters: number) {
   return formatPacePerKmLabel(timeSeconds, courseLengthMeters);
 }
@@ -391,8 +437,13 @@ function formatResultDuration(totalSeconds: number) {
     return '-';
   }
 
+  const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
@@ -407,6 +458,10 @@ function parseClockDurationToSeconds(value: string | null) {
   if (parts.some((part) => !Number.isFinite(part))) {
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  if (parts.length === 1) {
+    return parts[0];
   }
 
   if (parts.length === 2) {
@@ -539,6 +594,10 @@ function getNodeText(value: unknown) {
   return getString(record?.['#text']) ?? getString(record?.value) ?? getString(record?.Value);
 }
 
+/**
+ * Extract text from a node that may be an array of typed elements (e.g. Position/TimeBehind
+ * with type="Leg" and type="Course"). Prefers the "Leg" typed element.
+ */
 function getTextValue(value: unknown) {
   const nodeText = getNodeText(value);
   if (nodeText) {

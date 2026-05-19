@@ -18,6 +18,7 @@ export type PersonActivityRow = {
   eventRaceId?: string;
   eventName: string;
   favouriteId?: string;
+  isRelay?: boolean;
   organisation: string;
   organisationId?: string;
   personId?: string | null;

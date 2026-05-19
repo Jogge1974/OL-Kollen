@@ -59,7 +59,7 @@ Deno.serve(async (request) => {
           .from('notification_preferences')
           .select('person_id, push_on_result_list, push_on_start_list')
           .or('push_on_result_list.eq.true,push_on_start_list.eq.true'),
-        supabase.from('device_push_tokens').select('person_id, push_token').eq('is_active', true).not('push_token', 'is', null),
+        supabase.from('device_push_tokens').select('person_id, push_token').eq('is_active', true).not('push_token', 'is', null).order('updated_at', { ascending: false }),
       ]);
 
     if (watchesError) {
@@ -76,11 +76,13 @@ Deno.serve(async (request) => {
 
     const preferenceByPersonId = new Map((preferences as PreferenceRow[] | null | undefined)?.map((row) => [row.person_id, row]) ?? []);
     const tokensByPersonId = new Map<string, string[]>();
+    const seenTokens = new Set<string>();
 
     ((tokens as TokenRow[] | null | undefined) ?? []).forEach((row) => {
-      if (!row.push_token) {
+      if (!row.push_token || seenTokens.has(row.push_token)) {
         return;
       }
+      seenTokens.add(row.push_token);
 
       const existing = tokensByPersonId.get(row.person_id) ?? [];
       existing.push(row.push_token);
