@@ -29,7 +29,7 @@ function normalizeEventId(eventId: string) {
 
 export function extractPublicationFlags(xml: string) {
   const startPublishedAt = extractPublicationDate(xml, ['officialStart_', 'startList_']);
-  const resultPublishedAt = extractPublicationDate(xml, ['officialResult_']);
+  const resultPublishedAt = extractPublicationDate(xml, ['officialResult_', 'preliminaryResult_']);
 
   return {
     hasPublishedResults: Boolean(resultPublishedAt),
