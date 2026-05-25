@@ -45,6 +45,7 @@ export default function HomeScreen() {
     startsError,
     startsSections,
   } = usePersonEventorLists({
+    initialFilter: 'all',
     personId: user?.personId ?? null,
   });
 

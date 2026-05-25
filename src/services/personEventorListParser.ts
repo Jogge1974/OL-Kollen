@@ -22,6 +22,10 @@ export function filterPersonResultSections(sections: PersonActivitySection[], ye
   return sections
     .filter((section) => Number(section.eventDate.slice(0, 4)) === year)
     .filter((section) => {
+      if (filter === 'all') {
+        return true;
+      }
+
       if (filter === 'national') {
         return [0, 1, 2, 6].includes(section.classificationId);
       }

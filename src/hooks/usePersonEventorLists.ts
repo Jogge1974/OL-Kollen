@@ -5,6 +5,7 @@ import { filterPersonResultSections, parsePersonResultsXml, parsePersonStartsXml
 import { PersonActivitySection, PersonResultsFilter } from '@/src/types/personLists';
 
 type UsePersonEventorListsInput = {
+  initialFilter?: PersonResultsFilter;
   personId: string | null;
 };
 
@@ -26,10 +27,10 @@ type UsePersonEventorListsResult = {
   startsSections: PersonActivitySection[];
 };
 
-export function usePersonEventorLists({ personId }: UsePersonEventorListsInput): UsePersonEventorListsResult {
+export function usePersonEventorLists({ initialFilter = 'national', personId }: UsePersonEventorListsInput): UsePersonEventorListsResult {
   const currentYear = new Date().getFullYear();
   const [resultsYear, setResultsYear] = React.useState(currentYear);
-  const [resultsFilter, setResultsFilter] = React.useState<PersonResultsFilter>('national');
+  const [resultsFilter, setResultsFilter] = React.useState<PersonResultsFilter>(initialFilter);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [resultsSections, setResultsSections] = React.useState<PersonActivitySection[]>([]);
   const [allResultEventIds, setAllResultEventIds] = React.useState<Set<string>>(new Set());

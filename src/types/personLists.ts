@@ -30,4 +30,4 @@ export type PersonActivityRow = {
   time?: string;
 };
 
-export type PersonResultsFilter = 'district' | 'national';
+export type PersonResultsFilter = 'all' | 'district' | 'national';
