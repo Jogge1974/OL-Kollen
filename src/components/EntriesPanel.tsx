@@ -31,8 +31,8 @@ export function EntriesPanel({ entries, error, isLoading, organisationLabel }: E
     return null;
   }
 
-  const isFavorite = (compositeId: string) => {
-    return favoriteEvents.some((e) => e.id === compositeId);
+  const isFavorite = (eventId: string) => {
+    return favoriteEvents.some((e) => e.id === eventId || e.id.startsWith(`${eventId}::`));
   };
 
   const handleToggleFavorite = async (entry: PersonEntry) => {

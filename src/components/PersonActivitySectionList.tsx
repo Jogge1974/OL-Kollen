@@ -40,7 +40,7 @@ export function PersonActivitySectionList({
 
   const isFavorite = React.useCallback(
     (eventId: string) => {
-      return favoriteEvents.some((event) => event.id === eventId);
+      return favoriteEvents.some((event) => event.id === eventId || event.id.startsWith(`${eventId}::`));
     },
     [favoriteEvents],
   );
@@ -113,11 +113,23 @@ export function PersonActivitySectionList({
                   </Pressable>
                 ) : null}
               </View>
-            ) : section.meta ? (
-              <Text numberOfLines={1} style={styles.sectionMeta}>
-                {section.meta}
-              </Text>
-            ) : null}
+            ) : (
+              <View style={styles.sectionHeaderRight}>
+                {section.meta ? (
+                  <Text numberOfLines={1} style={styles.sectionMeta}>
+                    {section.meta}
+                  </Text>
+                ) : null}
+                {isFavorite(section.eventId) ? (
+                  <Ionicons
+                    color={colors.primaryDeep}
+                    name="star"
+                    size={14}
+                    style={styles.favoriteIndicator}
+                  />
+                ) : null}
+              </View>
+            )}
           </View>
 
           <View style={styles.rows}>
@@ -432,6 +444,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   favoriteBadgeActive: {
     backgroundColor: colors.accentSoft,
     borderColor: colors.primary,
+  },
+  favoriteIndicator: {
+    marginLeft: 6,
   },
 });
 }
