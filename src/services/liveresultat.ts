@@ -94,3 +94,43 @@ export async function findLiveCompetition(eventName: string, eventDate: string):
     return null;
   }
 }
+
+/**
+ * Check multiple event names against today's liveresultat competitions in a single request.
+ * Returns a Set of eventIds that have a liveresultat match.
+ */
+export async function findLiveCompetitionsBatch(
+  events: Array<{ eventId: string; eventName: string; eventDate: string }>,
+): Promise<Set<string>> {
+  const matched = new Set<string>();
+  if (events.length === 0) return matched;
+
+  try {
+    const statusResponse = await fetch(`${BASE_URL}/upstream-status`);
+    if (!statusResponse.ok) return matched;
+
+    const status: UpstreamStatus = await statusResponse.json();
+    if (!status.isAvailable) return matched;
+
+    const competitionsResponse = await fetch(`${BASE_URL}/getCompetitions?dateCode=1`);
+    if (!competitionsResponse.ok) return matched;
+
+    const competitions: LiveCompetition[] = await competitionsResponse.json();
+
+    for (const event of events) {
+      for (const comp of competitions) {
+        if (comp.date !== event.eventDate) continue;
+
+        const similarity = nameSimilarity(event.eventName, comp.name);
+        if (similarity >= 0.6) {
+          matched.add(event.eventId);
+          break;
+        }
+      }
+    }
+
+    return matched;
+  } catch {
+    return matched;
+  }
+}

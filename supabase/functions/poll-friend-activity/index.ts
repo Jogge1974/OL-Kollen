@@ -394,19 +394,40 @@ Deno.serve(async (request) => {
       for (const start of starts) {
         const key = `${friendId}::${start.eventId}`;
         const existing = stateMap.get(key);
-        if (existing?.start_notified_at) continue; // already tracked
+        if (existing?.start_notified_at) continue; // already notified
 
         const startDate = parseStartTimeIso(start.startTime);
-        if (!startDate) continue;
 
+        // Always record that the friend has a start today (even without parseable time)
+        if (!existing && !startStateTracked.has(key)) {
+          startStateTracked.add(key);
+          stateUpserts.push({
+            event_date: todayStr,
+            event_id: start.eventId,
+            event_name: start.eventName,
+            friend_person_id: friendId,
+            start_time: start.startTime,
+            updated_at: nowIso,
+          });
+        }
+
+        // Notification: only if within 5 min window and time is parseable
+        if (!startDate) continue;
         const diffMs = startDate.getTime() - now.getTime();
         if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
-          // Always update state so the app can show the yellow dot
-          if (!startStateTracked.has(key)) {
+          // Mark as notified
+          if (startStateTracked.has(key)) {
+            // Update the already-queued upsert to include start_notified_at
+            const idx = stateUpserts.findIndex((u) => u.friend_person_id === friendId && u.event_id === start.eventId);
+            if (idx !== -1) {
+              stateUpserts[idx].start_notified_at = nowIso;
+            }
+          } else {
             startStateTracked.add(key);
             stateUpserts.push({
               event_date: todayStr,
               event_id: start.eventId,
+              event_name: start.eventName,
               friend_person_id: friendId,
               start_notified_at: nowIso,
               start_time: start.startTime,
@@ -421,16 +442,6 @@ Deno.serve(async (request) => {
             arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
             startNotifs.set(watch.person_id, arr);
           }
-        } else if (!existing && !startStateTracked.has(key)) {
-          // Save start time for future checks (no notification yet)
-          startStateTracked.add(key);
-          stateUpserts.push({
-            event_date: todayStr,
-            event_id: start.eventId,
-            friend_person_id: friendId,
-            start_time: start.startTime,
-            updated_at: nowIso,
-          });
         }
       }
 
@@ -447,6 +458,7 @@ Deno.serve(async (request) => {
           stateUpserts.push({
             event_date: todayStr,
             event_id: result.eventId,
+            event_name: result.eventName,
             friend_person_id: friendId,
             result_notified_at: nowIso,
             updated_at: nowIso,

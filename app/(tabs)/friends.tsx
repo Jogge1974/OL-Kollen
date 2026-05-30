@@ -10,7 +10,8 @@ import { useFocusEffect } from 'expo-router';
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
-import { fetchPersonEntriesXml } from '@/src/api/eventorApi';
+import { fetchPersonEntriesXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
+import { findLiveCompetitionsBatch } from '@/src/services/liveresultat';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
 import { Friend, useFriendsStore } from '@/src/store/friendsStore';
@@ -61,17 +62,77 @@ export default function FriendsScreen() {
   const activityByFriendId = useFriendActivityStore((s) => s.activityByFriendId);
   const fetchTodayActivity = useFriendActivityStore((s) => s.fetchTodayActivity);
 
-  // Entry counts per friend (number of upcoming entries)
-  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, number>>({});
+  // Entry counts per friend (future only, excluding today)
+  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[] }>>({});
+
+  // Today's starts fetched directly from Eventor (client-side fallback)
+  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null }>>({});
+
+  // Set of eventIds that have a liveresultat match today
+  const [liveEventIds, setLiveEventIds] = React.useState<Set<string>>(new Set());
+
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
       if (friends.length > 0) {
         void fetchTodayActivity(friends.map((f) => String(f.personId)));
         void fetchFriendEntryCounts(friends).then(setEntryCountByFriendId);
+        void fetchFriendTodayStarts(friends).then(setTodayStartsByFriendId);
       }
     }, [friends, fetchTodayActivity, user]),
   );
+
+  const handleRefresh = React.useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchTodayActivity(friends.map((f) => String(f.personId)));
+      const [entryCounts, todayStarts] = await Promise.all([
+        fetchFriendEntryCounts(friends),
+        fetchFriendTodayStarts(friends),
+      ]);
+      setEntryCountByFriendId(entryCounts);
+      setTodayStartsByFriendId(todayStarts);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [friends, fetchTodayActivity]);
+
+  // Check liveresultat for events where friends have a start today
+  React.useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const startEvents = new Map<string, string>();
+
+    // From backend activity state
+    for (const entry of Object.values(activityByFriendId)) {
+      if (entry.date === today && entry.type === 'friend-start' && entry.eventName) {
+        startEvents.set(entry.eventId, entry.eventName);
+      }
+    }
+
+    // From client-side today starts
+    for (const start of Object.values(todayStartsByFriendId)) {
+      if (!startEvents.has(start.eventName)) {
+        startEvents.set(start.eventName, start.eventName);
+      }
+    }
+
+    // From client-side entry data (today's entries)
+    for (const counts of Object.values(entryCountByFriendId)) {
+      for (const name of counts.todayEventNames) {
+        if (!startEvents.has(name)) {
+          startEvents.set(name, name);
+        }
+      }
+    }
+
+    if (startEvents.size === 0) {
+      setLiveEventIds(new Set());
+      return;
+    }
+    const events = [...startEvents.entries()].map(([eventId, eventName]) => ({ eventId, eventName, eventDate: today }));
+    void findLiveCompetitionsBatch(events).then(setLiveEventIds);
+  }, [activityByFriendId, todayStartsByFriendId, entryCountByFriendId]);
 
   const uniqueClubs = React.useMemo(() => new Set(friends.map((f) => f.club)).size, [friends]);
   const genderSummary = React.useMemo(() => {
@@ -181,32 +242,58 @@ export default function FriendsScreen() {
           contentContainerStyle={styles.listContent}
           data={friends}
           keyExtractor={(item) => String(item.personId)}
+          onRefresh={handleRefresh}
+          refreshing={isRefreshing}
           renderItem={({ item }) => {
             const today = new Date().toISOString().slice(0, 10);
             const activity = activityByFriendId[String(item.personId)];
             const hasActivity = activity != null && activity.date === today;
             const isResult = hasActivity && activity.type === 'friend-results';
             const isStart = hasActivity && activity.type === 'friend-start';
-            const entryCount = entryCountByFriendId[String(item.personId)] ?? 0;
+            const counts = entryCountByFriendId[String(item.personId)];
+            const todayEntries = counts?.today ?? 0;
+            const futureEntries = counts?.future ?? 0;
+            const hasTodayStartFromStarts = todayStartsByFriendId[String(item.personId)] != null;
+
+            // A friend has a start today if: backend says so, OR client fetched today starts, OR entry data shows today
+            const hasTodayStart = isStart || hasTodayStartFromStarts || (!isResult && todayEntries > 0);
 
             // Determine if the friend's start time has passed
-            const hasStarted = isStart && hasStartTimePassed(activity.startTime);
+            // startNotified means the cron confirmed start was imminent (within 5 min) — treat as started
+            // Also check client-side start time from /starts/person
+            const clientStartTime = hasTodayStartFromStarts ? todayStartsByFriendId[String(item.personId)].startTime : null;
+            const hasStarted = hasTodayStart && (
+              (isStart && (activity.startNotified || hasStartTimePassed(activity.startTime))) ||
+              hasStartTimePassed(clientStartTime)
+            );
 
-            // Border: result → primary border, started → accent border, not-yet-started → no border
-            const showBorder = isResult || (isStart && hasStarted);
-            const borderColor = isResult ? colors.primary : colors.accent;
+            // Check if the event has liveresultat
+            const isLiveFromActivity = isStart && liveEventIds.has(activity.eventId);
+            const isLiveFromStarts = hasTodayStartFromStarts &&
+              liveEventIds.has(todayStartsByFriendId[String(item.personId)].eventName);
+            const isLiveFromEntries = todayEntries > 0 && counts != null &&
+              counts.todayEventNames.some((name) => liveEventIds.has(name));
+            const isLive = hasTodayStart && (isLiveFromActivity || isLiveFromStarts || isLiveFromEntries);
+            const liveOrange = isDark ? '#C48800' : '#F6A60A';
 
-            // Other entries (excluding today's start/result event)
-            const otherEntries = hasActivity ? Math.max(0, entryCount - 1) : entryCount;
+            // Start dot color: orange if live, otherwise accent (yellow)
+            const startDotColor = isLive ? liveOrange : colors.accent;
+
+            // Border: result → primary border, started → accent/orange border, not-yet-started → no border
+            const showBorder = isResult || hasStarted;
+            const borderColor = isResult ? colors.primary : startDotColor;
+
+            // Other entries (future, excluding today's activity)
+            const otherEntries = futureEntries;
 
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}
               style={({ pressed }) => [styles.friendCard, showBorder ? { borderColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
             >
-              {hasActivity ? (
+              {hasTodayStart ? (
                 <View style={styles.entryDotsColumn}>
-                  <View style={[styles.activityDot, { backgroundColor: isResult ? colors.primary : colors.accent }]} />
+                  <View style={[styles.activityDot, { backgroundColor: isResult ? colors.primary : startDotColor }]} />
                   {otherEntries >= 1 ? (
                     <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
                   ) : null}
@@ -214,13 +301,23 @@ export default function FriendsScreen() {
                     <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
                   ) : null}
                 </View>
-              ) : entryCount > 0 ? (
+              ) : isResult ? (
                 <View style={styles.entryDotsColumn}>
-                  <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
-                  {entryCount >= 2 ? (
+                  <View style={[styles.activityDot, { backgroundColor: colors.primary }]} />
+                  {otherEntries >= 1 ? (
                     <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
                   ) : null}
-                  {entryCount >= 3 ? (
+                  {otherEntries >= 2 ? (
+                    <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
+                  ) : null}
+                </View>
+              ) : futureEntries > 0 ? (
+                <View style={styles.entryDotsColumn}>
+                  <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  {futureEntries >= 2 ? (
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  ) : null}
+                  {futureEntries >= 3 ? (
                     <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
                   ) : null}
                 </View>
@@ -380,6 +477,26 @@ export default function FriendsScreen() {
 
               <View style={styles.legendRow}>
                 <View style={styles.legendSample}>
+                  <View style={[styles.activityDot, { backgroundColor: isDark ? '#C48800' : '#F6A60A' }]} />
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Har starttid idag – liveresultat finns</Text>
+                  <Text style={styles.legendDesc}>Vännen har starttid idag och kan troligtvis gå att följa via Liveresultat</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={[styles.legendSample, { borderColor: isDark ? '#C48800' : '#F6A60A', borderWidth: 1.5 }]}>
+                  <View style={[styles.activityDot, { backgroundColor: isDark ? '#C48800' : '#F6A60A' }]} />
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Har startat idag – liveresultat finns</Text>
+                  <Text style={styles.legendDesc}>Vännen har startat och kan troligtvis gå att följa via Liveresultat</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
+                <View style={styles.legendSample}>
                   <View style={styles.entryDotsColumn}>
                     <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
                   </View>
@@ -493,9 +610,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       opacity: 0.85,
     },
     activityDot: {
-      borderRadius: 5,
-      height: 10,
-      width: 10,
+      borderRadius: 3.5,
+      height: 7,
+      width: 7,
     },
     iconSpacer: {
       width: 10,
@@ -678,14 +795,14 @@ function formatLocalIsoDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, number>> {
+async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, { today: number; future: number; todayEventNames: string[] }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const fromDate = `${todayIso} 00:00:00`;
   const futureDate = new Date();
   futureDate.setMonth(futureDate.getMonth() + 9);
   const toDate = `${formatLocalIsoDate(futureDate)} 23:59:59`;
 
-  const result: Record<string, number> = {};
+  const result: Record<string, { today: number; future: number; todayEventNames: string[] }> = {};
 
   await Promise.all(
     friends.map(async (friend) => {
@@ -695,8 +812,11 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
         const entries = parsed.EntryList?.Entry;
         const entryArray = entries == null ? [] : Array.isArray(entries) ? entries : [entries];
 
-        // Count unique events with event date >= today
+        // Count unique events, separating today from future
         const seenEventIds = new Set<string>();
+        let todayCount = 0;
+        let futureCount = 0;
+        const todayEventNames: string[] = [];
         for (const entry of entryArray) {
           const event = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>).Event : null;
           const eventIdNode = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).EventId : null;
@@ -705,11 +825,18 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
           const dateStr = typeof startDate === 'object' && startDate !== null ? (startDate as Record<string, unknown>).Date : null;
           if (typeof dateStr === 'string' && dateStr >= todayIso && eventId && !seenEventIds.has(eventId)) {
             seenEventIds.add(eventId);
+            if (dateStr === todayIso) {
+              todayCount++;
+              const eventName = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).Name : null;
+              if (typeof eventName === 'string') todayEventNames.push(eventName);
+            } else {
+              futureCount++;
+            }
           }
         }
 
-        if (seenEventIds.size > 0) {
-          result[String(friend.personId)] = seenEventIds.size;
+        if (todayCount > 0 || futureCount > 0) {
+          result[String(friend.personId)] = { today: todayCount, future: futureCount, todayEventNames };
         }
       } catch {
         // Silently skip on error
@@ -737,4 +864,48 @@ function hasStartTimePassed(startTime: string | null): boolean {
   const d = new Date(normalized);
   if (Number.isNaN(d.getTime())) return false;
   return d.getTime() <= Date.now();
+}
+
+/**
+ * Fetches today's starts for each friend directly from Eventor /starts/person.
+ * Returns a map of friendId → { eventName } for friends that have a start today.
+ */
+async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null }>> {
+  const todayIso = formatLocalIsoDate(new Date());
+  const from = `${todayIso} 00:00:00`;
+  const to = `${todayIso} 23:59:59`;
+
+  const result: Record<string, { eventName: string; startTime: string | null }> = {};
+
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < friends.length; i += BATCH_SIZE) {
+    const batch = friends.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (friend) => {
+        try {
+          const xml = await fetchPersonStartsXml(String(friend.personId), from, to);
+          // Simple regex extraction — same approach as the backend
+          const eventNameMatch = xml.match(/<Event\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
+          if (eventNameMatch) {
+            // Extract start time
+            let startTime: string | null = null;
+            const stMatch = xml.match(/<StartTime>\s*<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
+            if (stMatch) {
+              startTime = `${stMatch[1].trim()}T${stMatch[2].trim()}`;
+            } else {
+              const stMatch2 = xml.match(/<StartTime>\s*<Date>([^<]+)<\/Date>\s*<Time>([^<]+)<\/Time>/);
+              if (stMatch2) {
+                startTime = `${stMatch2[1].trim()}T${stMatch2[2].trim()}`;
+              }
+            }
+            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime };
+          }
+        } catch {
+          // Silently skip on error
+        }
+      }),
+    );
+  }
+
+  return result;
 }

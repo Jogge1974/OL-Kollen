@@ -13,7 +13,11 @@ export type FriendActivityEntry = {
   /** ISO date string YYYY-MM-DD */
   date: string;
   eventId: string;
-  /** ISO datetime string for the friend's start time (Swedish local, e.g. "2026-05-30T10:30:00") */
+  /** Event name from Eventor (used for liveresultat matching) */
+  eventName: string | null;
+  /** True if the backend confirmed the start was imminent (within 5 min window) */
+  startNotified: boolean;
+  /** ISO datetime string for the friend's start time */
   startTime: string | null;
   type: 'friend-results' | 'friend-start';
 };
@@ -54,7 +58,7 @@ export const useFriendActivityStore = create<FriendActivityState>((set, get) => 
     const today = todayStr();
     const { data } = await client
       .from('friend_activity_state')
-      .select('friend_person_id, event_id, result_notified_at, start_notified_at, start_time')
+      .select('friend_person_id, event_id, event_name, result_notified_at, start_notified_at, start_time')
       .eq('event_date', today)
       .in('friend_person_id', friendPersonIds);
 
@@ -62,9 +66,9 @@ export const useFriendActivityStore = create<FriendActivityState>((set, get) => 
     for (const row of data ?? []) {
       const id = row.friend_person_id;
       if (row.result_notified_at) {
-        fresh[id] = { date: today, eventId: row.event_id, startTime: null, type: 'friend-results' };
+        fresh[id] = { date: today, eventId: row.event_id, eventName: row.event_name ?? null, startNotified: false, startTime: null, type: 'friend-results' };
       } else if (row.start_notified_at || row.start_time) {
-        fresh[id] = { date: today, eventId: row.event_id, startTime: row.start_time ?? null, type: 'friend-start' };
+        fresh[id] = { date: today, eventId: row.event_id, eventName: row.event_name ?? null, startNotified: Boolean(row.start_notified_at), startTime: row.start_time ?? null, type: 'friend-start' };
       }
     }
     set({ activityByFriendId: fresh });
@@ -79,7 +83,7 @@ export const useFriendActivityStore = create<FriendActivityState>((set, get) => 
     const today = todayStr();
     const current = { ...get().activityByFriendId };
     for (const id of friendPersonIds) {
-      current[id] = { date: today, eventId, startTime: null, type };
+      current[id] = { date: today, eventId, eventName: null, startNotified: type === 'friend-start', startTime: null, type };
     }
     set({ activityByFriendId: current });
   },
