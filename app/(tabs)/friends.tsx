@@ -10,7 +10,7 @@ import { useFocusEffect } from 'expo-router';
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
-import { fetchPersonEntriesXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
+import { fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
 import { findLiveCompetitionsBatch } from '@/src/services/liveresultat';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
@@ -68,33 +68,44 @@ export default function FriendsScreen() {
   // Today's starts fetched directly from Eventor (client-side fallback)
   const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null }>>({});
 
+  // Friends who have results today (client-side check from Eventor)
+  const [todayResultFriendIds, setTodayResultFriendIds] = React.useState<Set<string>>(new Set());
+
   // Set of eventIds that have a liveresultat match today
   const [liveEventIds, setLiveEventIds] = React.useState<Set<string>>(new Set());
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [statusLoading, setStatusLoading] = React.useState(true);
 
   useFocusEffect(
     React.useCallback(() => {
       if (friends.length > 0) {
-        void fetchTodayActivity(friends.map((f) => String(f.personId)));
-        void fetchFriendEntryCounts(friends).then(setEntryCountByFriendId);
-        void fetchFriendTodayStarts(friends).then(setTodayStartsByFriendId);
+        setStatusLoading(true);
+        const p1 = fetchTodayActivity(friends.map((f) => String(f.personId)));
+        const p2 = fetchFriendEntryCounts(friends).then(setEntryCountByFriendId);
+        const p3 = fetchFriendTodayStarts(friends).then(setTodayStartsByFriendId);
+        const p4 = fetchFriendTodayResults(friends).then(setTodayResultFriendIds);
+        void Promise.all([p1, p2, p3, p4]).finally(() => setStatusLoading(false));
       }
     }, [friends, fetchTodayActivity, user]),
   );
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
+    setStatusLoading(true);
     try {
       await fetchTodayActivity(friends.map((f) => String(f.personId)));
-      const [entryCounts, todayStarts] = await Promise.all([
+      const [entryCounts, todayStarts, resultIds] = await Promise.all([
         fetchFriendEntryCounts(friends),
         fetchFriendTodayStarts(friends),
+        fetchFriendTodayResults(friends),
       ]);
       setEntryCountByFriendId(entryCounts);
       setTodayStartsByFriendId(todayStarts);
+      setTodayResultFriendIds(resultIds);
     } finally {
       setIsRefreshing(false);
+      setStatusLoading(false);
     }
   }, [friends, fetchTodayActivity]);
 
@@ -248,7 +259,9 @@ export default function FriendsScreen() {
             const today = new Date().toISOString().slice(0, 10);
             const activity = activityByFriendId[String(item.personId)];
             const hasActivity = activity != null && activity.date === today;
-            const isResult = hasActivity && activity.type === 'friend-results';
+            const isResultFromBackend = hasActivity && activity.type === 'friend-results';
+            const isResultFromClient = todayResultFriendIds.has(String(item.personId));
+            const isResult = isResultFromBackend || isResultFromClient;
             const isStart = hasActivity && activity.type === 'friend-start';
             const counts = entryCountByFriendId[String(item.personId)];
             const todayEntries = counts?.today ?? 0;
@@ -256,7 +269,8 @@ export default function FriendsScreen() {
             const hasTodayStartFromStarts = todayStartsByFriendId[String(item.personId)] != null;
 
             // A friend has a start today if: backend says so, OR client fetched today starts, OR entry data shows today
-            const hasTodayStart = isStart || hasTodayStartFromStarts || (!isResult && todayEntries > 0);
+            // But NOT if a result already exists — result takes priority
+            const hasTodayStart = !isResult && (isStart || hasTodayStartFromStarts || todayEntries > 0);
 
             // Determine if the friend's start time has passed
             // startNotified means the cron confirmed start was imminent (within 5 min) — treat as started
@@ -291,7 +305,11 @@ export default function FriendsScreen() {
               onPress={() => router.push(`/friend/${item.personId}`)}
               style={({ pressed }) => [styles.friendCard, showBorder ? { borderColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
             >
-              {hasTodayStart ? (
+              {statusLoading ? (
+                <View style={styles.entryDotsColumn}>
+                  <ActivityIndicator color={colors.textMuted} size={10} />
+                </View>
+              ) : hasTodayStart ? (
                 <View style={styles.entryDotsColumn}>
                   <View style={[styles.activityDot, { backgroundColor: isResult ? colors.primary : startDotColor }]} />
                   {otherEntries >= 1 ? (
@@ -899,6 +917,37 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
               }
             }
             result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime };
+          }
+        } catch {
+          // Silently skip on error
+        }
+      }),
+    );
+  }
+
+  return result;
+}
+
+async function fetchFriendTodayResults(friends: Friend[]): Promise<Set<string>> {
+  const todayIso = formatLocalIsoDate(new Date());
+  const from = `${todayIso} 00:00:00`;
+  const to = `${todayIso} 23:59:59`;
+
+  const result = new Set<string>();
+
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < friends.length; i += BATCH_SIZE) {
+    const batch = friends.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (friend) => {
+        try {
+          const xml = await fetchPersonResultsXml(String(friend.personId), from, to);
+          // Check if there's any result with a valid status or time
+          const hasResult = /<CompetitorStatus\s+value="/.test(xml) ||
+            /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish)<\/Status>/.test(xml) ||
+            /<Time>[^<]+<\/Time>/.test(xml);
+          if (hasResult) {
+            result.add(String(friend.personId));
           }
         } catch {
           // Silently skip on error
