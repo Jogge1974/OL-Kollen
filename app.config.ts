@@ -22,12 +22,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           CFBundleLocalizations: ['sv'],
     },
     bundleIdentifier: 'se.mastol.kontrollen',
-    buildNumber: '15',
+    buildNumber: '16',
     supportsTablet: true,
   },
   android: {
     package: 'se.mastol.kontrollen',
-    versionCode: 15,
+    versionCode: 16,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       foregroundImage: './assets/icon1024.png',

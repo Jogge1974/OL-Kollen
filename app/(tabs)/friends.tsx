@@ -183,18 +183,37 @@ export default function FriendsScreen() {
           keyExtractor={(item) => String(item.personId)}
           renderItem={({ item }) => {
             const today = new Date().toISOString().slice(0, 10);
-            const entry = activityByFriendId[String(item.personId)];
-            const hasActivity = entry != null && entry.date === today;
-            const isResult = hasActivity && entry.type === 'friend-results';
-            const activityColor = isResult ? colors.primary : colors.accent;
+            const activity = activityByFriendId[String(item.personId)];
+            const hasActivity = activity != null && activity.date === today;
+            const isResult = hasActivity && activity.type === 'friend-results';
+            const isStart = hasActivity && activity.type === 'friend-start';
             const entryCount = entryCountByFriendId[String(item.personId)] ?? 0;
+
+            // Determine if the friend's start time has passed
+            const hasStarted = isStart && hasStartTimePassed(activity.startTime);
+
+            // Border: result → primary border, started → accent border, not-yet-started → no border
+            const showBorder = isResult || (isStart && hasStarted);
+            const borderColor = isResult ? colors.primary : colors.accent;
+
+            // Other entries (excluding today's start/result event)
+            const otherEntries = hasActivity ? Math.max(0, entryCount - 1) : entryCount;
+
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}
-              style={({ pressed }) => [styles.friendCard, hasActivity ? { borderColor: activityColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
+              style={({ pressed }) => [styles.friendCard, showBorder ? { borderColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
             >
               {hasActivity ? (
-                <View style={[styles.activityDot, { backgroundColor: activityColor }]} />
+                <View style={styles.entryDotsColumn}>
+                  <View style={[styles.activityDot, { backgroundColor: isResult ? colors.primary : colors.accent }]} />
+                  {otherEntries >= 1 ? (
+                    <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
+                  ) : null}
+                  {otherEntries >= 2 ? (
+                    <Text style={[styles.entryDotPlus, { color: colors.primary }]}>+</Text>
+                  ) : null}
+                </View>
               ) : entryCount > 0 ? (
                 <View style={styles.entryDotsColumn}>
                   <View style={[styles.entryDot, { backgroundColor: colors.primary }]} />
@@ -340,12 +359,22 @@ export default function FriendsScreen() {
               </View>
 
               <View style={styles.legendRow}>
+                <View style={styles.legendSample}>
+                  <View style={[styles.activityDot, { backgroundColor: colors.accent }]} />
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Har starttid idag</Text>
+                  <Text style={styles.legendDesc}>Vännen har en starttid idag men har inte startat ännu</Text>
+                </View>
+              </View>
+
+              <View style={styles.legendRow}>
                 <View style={[styles.legendSample, { borderColor: colors.accent, borderWidth: 1.5 }]}>
                   <View style={[styles.activityDot, { backgroundColor: colors.accent }]} />
                 </View>
                 <View style={styles.legendTextWrap}>
-                  <Text style={styles.legendLabel}>Har startat, enl. startlista, idag</Text>
-                  <Text style={styles.legendDesc}>Vännen har startat i en tävling idag</Text>
+                  <Text style={styles.legendLabel}>Har startat idag</Text>
+                  <Text style={styles.legendDesc}>Vännens starttid har passerat – tävlar just nu (eller är i mål)</Text>
                 </View>
               </View>
 
@@ -689,4 +718,23 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
   );
 
   return result;
+}
+
+/**
+ * Determines if a start time (Swedish local ISO string) has already passed.
+ * Returns true if the time is in the past, false if in the future or unknown.
+ */
+function hasStartTimePassed(startTime: string | null): boolean {
+  if (!startTime) return false;
+  // Eventor start times are Swedish local time without timezone indicator.
+  // Assume Europe/Stockholm (CEST = UTC+2 in summer, CET = UTC+1 in winter).
+  let normalized = startTime;
+  if (!startTime.endsWith('Z') && !/[+-]\d{2}(:\d{2})?$/.test(startTime)) {
+    const month = new Date(startTime + 'Z').getUTCMonth(); // 0-based
+    const offset = (month >= 2 && month <= 9) ? '+02:00' : '+01:00';
+    normalized = startTime + offset;
+  }
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() <= Date.now();
 }
