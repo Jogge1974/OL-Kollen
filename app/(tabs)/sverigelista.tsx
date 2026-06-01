@@ -11,6 +11,7 @@ import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
+import { ClubRankingTrend, useClubRanking } from '@/src/hooks/useClubRanking';
 import { getSverigelistanClassLabel, useSverigelistanDirectory } from '@/src/hooks/useSverigelistanDirectory';
 import { useAuthStore } from '@/src/store/authStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
@@ -39,6 +40,11 @@ export default function SverigelistaScreen() {
   const collapseAnim = React.useRef(new Animated.Value(1)).current;
   const lastScrollY = React.useRef(0);
   const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory({ enabled: canViewSverigelistan });
+  const { rankings: clubRankings } = useClubRanking({ enabled: canViewSverigelistan });
+  const [clubRankingListGender, setClubRankingListGender] = React.useState<'H' | 'D' | null>(null);
+  const [clubRankingListSearch, setClubRankingListSearch] = React.useState('');
+  const [clubDetailClub, setClubDetailClub] = React.useState<string | null>(null);
+  const [clubRankingExpanded, setClubRankingExpanded] = React.useState(false);
 
   React.useEffect(() => {
     if (user?.gender === 'D' || user?.gender === 'H') {
@@ -378,6 +384,51 @@ export default function SverigelistaScreen() {
                   {error ? <Text style={styles.errorText}>{error}</Text> : null}
                   {!hasSupabase ? <Text style={styles.helperText}>Sverigelistan kan inte visas.</Text> : null}
             </View>
+
+            {/* Club Ranking Card — collapsible panel */}
+            {(clubRankings.H.length > 0 || clubRankings.D.length > 0) ? (
+              <View style={styles.clubRankingSplitCard}>
+                <Pressable
+                  onPress={() => setClubRankingExpanded((v) => !v)}
+                  style={styles.clubRankingPanelHeader}
+                >
+                  <Ionicons color={colors.primaryDeep} name="trophy-outline" size={18} />
+                  <Text style={styles.clubRankingPanelTitle}>Klubbranking</Text>
+                  <Ionicons color={colors.textMuted} name={clubRankingExpanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+                </Pressable>
+
+                {clubRankingExpanded ? (
+                  <View style={styles.clubRankingPanelContent}>
+                    {/* Herr side */}
+                    <Pressable onPress={() => { setClubRankingListGender('H'); setClubRankingListSearch(''); }} style={styles.clubRankingHalf}>
+                      <Text style={styles.clubRankingHalfTitle}>Herr</Text>
+                      {clubRankings.H.slice(0, 3).map((entry, i) => (
+                        <View key={entry.current.club} style={styles.clubRankingMiniRow}>
+                          <Text style={styles.clubRankingMiniMedal}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</Text>
+                          <Text numberOfLines={1} style={styles.clubRankingMiniClub}>{entry.current.club}</Text>
+                          <Text style={styles.clubRankingMiniPoints}>{entry.current.avgPoints.toFixed(2)}</Text>
+                        </View>
+                      ))}
+                    </Pressable>
+
+                    <View style={styles.clubRankingDivider} />
+
+                    {/* Dam side */}
+                    <Pressable onPress={() => { setClubRankingListGender('D'); setClubRankingListSearch(''); }} style={styles.clubRankingHalf}>
+                      <Text style={styles.clubRankingHalfTitle}>Dam</Text>
+                      {clubRankings.D.slice(0, 3).map((entry, i) => (
+                        <View key={entry.current.club} style={styles.clubRankingMiniRow}>
+                          <Text style={styles.clubRankingMiniMedal}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</Text>
+                          <Text numberOfLines={1} style={styles.clubRankingMiniClub}>{entry.current.club}</Text>
+                          <Text style={styles.clubRankingMiniPoints}>{entry.current.avgPoints.toFixed(2)}</Text>
+                        </View>
+                      ))}
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
             </Animated.View>
           </Pressable>
         }
@@ -506,6 +557,57 @@ export default function SverigelistaScreen() {
         </View>
       </Modal>
       <RunnerRankingModal comparisonRows={genderRows} onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
+
+      {/* Club Ranking Full List Modal */}
+      <Modal animationType="fade" transparent visible={clubRankingListGender !== null}>
+        <View style={styles.searchOverlay}>
+          <Pressable style={styles.searchBackdrop} onPress={() => setClubRankingListGender(null)} />
+          <View style={styles.clubRankingSheet}>
+            <View style={styles.searchHeader}>
+              <Text style={styles.searchTitle}>Klubbranking {clubRankingListGender === 'H' ? 'Herr' : 'Dam'}</Text>
+              <Pressable onPress={() => setClubRankingListGender(null)} style={styles.searchCloseButton}>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+                <Text style={styles.searchCloseText}>Stäng</Text>
+              </Pressable>
+            </View>
+
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Sök klubb"
+              onChangeText={setClubRankingListSearch}
+              onClearText={() => setClubRankingListSearch('')}
+              placeholder="Skriv klubbnamn"
+              value={clubRankingListSearch}
+            />
+
+            <FlatList
+              contentContainerStyle={styles.clubRankingListContent}
+              data={(clubRankingListGender ? clubRankings[clubRankingListGender] : []).filter((e) => {
+                if (!clubRankingListSearch.trim()) return true;
+                return e.current.club.toLocaleLowerCase('sv').includes(clubRankingListSearch.trim().toLocaleLowerCase('sv'));
+              })}
+              keyExtractor={(item) => item.current.club}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={<Text style={styles.searchEmptyText}>Inga klubbar matchar sökningen.</Text>}
+              renderItem={({ item, index }) => (
+                <ClubRankingAccordionRow
+                  entry={item}
+                  gender={clubRankingListGender ?? 'H'}
+                  index={index}
+                  isExpanded={clubDetailClub === item.current.club}
+                  onToggle={() => setClubDetailClub(clubDetailClub === item.current.club ? null : item.current.club)}
+                  rows={rows}
+                />
+              )}
+            />
+
+            <Text style={styles.clubRankingFootnote}>
+              Snitt av {clubRankingListGender === 'H' ? '10' : '7'} bästa löpare per klubb · paddat med 302p vid färre
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -574,6 +676,116 @@ function SverigelistaRowCard({
       </View>
 
     </Pressable>
+  );
+}
+
+function TrendIndicator({ entry }: { entry: ClubRankingTrend }) {
+  const { colors } = useTheme();
+  if (entry.trend === 'new') return null;
+  if (entry.trend === 'same') return <Text style={{ color: '#F3DA3E', fontSize: 11, fontWeight: '700' }}>▶</Text>;
+  const diff = entry.previousRank != null ? entry.previousRank - entry.current.rank : 0;
+  if (entry.trend === 'up') {
+    return <Text style={{ color: '#4CAF50', fontSize: 11, fontWeight: '700' }}>▲{Math.abs(diff)}</Text>;
+  }
+  return <Text style={{ color: '#E53935', fontSize: 11, fontWeight: '700' }}>▼{Math.abs(diff)}</Text>;
+}
+
+function ClubRankingAccordionRow({ entry, gender, index, isExpanded, onToggle, rows }: {
+  entry: ClubRankingTrend;
+  gender: 'H' | 'D';
+  index: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+  rows: SverigelistanRow[];
+}) {
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
+
+  return (
+    <View>
+      <Pressable
+        onPress={onToggle}
+        style={[
+          styles.clubRankingListRow,
+          index % 2 === 0 ? styles.clubRankingListRowEven : styles.clubRankingListRowOdd,
+          isExpanded && styles.clubRankingListRowExpanded,
+        ]}
+      >
+        <Text style={styles.clubRankingListRank}>{entry.current.rank}</Text>
+        <TrendIndicator entry={entry} />
+        {entry.previousRank != null ? (
+          <Text style={styles.clubRankingListPrev}>({entry.previousRank})</Text>
+        ) : null}
+        <Text numberOfLines={1} style={styles.clubRankingListClub}>{entry.current.club}</Text>
+        <Text style={styles.clubRankingListPoints}>{entry.current.avgPoints.toFixed(2)}</Text>
+        <Ionicons color={colors.textMuted} name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={14} />
+      </Pressable>
+      {isExpanded ? (
+        <ClubDetailRunners club={entry.current.club} gender={gender} rows={rows} />
+      ) : null}
+    </View>
+  );
+}
+
+function ClubDetailRunners({ club, gender, rows }: { club: string | null; gender: 'H' | 'D'; rows: SverigelistanRow[] }) {
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
+  const topN = gender === 'H' ? 10 : 7;
+
+  const clubRunners = React.useMemo(() => {
+    if (!club) return [];
+    return rows
+      .filter((r) => r.Club === club && r.Gender === gender)
+      .sort((a, b) => a.Points - b.Points);
+  }, [club, gender, rows]);
+
+  const topRunners = clubRunners.slice(0, topN);
+  const nextRunner = clubRunners[topN] ?? null;
+  const avgPoints = React.useMemo(() => {
+    const points = topRunners.map((r) => r.Points);
+    while (points.length < topN) points.push(302);
+    const sum = points.reduce((a, b) => a + b, 0);
+    return (sum / topN).toFixed(2);
+  }, [topRunners, topN]);
+
+  if (!club) return null;
+
+  return (
+    <View style={styles.clubDetailContent}>
+      <Text style={styles.clubDetailSubtitle}>
+        Top {topN} löpare · Snitt: {avgPoints} p
+      </Text>
+      {topRunners.map((runner, i) => (
+        <View key={runner.RunnerId ?? i} style={styles.clubDetailRunnerRow}>
+          <Text style={styles.clubDetailRunnerIndex}>{i + 1}</Text>
+          <Text numberOfLines={1} style={{ flex: 1 }}>
+            <Text style={styles.clubDetailRunnerName}>{runner.Name}</Text>
+            <Text style={styles.clubDetailRunnerMeta}> #{runner.Rank}</Text>
+          </Text>
+          <Text style={styles.clubDetailRunnerPoints}>{runner.Points.toFixed(2)}</Text>
+        </View>
+      ))}
+      {topRunners.length < topN ? (
+        <View style={styles.clubDetailPadRow}>
+          <Text style={styles.clubDetailPadText}>
+            +{topN - topRunners.length} tomma platser à 302.00 p
+          </Text>
+        </View>
+      ) : null}
+      {nextRunner ? (
+        <>
+          <View style={styles.clubDetailDivider} />
+          <View style={styles.clubDetailRunnerRow}>
+            <Text style={[styles.clubDetailRunnerIndex, { color: colors.textMuted }]}>{topN + 1}</Text>
+            <Text numberOfLines={1} style={{ flex: 1 }}>
+              <Text style={[styles.clubDetailRunnerName, { color: colors.textMuted }]}>{nextRunner.Name}</Text>
+              <Text style={[styles.clubDetailRunnerMeta]}> #{nextRunner.Rank}</Text>
+            </Text>
+            <Text style={[styles.clubDetailRunnerPoints, { color: colors.textMuted }]}>{nextRunner.Points.toFixed(2)}</Text>
+          </View>
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -744,6 +956,198 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     alignSelf: 'stretch',
     padding: spacing.lg,
     width: '100%',
+  },
+  clubRankingSplitCard: {
+    backgroundColor: colors.surface,
+    borderColor: isDark ? '#3A3520' : '#F0E6A0',
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: spacing.sm,
+    overflow: 'hidden',
+  },
+  clubRankingPanelHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  clubRankingPanelTitle: {
+    ...typography.bodyStrong,
+    color: colors.primaryDeep,
+    flex: 1,
+    fontSize: 14,
+  },
+  clubRankingPanelContent: {
+    borderTopColor: isDark ? '#3A3520' : '#F0E6A0',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  clubRankingHalf: {
+    flex: 1,
+    gap: 6,
+    padding: spacing.sm,
+  },
+  clubRankingDivider: {
+    backgroundColor: isDark ? '#3A3520' : '#F0E6A0',
+    width: 1,
+  },
+  clubRankingHalfTitle: {
+    ...typography.captionStrong,
+    color: colors.textPrimary,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  clubRankingMiniRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  clubRankingMiniMedal: {
+    fontSize: 12,
+  },
+  clubRankingMiniClub: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 11,
+  },
+  clubRankingMiniPoints: {
+    ...typography.captionStrong,
+    color: colors.textMuted,
+    fontSize: 10,
+  },
+  clubRankingSheet: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: spacing.md,
+    maxHeight: '85%',
+    padding: spacing.lg,
+  },
+  clubRankingListContent: {
+    gap: 2,
+  },
+  clubRankingListRow: {
+    alignItems: 'center',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+  },
+  clubRankingListRowEven: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  clubRankingListRowOdd: {
+    backgroundColor: colors.surface,
+  },
+  clubRankingListRowExpanded: {
+    backgroundColor: isSoft
+      ? (isDark ? 'rgba(15, 52, 124, 0.35)' : 'rgba(15, 52, 124, 0.12)')
+      : (isDark ? 'rgba(76, 139, 71, 0.35)' : 'rgba(76, 139, 71, 0.20)'),
+    borderLeftColor: colors.primaryDeep,
+    borderLeftWidth: 3,
+  },
+  clubRankingListRank: {
+    ...typography.bodyStrong,
+    color: colors.primaryDeep,
+    fontSize: 13,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  clubRankingListClub: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 13,
+  },
+  clubRankingListRunners: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 10,
+  },
+  clubRankingListPrev: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  clubRankingListPoints: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 12,
+    minWidth: 40,
+    textAlign: 'right',
+  },
+  clubRankingFootnote: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  clubDetailContent: {
+    backgroundColor: isSoft
+      ? (isDark ? 'rgba(15, 52, 124, 0.25)' : 'rgba(15, 52, 124, 0.08)')
+      : (isDark ? 'rgba(76, 139, 71, 0.18)' : 'rgba(76, 139, 71, 0.10)'),
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    borderLeftColor: colors.primaryDeep,
+    borderLeftWidth: 3,
+    gap: 4,
+    marginHorizontal: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  clubDetailSubtitle: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  clubDetailRunnerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 3,
+  },
+  clubDetailRunnerIndex: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 12,
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  clubDetailRunnerName: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 13,
+  },
+  clubDetailRunnerMeta: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  clubDetailRunnerPoints: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 13,
+  },
+  clubDetailPadRow: {
+    paddingVertical: 4,
+  },
+  clubDetailPadText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    fontSize: 11,
+  },
+  clubDetailDivider: {
+    backgroundColor: colors.border,
+    height: 1,
+    marginVertical: 4,
   },
   emptyCard: {
     backgroundColor: colors.surface,
