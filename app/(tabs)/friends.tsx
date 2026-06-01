@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFocusEffect } from 'expo-router';
@@ -11,7 +11,8 @@ import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
-import { findLiveCompetitionsBatch } from '@/src/services/liveresultat';
+import { findLiveCompetitionsBatch, findLiveCompetitionIdsBatch, getLiveFavoriteResults } from '@/src/services/liveresultat';
+import type { LiveFavorite, LiveFavoriteResult } from '@/src/services/liveresultat';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
 import { Friend, useFriendsStore } from '@/src/store/friendsStore';
@@ -66,13 +67,17 @@ export default function FriendsScreen() {
   const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[] }>>({});
 
   // Today's starts fetched directly from Eventor (client-side fallback)
-  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null }>>({});
+  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null; className: string | null }>>({});
 
   // Friends who have results today (client-side check from Eventor)
   const [todayResultFriendIds, setTodayResultFriendIds] = React.useState<Set<string>>(new Set());
 
   // Set of eventIds that have a liveresultat match today
   const [liveEventIds, setLiveEventIds] = React.useState<Set<string>>(new Set());
+  // Map of eventId/eventName → liveCompetitionId + competitionName
+  const [liveCompMap, setLiveCompMap] = React.useState<Map<string, number>>(new Map());
+  // Live friends modal
+  const [liveModalVisible, setLiveModalVisible] = React.useState(false);
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [statusLoading, setStatusLoading] = React.useState(true);
@@ -139,11 +144,68 @@ export default function FriendsScreen() {
 
     if (startEvents.size === 0) {
       setLiveEventIds(new Set());
+      setLiveCompMap(new Map());
       return;
     }
     const events = [...startEvents.entries()].map(([eventId, eventName]) => ({ eventId, eventName, eventDate: today }));
     void findLiveCompetitionsBatch(events).then(setLiveEventIds);
+    void findLiveCompetitionIdsBatch(events).then(setLiveCompMap);
   }, [activityByFriendId, todayStartsByFriendId, entryCountByFriendId]);
+
+  // Friends who are currently "live" (orange dot) — derive their LiveFavorite payload
+  const liveFriends = React.useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const result: Array<{ friend: Friend; favorite: LiveFavorite }> = [];
+
+    for (const friend of friends) {
+      const pid = String(friend.personId);
+      const activity = activityByFriendId[pid];
+      const hasActivity = activity != null && activity.date === today;
+      const isResult = (hasActivity && activity.type === 'friend-results') || todayResultFriendIds.has(pid);
+      if (isResult) continue; // results trump live status
+
+      const isStart = hasActivity && activity.type === 'friend-start';
+      const hasTodayStartFromStarts = todayStartsByFriendId[pid] != null;
+      const counts = entryCountByFriendId[pid];
+      const todayEntries = counts?.today ?? 0;
+      const hasTodayStart = isStart || hasTodayStartFromStarts || todayEntries > 0;
+      if (!hasTodayStart) continue;
+
+      // Determine if this event is live
+      let eventKey: string | null = null;
+      let compId: number | null = null;
+      let compName = '';
+
+      if (isStart && liveEventIds.has(activity.eventId)) {
+        eventKey = activity.eventId;
+        compName = activity.eventName ?? '';
+      } else if (hasTodayStartFromStarts && liveEventIds.has(todayStartsByFriendId[pid].eventName)) {
+        eventKey = todayStartsByFriendId[pid].eventName;
+        compName = todayStartsByFriendId[pid].eventName;
+      } else if (counts && counts.todayEventNames.some((n) => liveEventIds.has(n))) {
+        eventKey = counts.todayEventNames.find((n) => liveEventIds.has(n)) ?? null;
+        compName = eventKey ?? '';
+      }
+
+      if (!eventKey) continue;
+      compId = liveCompMap.get(eventKey) ?? null;
+      if (!compId) continue;
+
+      const className = todayStartsByFriendId[pid]?.className ?? '';
+      result.push({
+        friend,
+        favorite: {
+          competitionId: compId,
+          competitionName: compName,
+          className,
+          name: friend.name,
+          club: friend.club,
+        },
+      });
+    }
+
+    return result;
+  }, [friends, activityByFriendId, todayStartsByFriendId, entryCountByFriendId, todayResultFriendIds, liveEventIds, liveCompMap]);
 
   const uniqueClubs = React.useMemo(() => new Set(friends.map((f) => f.club)).size, [friends]);
   const genderSummary = React.useMemo(() => {
@@ -235,6 +297,12 @@ export default function FriendsScreen() {
           <Ionicons color={colors.primaryDeep} name="search-outline" size={14} />
           <Text style={styles.searchBadgeText}>Sök vänner</Text>
         </Pressable>
+        {liveFriends.length > 0 ? (
+          <Pressable onPress={() => setLiveModalVisible(true)} style={({ pressed }) => [styles.liveBadge, pressed ? { opacity: 0.8 } : null]}>
+            <Ionicons color="#fff" name="radio-outline" size={14} />
+            <Text style={styles.liveBadgeText}>Följ vänner LIVE</Text>
+          </Pressable>
+        ) : null}
         <View style={{ flex: 1 }} />
         <Pressable onPress={() => setLegendVisible(true)} style={({ pressed }) => [styles.legendInfoBadge, pressed ? { opacity: 0.7 } : null]}>
           <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={20} />
@@ -555,7 +623,205 @@ export default function FriendsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Live Friends Modal */}
+      <Modal animationType="slide" onRequestClose={() => setLiveModalVisible(false)} visible={liveModalVisible}>
+        <SafeAreaView edges={['top']} style={styles.screen}>
+          <LiveFriendsPanel
+            friends={liveFriends}
+            onClose={() => setLiveModalVisible(false)}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+// --- Live Friends Panel ---
+
+function LiveFriendsPanel({
+  friends,
+  onClose,
+}: {
+  friends: Array<{ friend: Friend; favorite: LiveFavorite }>;
+  onClose: () => void;
+}) {
+  const { colors, isDark, themeName } = useTheme();
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
+  const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
+  const liveOrange = isDark ? '#C48800' : '#F6A60A';
+
+  const [results, setResults] = React.useState<Map<string, LiveFavoriteResult>>(new Map());
+  const [expandedFriends, setExpandedFriends] = React.useState<Set<number>>(new Set());
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  const favorites = React.useMemo(() => friends.map((f) => f.favorite), [friends]);
+
+  const fetchResults = React.useCallback(async () => {
+    if (favorites.length === 0) return;
+    const data = await getLiveFavoriteResults(favorites);
+    const map = new Map<string, LiveFavoriteResult>();
+    for (const r of data) {
+      map.set(`${r.name}|${r.club}|${r.className}`, r);
+    }
+    setResults(map);
+    setIsLoading(false);
+  }, [favorites]);
+
+  // Initial fetch + 15s polling
+  React.useEffect(() => {
+    void fetchResults();
+    const interval = setInterval(() => { void fetchResults(); }, 15000);
+    return () => clearInterval(interval);
+  }, [fetchResults]);
+
+  const toggleExpand = (personId: number) => {
+    setExpandedFriends((prev) => {
+      const next = new Set(prev);
+      if (next.has(personId)) next.delete(personId);
+      else next.add(personId);
+      return next;
+    });
+  };
+
+  const formatStatus = (status: number) => {
+    switch (status) {
+      case 0: return 'OK';
+      case 1: return 'DNS';
+      case 2: return 'DNF';
+      case 3: return 'MP';
+      case 4: return 'DSQ';
+      case 5: return 'OT';
+      case 9: case 10: return 'I skogen';
+      case 11: return 'WO';
+      case 12: return 'MU';
+      default: return 'Ej startat';
+    }
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.liveHeader}>
+        <Ionicons color={liveOrange} name="radio-outline" size={20} />
+        <Text style={[styles.searchTitle, { flex: 1 }]}>Följ vänner LIVE</Text>
+        <Pressable onPress={onClose} style={styles.searchCloseButton}>
+          <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+          <Text style={styles.searchCloseText}>Stäng</Text>
+        </Pressable>
+      </View>
+
+      {isLoading ? (
+        <View style={{ alignItems: 'center', paddingTop: 40 }}>
+          <ActivityIndicator color={liveOrange} size="large" />
+          <Text style={[styles.liveSubtext, { marginTop: 12 }]}>Hämtar livedata...</Text>
+        </View>
+      ) : (
+        <FlatList
+          contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: 40 }}
+          data={friends}
+          keyExtractor={(item) => String(item.friend.personId)}
+          renderItem={({ item }) => {
+            const key = `${item.favorite.name}|${item.favorite.club}|${item.favorite.className}`;
+            const result = results.get(key);
+            const isExpanded = expandedFriends.has(item.friend.personId);
+
+            return (
+              <View style={styles.livePanelItem}>
+                <Pressable onPress={() => toggleExpand(item.friend.personId)} style={styles.livePanelHeader}>
+                  <View style={[styles.liveDotSmall, { backgroundColor: liveOrange }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.livePanelName}>{item.friend.name}</Text>
+                    <Text style={styles.livePanelMeta}>{item.friend.club} · {item.favorite.className || '?'}</Text>
+                  </View>
+                  {result ? (
+                    <View style={styles.livePanelSummary}>
+                      <Text style={styles.livePanelPlace}>
+                        {result.resultplace || (result.isRunning ? `~${result.projectedPlace}` : '-')}
+                      </Text>
+                      <Text style={styles.livePanelTime}>
+                        {result.resulttime || (result.isRunning ? formatStatus(result.status) : formatStatus(result.status))}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Ionicons color={colors.textMuted} name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+                </Pressable>
+
+                {isExpanded && result ? (
+                  <View style={styles.livePanelExpanded}>
+                    <Text style={styles.livePanelCompName}>{result.competitionName}</Text>
+
+                    <View style={styles.livePanelStatsRow}>
+                      <View style={styles.livePanelStat}>
+                        <Text style={styles.livePanelStatLabel}>Plac</Text>
+                        <Text style={styles.livePanelStatValue}>{result.resultplace || '-'}</Text>
+                      </View>
+                      <View style={styles.livePanelStat}>
+                        <Text style={styles.livePanelStatLabel}>Tid</Text>
+                        <Text style={styles.livePanelStatValue}>{result.resulttime || '-'}</Text>
+                      </View>
+                      <View style={styles.livePanelStat}>
+                        <Text style={styles.livePanelStatLabel}>+/-</Text>
+                        <Text style={styles.livePanelStatValue}>{result.resulttimeplus || '-'}</Text>
+                      </View>
+                      <View style={styles.livePanelStat}>
+                        <Text style={styles.livePanelStatLabel}>I klass</Text>
+                        <Text style={styles.livePanelStatValue}>{result.inClass}</Text>
+                      </View>
+                      <View style={styles.livePanelStat}>
+                        <Text style={styles.livePanelStatLabel}>I skog</Text>
+                        <Text style={styles.livePanelStatValue}>{result.inForest}</Text>
+                      </View>
+                    </View>
+
+                    {result.isRunning ? (
+                      <View style={styles.livePanelRunningRow}>
+                        <Ionicons color={liveOrange} name="navigate-outline" size={14} />
+                        <Text style={[styles.livePanelRunningText, { color: liveOrange }]}>
+                          I skogen · Prognos plats {result.projectedPlace} (sämst {result.worseCasePlace})
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {result.splitresults ? (
+                      <View style={styles.livePanelSplitRow}>
+                        <Text style={styles.livePanelSplitLabel}>Senaste stämpling</Text>
+                        <Text style={styles.livePanelSplitValue}>
+                          {result.splitresults.splitname}: {result.splitresults.splitresult} (plats {result.splitresults.splitplace}, {result.splitresults.splittimeplus})
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    <Text style={styles.livePanelStatus}>
+                      Status: {formatStatus(result.resultstatus)}
+                    </Text>
+                  </View>
+                ) : isExpanded ? (
+                  <View style={styles.livePanelExpanded}>
+                    <Text style={styles.liveSubtext}>
+                      Personen kunde inte hittas i liveresultatet. Det kan bero på att namnet är skrivet annorlunda i Liveresultat.
+                    </Text>
+                    <Pressable
+                      onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${item.favorite.competitionId}`)}
+                      style={({ pressed }) => [styles.liveLinkButton, pressed ? { opacity: 0.7 } : null]}
+                    >
+                      <Ionicons color="#fff" name="open-outline" size={14} />
+                      <Text style={styles.liveLinkButtonText}>Nya Liveresultat</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }}
+        />
+      )}
+
+      <Text style={styles.liveFooter}>Uppdateras var 15:e sekund</Text>
+    </View>
   );
 }
 
@@ -803,6 +1069,164 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.caption,
       color: colors.textSecondary,
     },
+    // Live badge
+    liveBadge: {
+      alignItems: 'center',
+      backgroundColor: isDark ? '#C48800' : '#F6A60A',
+      borderRadius: 999,
+      flexDirection: 'row',
+      gap: 5,
+      marginLeft: spacing.sm,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    liveBadgeText: {
+      ...typography.captionStrong,
+      color: '#fff',
+      fontSize: 12,
+    },
+    // Live modal styles
+    liveHeader: {
+      alignItems: 'center',
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: 8,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    liveFooter: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
+      paddingBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    liveSubtext: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 12,
+    },
+    livePanelItem: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: spacing.sm,
+      overflow: 'hidden',
+    },
+    livePanelHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 10,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    liveDotSmall: {
+      borderRadius: 5,
+      height: 10,
+      width: 10,
+    },
+    livePanelName: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 14,
+    },
+    livePanelMeta: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 11,
+    },
+    livePanelSummary: {
+      alignItems: 'flex-end',
+    },
+    livePanelPlace: {
+      ...typography.bodyStrong,
+      color: colors.primaryDeep,
+      fontSize: 16,
+    },
+    livePanelTime: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 11,
+    },
+    livePanelExpanded: {
+      backgroundColor: isDark ? 'rgba(246, 166, 10, 0.08)' : 'rgba(246, 166, 10, 0.05)',
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      gap: 8,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    livePanelCompName: {
+      ...typography.captionStrong,
+      color: colors.textSecondary,
+      fontSize: 11,
+    },
+    livePanelStatsRow: {
+      flexDirection: 'row',
+      gap: 4,
+    },
+    livePanelStat: {
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 8,
+      flex: 1,
+      paddingVertical: 6,
+    },
+    livePanelStatLabel: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 9,
+    },
+    livePanelStatValue: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 13,
+    },
+    livePanelRunningRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    livePanelRunningText: {
+      ...typography.captionStrong,
+      fontSize: 11,
+    },
+    livePanelSplitRow: {
+      gap: 2,
+    },
+    livePanelSplitLabel: {
+      ...typography.captionStrong,
+      color: colors.textMuted,
+      fontSize: 10,
+    },
+    livePanelSplitValue: {
+      ...typography.caption,
+      color: colors.textPrimary,
+      fontSize: 12,
+    },
+    livePanelStatus: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
+    },
+    liveLinkButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: isDark ? '#C48800' : '#F6A60A',
+      borderRadius: 8,
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    liveLinkButtonText: {
+      ...typography.captionStrong,
+      color: '#fff',
+      fontSize: 12,
+    },
   });
 }
 
@@ -888,12 +1312,12 @@ function hasStartTimePassed(startTime: string | null): boolean {
  * Fetches today's starts for each friend directly from Eventor /starts/person.
  * Returns a map of friendId → { eventName } for friends that have a start today.
  */
-async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null }>> {
+async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null; className: string | null }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const from = `${todayIso} 00:00:00`;
   const to = `${todayIso} 23:59:59`;
 
-  const result: Record<string, { eventName: string; startTime: string | null }> = {};
+  const result: Record<string, { eventName: string; startTime: string | null; className: string | null }> = {};
 
   const BATCH_SIZE = 5;
   for (let i = 0; i < friends.length; i += BATCH_SIZE) {
@@ -916,7 +1340,10 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
                 startTime = `${stMatch2[1].trim()}T${stMatch2[2].trim()}`;
               }
             }
-            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime };
+            // Extract class name
+            const classMatch = xml.match(/<EventClass\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
+            const className = classMatch ? classMatch[1] : null;
+            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime, className };
           }
         } catch {
           // Silently skip on error

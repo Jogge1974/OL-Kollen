@@ -134,3 +134,105 @@ export async function findLiveCompetitionsBatch(
     return matched;
   }
 }
+
+/**
+ * Same as findLiveCompetitionsBatch but returns a map of eventId → liveCompetitionId.
+ */
+export async function findLiveCompetitionIdsBatch(
+  events: Array<{ eventId: string; eventName: string; eventDate: string }>,
+): Promise<Map<string, number>> {
+  const matched = new Map<string, number>();
+  if (events.length === 0) return matched;
+
+  try {
+    const statusResponse = await fetch(`${BASE_URL}/upstream-status`);
+    if (!statusResponse.ok) return matched;
+
+    const status: UpstreamStatus = await statusResponse.json();
+    if (!status.isAvailable) return matched;
+
+    const competitionsResponse = await fetch(`${BASE_URL}/getCompetitions?dateCode=1`);
+    if (!competitionsResponse.ok) return matched;
+
+    const competitions: LiveCompetition[] = await competitionsResponse.json();
+
+    for (const event of events) {
+      for (const comp of competitions) {
+        if (comp.date !== event.eventDate) continue;
+
+        const similarity = nameSimilarity(event.eventName, comp.name);
+        if (similarity >= 0.6) {
+          matched.set(event.eventId, comp.id);
+          break;
+        }
+      }
+    }
+
+    return matched;
+  } catch {
+    return matched;
+  }
+}
+
+// --- getFavoriteresult API types and function ---
+
+export type LiveFavorite = {
+  competitionId: number;
+  competitionName: string;
+  className: string;
+  name: string;
+  club: string;
+};
+
+export type LiveSplitResult = {
+  code: number;
+  splitname: string;
+  splitresult: string;
+  splitstatus: number;
+  splitplace: string;
+  splittimeplus: string;
+};
+
+export type LiveFavoriteResult = {
+  competitionId: number;
+  competitionName: string;
+  place: string;
+  name: string;
+  club: string;
+  className: string;
+  result: string;
+  status: number;
+  timeplus: string;
+  progress: string;
+  start: number;
+  isRunning: boolean;
+  resultresult: string;
+  resultstatus: number;
+  resulttime: string;
+  resulttimeplus: string;
+  resultplace: string;
+  projectedPlace: number;
+  splitresults: LiveSplitResult;
+  inClass: number;
+  inForest: number;
+  worseCasePlace: string;
+};
+
+/**
+ * Post favorites to the liveresultat backend and get live results.
+ */
+export async function getLiveFavoriteResults(favorites: LiveFavorite[]): Promise<LiveFavoriteResult[]> {
+  if (favorites.length === 0) return [];
+
+  try {
+    const response = await fetch(`${BASE_URL}/getFavoriteresult`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'sv' },
+      body: JSON.stringify(favorites),
+    });
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
