@@ -959,9 +959,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   clubRankingSplitCard: {
     backgroundColor: colors.surface,
-    borderColor: isDark ? '#3A3520' : '#F0E6A0',
-    borderRadius: 20,
-    borderWidth: 1,
+    borderColor: isSoft
+      ? (isDark ? '#1E3058' : '#A0B8D8')
+      : (isDark ? '#2E5A2A' : '#8FBF8A'),
+    borderRadius: 16,
+    borderWidth: 1.5,
     marginTop: spacing.sm,
     overflow: 'hidden',
   },
