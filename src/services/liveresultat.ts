@@ -200,19 +200,14 @@ export type LiveFavoriteResult = {
   name: string;
   club: string;
   className: string;
-  result: string;
-  status: number;
-  timeplus: string;
-  progress: string;
-  start: number;
-  isRunning: boolean;
-  resultresult: string;
-  resultstatus: number;
-  resulttime: string;
-  resulttimeplus: string;
-  resultplace: string;
+  result: string;        // centiseconds as string (e.g. "79200" = 13:12)
+  status: number;        // 0=OK, 1=DNS, 2=DNF, 3=MP, 4=DSQ, 5=OT, 9/10=running
+  timeplus: string;      // centiseconds diff as string
+  progress: number;      // 0-100
+  start: number;         // centiseconds since midnight
+  lastpassing: number;   // centiseconds since midnight
   projectedPlace: number;
-  splitresults: LiveSplitResult;
+  splitresults: LiveSplitResult[];
   inClass: number;
   inForest: number;
   worseCasePlace: string;

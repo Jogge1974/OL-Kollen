@@ -1,6 +1,9 @@
 [functions.push-sync]
 verify_jwt = false
 
+[functions.calculate-club-ranking]
+verify_jwt = false
+
 [functions.poll-eventor-publication]
 verify_jwt = false
 
@@ -14,4 +17,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.poll-friend-activity]
+verify_jwt = false
+
+[functions.poll-live-friends]
 verify_jwt = false

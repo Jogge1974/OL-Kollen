@@ -41,12 +41,11 @@ export function useClubRanking(options: { enabled?: boolean } = {}): UseClubRank
     try {
       setError(null);
 
-      // Get the two most recent months
+      // Get the two most recent distinct dates
       const { data: months } = await client
         .from('club_ranking')
         .select('month')
-        .order('month', { ascending: false })
-        .limit(1);
+        .order('month', { ascending: false });
 
       if (!months || months.length === 0) {
         setRankings({ H: [], D: [] });
@@ -54,12 +53,10 @@ export function useClubRanking(options: { enabled?: boolean } = {}): UseClubRank
         return;
       }
 
-      const currentMonth = months[0].month;
-
-      // Calculate previous month
-      const currentDate = new Date(currentMonth + 'T00:00:00');
-      currentDate.setMonth(currentDate.getMonth() - 1);
-      const prevMonth = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
+      // Deduplicate to get distinct month values
+      const distinctMonths = [...new Set(months.map((m) => m.month))];
+      const currentMonth = distinctMonths[0];
+      const prevMonth = distinctMonths.length > 1 ? distinctMonths[1] : null;
 
       // Fetch current month rankings
       const { data: currentData } = await client
@@ -69,14 +66,16 @@ export function useClubRanking(options: { enabled?: boolean } = {}): UseClubRank
         .order('rank', { ascending: true });
 
       // Fetch previous month rankings for trend
-      const { data: prevData } = await client
-        .from('club_ranking')
-        .select('gender, club, rank, month')
-        .eq('month', prevMonth);
-
       const prevMap = new Map<string, number>();
-      for (const row of prevData ?? []) {
-        prevMap.set(`${row.gender}::${row.club}`, row.rank);
+      if (prevMonth) {
+        const { data: prevData } = await client
+          .from('club_ranking')
+          .select('gender, club, rank, month')
+          .eq('month', prevMonth);
+
+        for (const row of prevData ?? []) {
+          prevMap.set(`${row.gender}::${row.club}`, row.rank);
+        }
       }
 
       const result: Record<'H' | 'D', ClubRankingTrend[]> = { H: [], D: [] };

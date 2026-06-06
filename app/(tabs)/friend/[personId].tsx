@@ -204,6 +204,13 @@ export default function FriendDetailScreen() {
                   <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={11} />
                   <Text style={[styles.pushPillText, friend.pushOnResult ? styles.pushPillTextActive : null]}>Res.</Text>
                 </Pressable>
+                <Pressable
+                  onPress={() => void updateFriendPush(friend.personId, 'pushOnLive', !friend.pushOnLive)}
+                  style={[styles.pushPill, friend.pushOnLive ? styles.pushPillActive : null]}
+                >
+                  <Ionicons color={friend.pushOnLive ? colors.primaryDeep : colors.textMuted} name="radio-outline" size={11} />
+                  <Text style={[styles.pushPillText, friend.pushOnLive ? styles.pushPillTextActive : null]}>Live</Text>
+                </Pressable>
               </View>
             ) : undefined
           }

@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFocusEffect } from 'expo-router';
 
@@ -254,6 +254,7 @@ export default function FriendsScreen() {
       name: result.name,
       personId: result.personId,
       pushOnEntry: false,
+      pushOnLive: false,
       pushOnResult: true,
       pushOnStart: true,
     };
@@ -626,17 +627,14 @@ export default function FriendsScreen() {
 
       {/* Live Friends Modal */}
       <Modal animationType="slide" onRequestClose={() => setLiveModalVisible(false)} visible={liveModalVisible}>
-        <SafeAreaView edges={['top']} style={styles.screen}>
-          <LiveFriendsPanel
-            friends={liveFriends}
-            onClose={() => setLiveModalVisible(false)}
-          />
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
-  );
-}
-
+        <SafeAreaProvider>
+          <SafeAreaView edges={['top', 'bottom']} style={styles.screen}>
+            <LiveFriendsPanel
+              friends={liveFriends}
+              onClose={() => setLiveModalVisible(false)}
+            />
+          </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
   );
@@ -659,6 +657,7 @@ function LiveFriendsPanel({
   const [results, setResults] = React.useState<Map<string, LiveFavoriteResult>>(new Map());
   const [expandedFriends, setExpandedFriends] = React.useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = React.useState(true);
+  const [countdown, setCountdown] = React.useState(15);
 
   const favorites = React.useMemo(() => friends.map((f) => f.favorite), [friends]);
 
@@ -676,9 +675,25 @@ function LiveFriendsPanel({
   // Initial fetch + 15s polling
   React.useEffect(() => {
     void fetchResults();
-    const interval = setInterval(() => { void fetchResults(); }, 15000);
+    setCountdown(15);
+    const interval = setInterval(() => { void fetchResults(); setCountdown(15); }, 15000);
     return () => clearInterval(interval);
   }, [fetchResults]);
+
+  // Tick every second: countdown + running time
+  const [nowCentis, setNowCentis] = React.useState(() => {
+    const now = new Date();
+    return (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 100;
+  });
+
+  React.useEffect(() => {
+    const tick = setInterval(() => {
+      setCountdown((c) => (c > 0 ? c - 1 : 0));
+      const now = new Date();
+      setNowCentis((now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 100);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   const toggleExpand = (personId: number) => {
     setExpandedFriends((prev) => {
@@ -702,6 +717,61 @@ function LiveFriendsPanel({
       case 12: return 'MU';
       default: return 'Ej startat';
     }
+  };
+
+  const isRunning = (status: number) => status === 9 || status === 10;
+
+  const formatCentis = (centis: string | number | null | undefined): string => {
+    if (centis == null) return '-';
+    const c = typeof centis === 'string' ? parseInt(centis, 10) : centis;
+    if (isNaN(c) || c <= 0) return '-';
+    const totalSec = Math.floor(c / 100);
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (hours > 0) return `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const formatTimePlus = (centis: string | number | null | undefined): string => {
+    if (centis == null) return '-';
+    const c = typeof centis === 'string' ? parseInt(centis, 10) : centis;
+    if (isNaN(c) || c === 0) return '±0';
+    const totalSec = Math.floor(Math.abs(c) / 100);
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    const sign = c > 0 ? '+' : '-';
+    if (mins > 0) return `${sign}${mins}:${String(secs).padStart(2, '0')}`;
+    return `${sign}${secs}s`;
+  };
+
+  const getRunningTime = (startCentis: number): string => {
+    const elapsed = nowCentis - startCentis;
+    if (elapsed <= 0) return '0:00';
+    return formatCentis(elapsed);
+  };
+
+  const formatStartClock = (startCentis: number): string => {
+    const totalSec = Math.floor(startCentis / 100);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  const getCollapsedSummary = (result: LiveFavoriteResult) => {
+    if (result.status === 0) {
+      // Finished OK — find RESULT split for formatted timeplus
+      const resultSplit = result.splitresults?.find((s) => s.splitname === 'RESULT');
+      const tp = resultSplit?.splittimeplus || formatTimePlus(result.timeplus);
+      return { line1: `Plac: ${result.place}, ${tp}`, line2: result.className || '', style: 'finished' as const };
+    }
+    if (result.status === 9 || result.status === 10) {
+      if (result.start > nowCentis) {
+        return { line1: `Start ${formatStartClock(result.start)}`, line2: '', style: 'muted' as const };
+      }
+      return { line1: getRunningTime(result.start), line2: '', style: 'running' as const };
+    }
+    return { line1: formatStatus(result.status), line2: '', style: 'muted' as const };
   };
 
   return (
@@ -733,77 +803,113 @@ function LiveFriendsPanel({
             return (
               <View style={styles.livePanelItem}>
                 <Pressable onPress={() => toggleExpand(item.friend.personId)} style={styles.livePanelHeader}>
-                  <View style={[styles.liveDotSmall, { backgroundColor: liveOrange }]} />
+                  <View style={styles.liveDotPulse}>
+                    <View style={[styles.liveDotSmall, { backgroundColor: liveOrange }]} />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.livePanelName}>{item.friend.name}</Text>
-                    <Text style={styles.livePanelMeta}>{item.friend.club} · {item.favorite.className || '?'}</Text>
+                    <Text style={styles.livePanelMeta}>{item.friend.club}</Text>
                   </View>
-                  {result ? (
-                    <View style={styles.livePanelSummary}>
-                      <Text style={styles.livePanelPlace}>
-                        {result.resultplace || (result.isRunning ? `~${result.projectedPlace}` : '-')}
-                      </Text>
-                      <Text style={styles.livePanelTime}>
-                        {result.resulttime || (result.isRunning ? formatStatus(result.status) : formatStatus(result.status))}
-                      </Text>
-                    </View>
-                  ) : null}
+                  {result ? (() => {
+                    const summary = getCollapsedSummary(result);
+                    return (
+                      <View style={styles.livePanelSummary}>
+                        <Text style={[
+                          styles.livePanelPlace,
+                          summary.style === 'running' ? { color: liveOrange } : null,
+                          summary.style === 'muted' ? { color: colors.textMuted, fontSize: 13 } : null,
+                        ]}>
+                          {summary.line1}
+                        </Text>
+                        {summary.line2 ? (
+                          <Text style={styles.livePanelTime}>{summary.line2}</Text>
+                        ) : null}
+                      </View>
+                    );
+                  })() : null}
                   <Ionicons color={colors.textMuted} name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={16} />
                 </Pressable>
 
                 {isExpanded && result ? (
                   <View style={styles.livePanelExpanded}>
-                    <Text style={styles.livePanelCompName}>{result.competitionName}</Text>
-
-                    <View style={styles.livePanelStatsRow}>
-                      <View style={styles.livePanelStat}>
-                        <Text style={styles.livePanelStatLabel}>Plac</Text>
-                        <Text style={styles.livePanelStatValue}>{result.resultplace || '-'}</Text>
-                      </View>
-                      <View style={styles.livePanelStat}>
-                        <Text style={styles.livePanelStatLabel}>Tid</Text>
-                        <Text style={styles.livePanelStatValue}>{result.resulttime || '-'}</Text>
-                      </View>
-                      <View style={styles.livePanelStat}>
-                        <Text style={styles.livePanelStatLabel}>+/-</Text>
-                        <Text style={styles.livePanelStatValue}>{result.resulttimeplus || '-'}</Text>
-                      </View>
-                      <View style={styles.livePanelStat}>
-                        <Text style={styles.livePanelStatLabel}>I klass</Text>
-                        <Text style={styles.livePanelStatValue}>{result.inClass}</Text>
-                      </View>
-                      <View style={styles.livePanelStat}>
-                        <Text style={styles.livePanelStatLabel}>I skog</Text>
-                        <Text style={styles.livePanelStatValue}>{result.inForest}</Text>
-                      </View>
+                    <View style={styles.livePanelCompRow}>
+                      <Ionicons color={colors.textMuted} name="flag-outline" size={12} />
+                      <Text style={styles.livePanelCompName}>{result.competitionName}</Text>
                     </View>
 
-                    {result.isRunning ? (
-                      <View style={styles.livePanelRunningRow}>
-                        <Ionicons color={liveOrange} name="navigate-outline" size={14} />
-                        <Text style={[styles.livePanelRunningText, { color: liveOrange }]}>
-                          I skogen · Prognos plats {result.projectedPlace} (sämst {result.worseCasePlace})
-                        </Text>
-                      </View>
-                    ) : null}
+                    <View style={styles.livePanelBodyRow}>
+                      <View style={styles.livePanelBodyCard}>
+                        {/* Left: splits table */}
+                        <View style={styles.liveSplitsTable}>
+                          {result.splitresults && result.splitresults.length > 0 ? (
+                            result.splitresults.map((s, i) => {
+                              const displayName = s.splitname === 'STARTTIME' ? 'Starttid' : s.splitname === 'RESULT' ? 'Resultat' : s.splitname;
+                              const iconName = s.splitname === 'STARTTIME' ? 'play-circle-outline' : s.splitname === 'RESULT' ? 'flag-outline' : 'radio-outline';
+                              const isLast = i === result.splitresults.length - 1;
+                              return (
+                                <React.Fragment key={i}>
+                                  <View style={styles.liveSplitRow}>
+                                    <Ionicons color={liveOrange} name={iconName as any} size={12} style={styles.liveSplitIcon} />
+                                    <Text style={styles.liveSplitName} numberOfLines={1}>{displayName}</Text>
+                                    {s.splitname === 'STARTTIME' ? (
+                                      <Text style={styles.liveSplitResultWide}>{s.splitresult}</Text>
+                                    ) : (
+                                      <>
+                                        <Text style={styles.liveSplitResult}>{s.splitresult}</Text>
+                                        <Text style={styles.liveSplitPlace}>{s.splitplace}</Text>
+                                        <Text style={styles.liveSplitTimeplus}>{s.splittimeplus}</Text>
+                                      </>
+                                    )}
+                                  </View>
+                                  {!isLast ? <View style={styles.liveSplitDivider} /> : null}
+                                </React.Fragment>
+                              );
+                            })
+                          ) : (
+                            <Text style={styles.liveSubtext}>Inga sträcktider</Text>
+                          )}
+                          {isRunning(result.status) && result.splitresults && result.splitresults.length > 0 && result.splitresults[result.splitresults.length - 1].splitname !== 'RESULT' ? (
+                            <>
+                              <View style={styles.liveSplitDivider} />
+                              <View style={styles.liveSplitRow}>
+                                <Ionicons color={liveOrange} name="navigate-outline" size={12} style={styles.liveSplitIcon} />
+                                <Text style={[styles.liveSplitName, { color: liveOrange }]} numberOfLines={1}>...</Text>
+                                <Text style={[styles.liveSplitResultWide, { color: liveOrange }]}>{getRunningTime(result.start)}</Text>
+                              </View>
+                            </>
+                          ) : null}
+                        </View>
 
-                    {result.splitresults ? (
-                      <View style={styles.livePanelSplitRow}>
-                        <Text style={styles.livePanelSplitLabel}>Senaste stämpling</Text>
-                        <Text style={styles.livePanelSplitValue}>
-                          {result.splitresults.splitname}: {result.splitresults.splitresult} (plats {result.splitresults.splitplace}, {result.splitresults.splittimeplus})
-                        </Text>
-                      </View>
-                    ) : null}
+                        {/* Vertical divider */}
+                        <View style={styles.liveVerticalDivider} />
 
-                    <Text style={styles.livePanelStatus}>
-                      Status: {formatStatus(result.resultstatus)}
-                    </Text>
+                        {/* Right: stats */}
+                        <View style={styles.liveStatsSection}>
+                          <View style={styles.liveStatsRow}>
+                            <Ionicons color={liveOrange} name="people-outline" size={13} />
+                            <Text style={styles.liveStatsLabel}>Antal i klassen</Text>
+                            <Text style={styles.liveStatsValue}>{result.inClass ?? '-'}</Text>
+                          </View>
+                          <View style={styles.liveStatsDivider} />
+                          <View style={styles.liveStatsRow}>
+                            <Ionicons color={liveOrange} name="leaf-outline" size={13} />
+                            <Text style={styles.liveStatsLabel}>Kvar i skogen</Text>
+                            <Text style={styles.liveStatsValue}>{result.inForest ?? '-'}</Text>
+                          </View>
+                          <View style={styles.liveStatsDivider} />
+                          <View style={styles.liveStatsRow}>
+                            <Ionicons color={liveOrange} name="podium-outline" size={13} />
+                            <Text style={styles.liveStatsLabel}>Möjl. slutplac.</Text>
+                            <Text style={styles.liveStatsValue}>{result.worseCasePlace ?? '-'}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
                   </View>
                 ) : isExpanded ? (
                   <View style={styles.livePanelExpanded}>
                     <Text style={styles.liveSubtext}>
-                      Personen kunde inte hittas i liveresultatet. Det kan bero på att namnet är skrivet annorlunda i Liveresultat.
+                                    Väntar på resultat från 'liveresultat.orientering.se'.                                    
                     </Text>
                     <Pressable
                       onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${item.favorite.competitionId}`)}
@@ -820,7 +926,7 @@ function LiveFriendsPanel({
         />
       )}
 
-      <Text style={styles.liveFooter}>Uppdateras var 15:e sekund</Text>
+      <Text style={styles.liveFooter}>Uppdateras om {countdown} sekunder</Text>
     </View>
   );
 }
@@ -1013,7 +1119,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       opacity: 0.85,
     },
     searchResultItemSelected: {
-      backgroundColor: isSoft ? '#E0ECF8' : isDark ? colors.surfaceMuted : '#E7F4D8',
+      backgroundColor: isSoft && isDark ? colors.surfaceMuted : isSoft ? '#E0ECF8' : isDark ? colors.surfaceMuted : '#E7F4D8',
       borderColor: colors.primary,
     },
     searchResultContent: {
@@ -1110,17 +1216,32 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     livePanelItem: {
       backgroundColor: colors.surface,
       borderColor: colors.border,
-      borderRadius: 14,
+      borderRadius: 16,
       borderWidth: 1,
       marginTop: spacing.sm,
       overflow: 'hidden',
+      ...(isDark ? {} : {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
+      }),
     },
     livePanelHeader: {
       alignItems: 'center',
       flexDirection: 'row',
       gap: 10,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: 14,
+    },
+    liveDotPulse: {
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(196, 136, 0, 0.15)' : 'rgba(246, 166, 10, 0.15)',
+      borderRadius: 12,
+      height: 24,
+      justifyContent: 'center',
+      width: 24,
     },
     liveDotSmall: {
       borderRadius: 5,
@@ -1151,17 +1272,134 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       fontSize: 11,
     },
     livePanelExpanded: {
-      backgroundColor: isDark ? 'rgba(246, 166, 10, 0.08)' : 'rgba(246, 166, 10, 0.05)',
-      borderTopColor: colors.border,
+      backgroundColor: isDark ? 'rgba(246, 166, 10, 0.06)' : 'rgba(246, 166, 10, 0.03)',
+      borderTopColor: isDark ? 'rgba(246, 166, 10, 0.2)' : 'rgba(246, 166, 10, 0.15)',
       borderTopWidth: 1,
-      gap: 8,
+      gap: 10,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: 14,
+    },
+    livePanelCompRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    livePanelBodyRow: {
+      flexDirection: 'row',
+      gap: 0,
+    },
+    livePanelBodyCard: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 10,
+      borderWidth: 1,
+      flex: 1,
+      flexDirection: 'row',
+      overflow: 'hidden',
+    },
+    liveSplitsTable: {
+      flex: 1,
+      gap: 0,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    liveSplitRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 4,
+      paddingHorizontal: 4,
+      borderRadius: 4,
+    },
+    liveSplitIcon: {
+      width: 14,
+    },
+    liveSplitDivider: {
+      backgroundColor: colors.border,
+      height: 1,
+      marginHorizontal: 4,
+      opacity: 0.4,
+    },
+    liveSplitName: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+      fontSize: 10,
+      flex: 1,
+    },
+    liveSplitResult: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      flexShrink: 0,
+      fontSize: 13,
+      fontWeight: '400',
+      width: 44,
+      textAlign: 'right',
+    },
+    liveSplitPlace: {
+      ...typography.caption,
+      color: colors.textMuted,
+      flexShrink: 0,
+      fontSize: 13,
+      fontWeight: '400',
+      width: 24,
+      textAlign: 'right',
+    },
+    liveSplitTimeplus: {
+      ...typography.caption,
+      color: colors.textMuted,
+      flexShrink: 0,
+      fontSize: 13,
+      fontWeight: '400',
+      width: 50,
+      textAlign: 'right',
+    },
+    liveSplitResultWide: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontWeight: '400',
+      flex: 1,
+      textAlign: 'right',
+    },
+    liveVerticalDivider: {
+      backgroundColor: colors.border,
+      opacity: 0.6,
+      width: 1,
+    },
+    liveStatsSection: {
+      flexShrink: 0,
+      gap: 0,
+      justifyContent: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+    },
+    liveStatsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 5,
+    },
+    liveStatsDivider: {
+      backgroundColor: colors.border,
+      height: 1,
+      opacity: 0.6,
+    },
+    liveStatsLabel: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+      fontSize: 10,
+    },
+    liveStatsValue: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontWeight: '400',
+      marginLeft: 'auto',
     },
     livePanelCompName: {
-      ...typography.captionStrong,
-      color: colors.textSecondary,
-      fontSize: 11,
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 13,
     },
     livePanelStatsRow: {
       flexDirection: 'row',
@@ -1369,11 +1607,13 @@ async function fetchFriendTodayResults(friends: Friend[]): Promise<Set<string>> 
       batch.map(async (friend) => {
         try {
           const xml = await fetchPersonResultsXml(String(friend.personId), from, to);
-          // Check if there's any result with a valid status or time
-          const hasResult = /<CompetitorStatus\s+value="/.test(xml) ||
-            /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish)<\/Status>/.test(xml) ||
-            /<Time>[^<]+<\/Time>/.test(xml);
-          if (hasResult) {
+          // Only count as result if there's an actual PersonResult with a finishing status
+          // Exclude NotCompeting/NotYetStarted/Inactive which are not real results
+          const hasFinishingResult =
+            (/<PersonResult\b/.test(xml) || /<Result\b/.test(xml)) &&
+            (/<CompetitorStatus\s+value="(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(xml) ||
+              /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/.test(xml));
+          if (hasFinishingResult) {
             result.add(String(friend.personId));
           }
         } catch {

@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
+import { findLiveCompetitionIdsBatch } from '../_shared/liveresultat.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,6 +15,7 @@ type FriendWatchRow = {
   person_id: string;
   push_on_result: boolean;
   push_on_start: boolean;
+  push_on_live: boolean;
 };
 
 type TokenRow = {
@@ -34,6 +36,7 @@ type ParsedStart = {
   eventId: string;
   eventName: string;
   startTime: string | null; // ISO 8601
+  className: string | null;
 };
 
 type ParsedResult = {
@@ -133,10 +136,16 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
       }
     }
 
+    // Class name from <EventClass><Name> or <Class><Name> (used for live matching)
+    const classNameMatch =
+      eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
+    const className = classNameMatch?.[1]?.trim() ?? null;
+
     results.push({
       eventId,
       eventName,
       startTime,
+      className,
     });
   }
 
@@ -285,7 +294,7 @@ Deno.serve(async (request) => {
       { data: watches, error: watchesErr },
       { data: tokens, error: tokensErr },
     ] = await Promise.all([
-      supabase.from('friend_watches').select('friend_club, friend_person_id, friend_name, person_id, push_on_result, push_on_start'),
+      supabase.from('friend_watches').select('friend_club, friend_person_id, friend_name, person_id, push_on_result, push_on_start, push_on_live'),
       supabase
         .from('device_push_tokens')
         .select('person_id, push_token')
@@ -415,28 +424,28 @@ Deno.serve(async (request) => {
         if (!startDate) continue;
         const diffMs = startDate.getTime() - now.getTime();
         if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
-          // Mark as notified
-          if (startStateTracked.has(key)) {
-            // Update the already-queued upsert to include start_notified_at
+          // Only send the push AND mark start_notified_at when this watcher
+          // actually wants the Eventor start reminder. start_notified_at is the
+          // shared "start has been announced" flag; keeping it honest lets the
+          // live poller send a "har startat" push when no Eventor reminder was
+          // delivered, while still preventing two separate start notifications.
+          if (watch.push_on_start) {
             const idx = stateUpserts.findIndex((u) => u.friend_person_id === friendId && u.event_id === start.eventId);
             if (idx !== -1) {
               stateUpserts[idx].start_notified_at = nowIso;
+            } else {
+              startStateTracked.add(key);
+              stateUpserts.push({
+                event_date: todayStr,
+                event_id: start.eventId,
+                event_name: start.eventName,
+                friend_person_id: friendId,
+                start_notified_at: nowIso,
+                start_time: start.startTime,
+                updated_at: nowIso,
+              });
             }
-          } else {
-            startStateTracked.add(key);
-            stateUpserts.push({
-              event_date: todayStr,
-              event_id: start.eventId,
-              event_name: start.eventName,
-              friend_person_id: friendId,
-              start_notified_at: nowIso,
-              start_time: start.startTime,
-              updated_at: nowIso,
-            });
-          }
 
-          // Only send push if enabled
-          if (watch.push_on_start) {
             const arr = startNotifs.get(watch.person_id) ?? [];
             const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
             arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
@@ -477,6 +486,61 @@ Deno.serve(async (request) => {
             timeBehind: result.timeBehind,
           });
           resultNotifs.set(watch.person_id, arr);
+        }
+      }
+    }
+
+    // 5b. Live competition matching — for friends that at least one user wants
+    // live push for, match today's event to a liveresultat competition and store
+    // the competition id + class name on the state row. The dedicated
+    // poll-live-friends function reads these rows to send live notifications,
+    // so the (rate-limited) Eventor calls happen only here.
+    const liveWatchedFriendIds = new Set(
+      allWatches.filter((w) => w.push_on_live).map((w) => w.friend_person_id),
+    );
+    if (liveWatchedFriendIds.size > 0) {
+      // Collect one candidate (eventId, eventName, className) per friend+event,
+      // preferring the start list (has class during the race) but falling back
+      // to the result list.
+      type LiveCandidate = { friendId: string; eventId: string; eventName: string; className: string | null };
+      const candidates = new Map<string, LiveCandidate>();
+      for (const friendId of liveWatchedFriendIds) {
+        for (const start of friendStartsMap.get(friendId) ?? []) {
+          candidates.set(`${friendId}::${start.eventId}`, {
+            friendId, eventId: start.eventId, eventName: start.eventName, className: start.className,
+          });
+        }
+        for (const result of friendResultsMap.get(friendId) ?? []) {
+          const key = `${friendId}::${result.eventId}`;
+          if (!candidates.has(key)) {
+            candidates.set(key, {
+              friendId, eventId: result.eventId, eventName: result.eventName, className: result.classLabel,
+            });
+          }
+        }
+      }
+
+      if (candidates.size > 0) {
+        // Match unique events once.
+        const uniqueEvents = new Map<string, { eventId: string; eventName: string; eventDate: string }>();
+        for (const c of candidates.values()) {
+          if (!uniqueEvents.has(c.eventId)) {
+            uniqueEvents.set(c.eventId, { eventId: c.eventId, eventName: c.eventName, eventDate: todayStr });
+          }
+        }
+        const liveIdByEvent = await findLiveCompetitionIdsBatch([...uniqueEvents.values()]);
+
+        for (const c of candidates.values()) {
+          const liveId = liveIdByEvent.get(c.eventId) ?? 0; // 0 = checked, no match
+          stateUpserts.push({
+            event_date: todayStr,
+            event_id: c.eventId,
+            event_name: c.eventName,
+            friend_person_id: c.friendId,
+            live_class_name: c.className,
+            live_competition_id: liveId,
+            updated_at: nowIso,
+          });
         }
       }
     }

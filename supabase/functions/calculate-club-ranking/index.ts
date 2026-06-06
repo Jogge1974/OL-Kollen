@@ -9,8 +9,9 @@ import { corsHeaders } from '../_shared/cors.ts';
  * Men: average points of top 10 runners per club.
  * Women: average points of top 7 runners per club.
  *
- * Stores results in `club_ranking` table with the current month.
- * Call this after updating the Sverigelistan data.
+ * Stores results in `club_ranking` table using the actual Sverigelistan Updated date.
+ * Skips calculation if that date already exists in club_ranking.
+ * Call this after updating the Sverigelistan data, or let the cron handle it.
  */
 
 Deno.serve(async (request) => {
@@ -37,9 +38,11 @@ Deno.serve(async (request) => {
 
     // Optional: accept a "month" query param (YYYY-MM) to calculate for a specific month
     // and optionally a "date" param to use a specific Sverigelistan Updated date
+    // "force=1" skips the already-exists check
     const url = new URL(request.url);
     const paramMonth = url.searchParams.get('month'); // e.g. "2026-04"
     const paramDate = url.searchParams.get('date');   // e.g. "2026-04-15" (specific Updated date)
+    const forceRecalc = url.searchParams.get('force') === '1';
 
     // 1. Find the source date in Sverigelistan
     let sourceDate: string;
@@ -82,6 +85,20 @@ Deno.serve(async (request) => {
     }
 
     const latestDate = sourceDate;
+
+    // 1b. Check if club_ranking already has this date — if so, skip (unless force)
+    if (!forceRecalc) {
+      const { data: existingRow } = await supabase
+        .from('club_ranking')
+        .select('month')
+        .eq('month', latestDate)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingRow) {
+        return jsonOk({ ok: true, skipped: true, reason: `club_ranking already exists for ${latestDate}` });
+      }
+    }
 
     // 2. Fetch all rows for the latest date
     const allRows: Array<{ Club: string; ClubId: number | null; Gender: string; Points: number }> = [];
@@ -151,10 +168,8 @@ Deno.serve(async (request) => {
     // Sort by avgPoints ascending per gender (lowest = best), assign rank
     const genders = ['H', 'D'] as const;
     const now = new Date();
-    // Use paramMonth if provided, otherwise current month
-    const monthStr = paramMonth
-      ? `${paramMonth}-01`
-      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    // Use the actual Sverigelistan Updated date as the month value
+    const monthStr = latestDate;
     const upsertRows: Array<Record<string, unknown>> = [];
 
     for (const gender of genders) {

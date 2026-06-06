@@ -12,6 +12,7 @@ export type Friend = {
   name: string;
   personId: number;
   pushOnEntry: boolean;
+  pushOnLive: boolean;
   pushOnResult: boolean;
   pushOnStart: boolean;
 };
@@ -29,8 +30,8 @@ type FriendsState = {
   isHydrated: boolean;
   removeFriend: (personId: number) => Promise<void>;
   restoreFromServer: (ownerPersonId: string, serverFriends: Friend[]) => Promise<void>;
-  setAllFriendsPush: (field: 'pushOnEntry' | 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
-  updateFriendPush: (personId: number, field: 'pushOnEntry' | 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
+  setAllFriendsPush: (field: 'pushOnEntry' | 'pushOnLive' | 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
+  updateFriendPush: (personId: number, field: 'pushOnEntry' | 'pushOnLive' | 'pushOnResult' | 'pushOnStart', value: boolean) => Promise<void>;
 };
 
 function storageKey(ownerPersonId: string) {
@@ -53,6 +54,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     const withDefaults: Friend = {
       ...friend,
       pushOnEntry: friend.pushOnEntry ?? false,
+      pushOnLive: friend.pushOnLive ?? false,
       pushOnResult: friend.pushOnResult ?? true,
       pushOnStart: friend.pushOnStart ?? true,
     };
@@ -97,6 +99,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       const migrated = raw.map((f) => ({
         ...f,
         pushOnEntry: f.pushOnEntry ?? false,
+        pushOnLive: f.pushOnLive ?? false,
         pushOnResult: f.pushOnResult ?? true,
         pushOnStart: f.pushOnStart ?? true,
       }));
