@@ -400,14 +400,14 @@ export default function SettingsScreen() {
                         style={[styles.friendNotifPill, friend.pushOnStart ? styles.friendNotifPillActive : null]}
                       >
                         <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={13} />
-                        <Text style={[styles.friendNotifPillText, friend.pushOnStart ? styles.friendNotifPillTextActive : null]}>Start</Text>
+                        <Text style={[styles.friendNotifPillText, friend.pushOnStart ? styles.friendNotifPillTextActive : null]}>Sta.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
                         style={[styles.friendNotifPill, friend.pushOnResult ? styles.friendNotifPillActive : null]}
                       >
                         <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={13} />
-                        <Text style={[styles.friendNotifPillText, friend.pushOnResult ? styles.friendNotifPillTextActive : null]}>Resultat</Text>
+                        <Text style={[styles.friendNotifPillText, friend.pushOnResult ? styles.friendNotifPillTextActive : null]}>Res.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnLive', !friend.pushOnLive)}

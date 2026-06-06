@@ -183,34 +183,38 @@ export default function FriendDetailScreen() {
           titleRightContent={
             friend ? (
               <View style={styles.pushToggles}>
-                <Pressable
-                  onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
-                  style={[styles.pushPill, friend.pushOnEntry ? styles.pushPillActive : null]}
-                >
-                  <Ionicons color={friend.pushOnEntry ? colors.primaryDeep : colors.textMuted} name="clipboard-outline" size={11} />
-                  <Text style={[styles.pushPillText, friend.pushOnEntry ? styles.pushPillTextActive : null]}>Anm.</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
-                  style={[styles.pushPill, friend.pushOnStart ? styles.pushPillActive : null]}
-                >
-                  <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={11} />
-                  <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Start</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
-                  style={[styles.pushPill, friend.pushOnResult ? styles.pushPillActive : null]}
-                >
-                  <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={11} />
-                  <Text style={[styles.pushPillText, friend.pushOnResult ? styles.pushPillTextActive : null]}>Res.</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => void updateFriendPush(friend.personId, 'pushOnLive', !friend.pushOnLive)}
-                  style={[styles.pushPill, friend.pushOnLive ? styles.pushPillActive : null]}
-                >
-                  <Ionicons color={friend.pushOnLive ? colors.primaryDeep : colors.textMuted} name="radio-outline" size={11} />
-                  <Text style={[styles.pushPillText, friend.pushOnLive ? styles.pushPillTextActive : null]}>Live</Text>
-                </Pressable>
+                <View style={styles.pushTogglesRow}>
+                  <Pressable
+                    onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
+                    style={[styles.pushPill, friend.pushOnEntry ? styles.pushPillActive : null]}
+                  >
+                    <Ionicons color={friend.pushOnEntry ? colors.primaryDeep : colors.textMuted} name="clipboard-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnEntry ? styles.pushPillTextActive : null]}>Anm.</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
+                    style={[styles.pushPill, friend.pushOnStart ? styles.pushPillActive : null]}
+                  >
+                    <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Sta.</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.pushTogglesRow}>
+                  <Pressable
+                    onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
+                    style={[styles.pushPill, friend.pushOnResult ? styles.pushPillActive : null]}
+                  >
+                    <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnResult ? styles.pushPillTextActive : null]}>Res.</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void updateFriendPush(friend.personId, 'pushOnLive', !friend.pushOnLive)}
+                    style={[styles.pushPill, friend.pushOnLive ? styles.pushPillActive : null]}
+                  >
+                    <Ionicons color={friend.pushOnLive ? colors.primaryDeep : colors.textMuted} name="radio-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnLive ? styles.pushPillTextActive : null]}>Live</Text>
+                  </Pressable>
+                </View>
               </View>
             ) : undefined
           }
@@ -583,11 +587,15 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       letterSpacing: 0.8,
     },
     pushToggles: {
-      alignItems: 'center',
+      alignItems: 'flex-end',
       alignSelf: 'flex-start',
+      flexDirection: 'column',
+      gap: 4,
+      marginTop: -2,
+    },
+    pushTogglesRow: {
       flexDirection: 'row',
       gap: 5,
-      marginTop: -2,
     },
     pushToggleGroupLabel: {
       ...typography.eyebrow,

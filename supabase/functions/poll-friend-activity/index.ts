@@ -78,9 +78,35 @@ function todayRange(): { from: string; to: string } {
 // XML parsing — minimal regex-based extraction (no dependency needed)
 // ---------------------------------------------------------------------------
 
-function parsePersonStartsXml(xml: string): ParsedStart[] {
+/**
+ * Extract a start time string from a StartTime XML fragment.
+ * Supports Eventor native (<Date>+<Clock>), IOF 3.0 (<Date>+<Time>), and flat ISO.
+ */
+function extractStartTimeFromBlock(stBlock: string): string | null {
+  const dateClockMatch = stBlock.match(/<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
+  if (dateClockMatch) {
+    return `${dateClockMatch[1].trim()}T${dateClockMatch[2].trim()}`;
+  }
+  const dateTimeMatch = stBlock.match(/<Date>([^<]+)<\/Date>\s*<Time>([^<]+)<\/Time>/);
+  if (dateTimeMatch) {
+    return `${dateTimeMatch[1].trim()}T${dateTimeMatch[2].trim()}`;
+  }
+  const flat = stBlock.trim();
+  if (flat.match(/^\d{4}-\d{2}-\d{2}T/)) {
+    return flat;
+  }
+  return null;
+}
+
+/**
+ * For multi-stage (multi-day) events, Eventor returns starts for ALL stages
+ * in the same response. We must only pick starts whose date matches today,
+ * otherwise we risk sending push notifications on the wrong day.
+ */
+function parsePersonStartsXml(xml: string, todayDateStr: string): ParsedStart[] {
   const results: ParsedStart[] = [];
-  const seen = new Set<string>();
+  // For multi-stage events: collect all starts per eventId, then pick today's.
+  const startsByEventId = new Map<string, ParsedStart[]>();
 
   // /starts/person returns StartListList > StartList > ClassStart > PersonStart
   // Split on StartList to get per-event context
@@ -92,12 +118,27 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
     const eventIdMatch = eventBlock.match(/<EventId[^>]*>(\d+)<\/EventId>/);
     if (!eventIdMatch) continue;
     const eventId = eventIdMatch[1];
-    if (seen.has(eventId)) continue;
-    seen.add(eventId);
 
     // Event name
     const eventNameMatch = eventBlock.match(/<Name>([^<]+)<\/Name>/);
     const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
+
+    // Detect multi-stage event: multiple <EventRace> elements indicate stages.
+    // Find today's EventRaceId(s) by matching <RaceDate><Date>todayDateStr</Date>
+    const eventRaceBlocks = eventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g);
+    const isMultiStage = eventRaceBlocks != null && eventRaceBlocks.length > 1;
+    const todayRaceIds = new Set<string>();
+
+    if (isMultiStage && eventRaceBlocks) {
+      for (const raceBlock of eventRaceBlocks) {
+        const raceDateMatch = raceBlock.match(/<RaceDate[\s\S]*?<Date>([^<]+)<\/Date>/);
+        const raceDate = raceDateMatch?.[1]?.trim();
+        if (raceDate === todayDateStr) {
+          const raceIdMatch = raceBlock.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+          if (raceIdMatch) todayRaceIds.add(raceIdMatch[1]);
+        }
+      }
+    }
 
     // Find the person's start time within <Start>...<StartTime>
     // Eventor format: <StartTime><Date>YYYY-MM-DD</Date><Clock>HH:MM:SS</Clock></StartTime>
@@ -105,34 +146,66 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
     // Flat format: <StartTime>ISO-STRING</StartTime>
     let startTime: string | null = null;
 
-    // Look within <PersonStart>...<Start> blocks for the start time
-    const personStartMatch = eventBlock.match(/<PersonStart\b[\s\S]*?<Start\b[\s\S]*?<StartTime>([\s\S]*?)<\/StartTime>/);
-    if (personStartMatch) {
-      const stBlock = personStartMatch[1];
-      // Eventor native: <Date>...</Date><Clock>...</Clock>
-      const dateClockMatch = stBlock.match(/<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
-      if (dateClockMatch) {
-        startTime = `${dateClockMatch[1].trim()}T${dateClockMatch[2].trim()}`;
-      } else {
-        // IOF 3.0: <Date>...</Date><Time>...</Time>
-        const dateTimeMatch = stBlock.match(/<Date>([^<]+)<\/Date>\s*<Time>([^<]+)<\/Time>/);
-        if (dateTimeMatch) {
-          startTime = `${dateTimeMatch[1].trim()}T${dateTimeMatch[2].trim()}`;
-        } else {
-          // Flat ISO string
-          const flat = stBlock.trim();
-          if (flat.match(/^\d{4}-\d{2}-\d{2}T/)) {
-            startTime = flat;
+    if (isMultiStage) {
+      // For multi-stage events, look for <RaceStart> blocks and pick the one
+      // that belongs to today's race.
+      const raceStartBlocks = eventBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
+      if (raceStartBlocks) {
+        for (const raceStartBlock of raceStartBlocks) {
+          // Check if this RaceStart belongs to today's race
+          const raceIdMatch = raceStartBlock.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+
+          let belongsToToday = false;
+          if (raceIdMatch && todayRaceIds.has(raceIdMatch[1])) {
+            belongsToToday = true;
+          } else if (todayRaceIds.size === 0) {
+            // Could not determine today's race from EventRace dates — fall back
+            // to checking the start time date itself.
+            const stMatch = raceStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
+            if (stMatch) {
+              const candidate = extractStartTimeFromBlock(stMatch[1]);
+              if (candidate && candidate.startsWith(todayDateStr)) {
+                belongsToToday = true;
+              }
+            }
+          }
+
+          if (belongsToToday) {
+            const stMatch = raceStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
+            if (stMatch) {
+              startTime = extractStartTimeFromBlock(stMatch[1]);
+            }
+            break;
           }
         }
       }
-    }
 
-    // Fallback: any StartTime with Date+Clock anywhere in the event block
-    if (!startTime) {
-      const anyMatch = eventBlock.match(/<StartTime>\s*<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
-      if (anyMatch) {
-        startTime = `${anyMatch[1].trim()}T${anyMatch[2].trim()}`;
+      // If no RaceStart blocks found but this is multi-stage, try matching by
+      // start time date from the PersonStart block.
+      if (!startTime) {
+        const stRegex = /<StartTime>([\s\S]*?)<\/StartTime>/g;
+        let stMatch: RegExpExecArray | null;
+        while ((stMatch = stRegex.exec(eventBlock)) !== null) {
+          const candidate = extractStartTimeFromBlock(stMatch[1]);
+          if (candidate && candidate.startsWith(todayDateStr)) {
+            startTime = candidate;
+            break;
+          }
+        }
+      }
+    } else {
+      // Single-stage event: original logic
+      const personStartMatch = eventBlock.match(/<PersonStart\b[\s\S]*?<Start\b[\s\S]*?<StartTime>([\s\S]*?)<\/StartTime>/);
+      if (personStartMatch) {
+        startTime = extractStartTimeFromBlock(personStartMatch[1]);
+      }
+
+      // Fallback: any StartTime with Date+Clock anywhere in the event block
+      if (!startTime) {
+        const anyMatch = eventBlock.match(/<StartTime>\s*<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
+        if (anyMatch) {
+          startTime = `${anyMatch[1].trim()}T${anyMatch[2].trim()}`;
+        }
       }
     }
 
@@ -141,12 +214,21 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
       eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
     const className = classNameMatch?.[1]?.trim() ?? null;
 
-    results.push({
-      eventId,
-      eventName,
-      startTime,
-      className,
-    });
+    const entry: ParsedStart = { eventId, eventName, startTime, className };
+    const existing = startsByEventId.get(eventId) ?? [];
+    existing.push(entry);
+    startsByEventId.set(eventId, existing);
+  }
+
+  // Deduplicate per eventId: prefer the entry whose start date matches today.
+  for (const [, entries] of startsByEventId) {
+    const todayEntry = entries.find((e) => e.startTime?.startsWith(todayDateStr));
+    if (todayEntry) {
+      results.push(todayEntry);
+    } else if (entries.length > 0) {
+      // No entry with today's date — use the first one (single-stage fallback)
+      results.push(entries[0]);
+    }
   }
 
   return results;
@@ -355,7 +437,7 @@ Deno.serve(async (request) => {
               fetchEventorXml(`/starts/person?personId=${friendId}&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`),
               fetchEventorXml(`/results/person?personId=${friendId}&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`),
             ]);
-            friendStartsMap.set(friendId, parsePersonStartsXml(startsXml));
+            friendStartsMap.set(friendId, parsePersonStartsXml(startsXml, todayStr));
             friendResultsMap.set(friendId, parsePersonResultsXml(resultsXml));
           } catch (err) {
             console.warn(`[poll-friend] Eventor fetch failed for friend ${friendId}:`, err);
@@ -422,6 +504,10 @@ Deno.serve(async (request) => {
 
         // Notification: only if within 5 min window and time is parseable
         if (!startDate) continue;
+        // Safety: for multi-stage events, verify the start time is actually today.
+        // This prevents sending notifications for a future stage's start time.
+        const startDateStr = startDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+        if (startDateStr !== todayStr) continue;
         const diffMs = startDate.getTime() - now.getTime();
         if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
           // Only send the push AND mark start_notified_at when this watcher
