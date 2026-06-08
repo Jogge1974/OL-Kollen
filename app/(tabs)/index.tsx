@@ -181,7 +181,7 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.sectionSpacer}>
-          <SectionCard flat icon="calendar-outline" title="Dagens tävlingar">
+          <SectionCard icon="calendar-outline" title="Dagens tävlingar">
           {isLoadingTodayEvents ? <LoadingState label="Hämtar tävlingar från Eventor..." /> : null}
 
           {!isLoadingTodayEvents && todayEventsError && nationalTodayEvents.length === 0 ? (
@@ -211,7 +211,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.sectionSpacer}>
-        <SectionCard flat icon="ribbon-outline" title="Mina senaste tävlingar">
+        <SectionCard icon="ribbon-outline" title="Mina senaste tävlingar">
           {user ? (
             <PersonActivitySectionList
               emptyLabel="Inga senaste tävlingar att visa just nu."
@@ -275,23 +275,28 @@ function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.gl
   );
 }
 
-function SectionCard({ children, flat = false, icon, subtitle, title }: { children: React.ReactNode; flat?: boolean; icon?: keyof typeof Ionicons.glyphMap; subtitle?: string; title: string }) {
+function SectionCard({ children, icon, subtitle, title }: { children: React.ReactNode; icon?: keyof typeof Ionicons.glyphMap; subtitle?: string; title: string }) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={[styles.sectionCard, flat ? styles.sectionCardFlat : null]}>
+    <LinearGradient
+      colors={[colors.heroBottom, colors.heroTop, colors.primary]}
+      end={{ x: 0, y: 1 }}
+      start={{ x: 0, y: 0 }}
+      style={styles.sectionCard}
+    >
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderCopy}>
           <View style={styles.sectionTitleRow}>
-            {icon ? <Ionicons color={colors.textMuted} name={icon} size={16} /> : null}
+            {icon ? <Ionicons color={colors.heroText} name={icon} size={16} /> : null}
             <Text style={styles.sectionTitle}>{title}</Text>
           </View>
           {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
         </View>
       </View>
       <View style={styles.sectionBody}>{children}</View>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -427,19 +432,12 @@ function createStyles(colors: ColorPalette) {
     color: colors.textSecondary,
   },
   sectionCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.primaryDeep,
     borderRadius: 24,
     borderWidth: 1,
     gap: spacing.sm,
+    overflow: 'hidden',
     padding: spacing.sm,
-  },
-  sectionCardFlat: {
-    backgroundColor: 'transparent',
-    borderColor: colors.primary,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
   },
   sectionHeader: {
     alignItems: 'flex-start',
@@ -460,11 +458,11 @@ function createStyles(colors: ColorPalette) {
   },
   sectionSubtitle: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: colors.heroTextMuted,
   },
   sectionTitle: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: colors.heroText,
     fontSize: 17,
     lineHeight: 21,
   },
@@ -548,7 +546,7 @@ function createStyles(colors: ColorPalette) {
   },
   loginPromptText: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.heroTextMuted,
   },
 });
 }

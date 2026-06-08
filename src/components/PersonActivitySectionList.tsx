@@ -288,9 +288,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   sectionCard: {
     backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
+    borderColor: colors.primary,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 6,
     padding: 6,
   },
