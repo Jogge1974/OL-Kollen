@@ -27,9 +27,10 @@ function normalizeEventId(eventId: string) {
   return eventId.split('::')[0] ?? eventId;
 }
 
-export function extractPublicationFlags(xml: string) {
-  const startPublishedAt = extractPublicationDate(xml, ['officialStart_', 'startList_']);
-  const resultPublishedAt = extractPublicationDate(xml, ['officialResult_', 'preliminaryResult_']);
+export function extractPublicationFlags(xml: string, eventRaceId?: string | null) {
+  const entries = extractHashEntries(xml);
+  const startPublishedAt = findPublicationValue(entries, ['officialStart', 'startList'], eventRaceId);
+  const resultPublishedAt = findPublicationValue(entries, ['officialResult', 'preliminaryResult'], eventRaceId);
 
   return {
     hasPublishedResults: Boolean(resultPublishedAt),
@@ -39,12 +40,56 @@ export function extractPublicationFlags(xml: string) {
   };
 }
 
-function extractPublicationDate(xml: string, prefixes: string[]) {
-  for (const prefix of prefixes) {
-    const match = xml.match(new RegExp(`<HashTableEntry>\\s*<Key>\\s*${prefix}[^<]+<\\/Key>\\s*<Value>\\s*([^<]+)<\\/Value>`, 'i'));
+type HashEntry = { key: string; value: string };
 
-    if (match?.[1]) {
-      return match[1].trim();
+/** Parse every <HashTableEntry> into a {key, value} pair (publication keys). */
+function extractHashEntries(xml: string): HashEntry[] {
+  const entries: HashEntry[] = [];
+  const blocks = xml.match(/<HashTableEntry>[\s\S]*?<\/HashTableEntry>/g) ?? [];
+
+  for (const block of blocks) {
+    const key = block.match(/<Key>\s*([^<]*?)\s*<\/Key>/)?.[1]?.trim();
+    const value = block.match(/<Value>\s*([^<]*?)\s*<\/Value>/)?.[1]?.trim();
+
+    if (key) {
+      entries.push({ key, value: value ?? '' });
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * Find a publication timestamp for a SPECIFIC stage. Eventor suffixes the
+ * publication hash keys with the EventRaceId (e.g. officialResult_58446). When
+ * an eventRaceId is given we require an exact `<prefix>_<eventRaceId>` match so
+ * one stage's publication never leaks onto another stage. When no eventRaceId is
+ * given (legacy favorites stored with a bare event_id) we fall back to matching
+ * any suffixed key for the prefix, preserving the previous behaviour.
+ */
+function findPublicationValue(entries: HashEntry[], prefixes: string[], eventRaceId?: string | null): string | null {
+  for (const prefix of prefixes) {
+    if (eventRaceId) {
+      const exact = entries.find((entry) => entry.key === `${prefix}_${eventRaceId}`);
+      if (exact?.value) {
+        return exact.value;
+      }
+    } else {
+      const any = entries.find((entry) => entry.key === prefix || entry.key.startsWith(`${prefix}_`));
+      if (any?.value) {
+        return any.value;
+      }
+    }
+  }
+
+  // Defensive fallback (mirrors the app's raceHasPublishedList): a bare,
+  // unsuffixed key counts as this stage's publication when no exact key exists.
+  if (eventRaceId) {
+    for (const prefix of prefixes) {
+      const bare = entries.find((entry) => entry.key === prefix);
+      if (bare?.value) {
+        return bare.value;
+      }
     }
   }
 
