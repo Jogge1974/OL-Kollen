@@ -93,55 +93,14 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
         isLoading: true,
       }));
 
-      const oldestIncludedDate = getMonthStartOffset(11);
       const currentYear = new Date().getFullYear();
-      const previousYear = currentYear - 1;
       const currentClassName = birthYear && gender ? getRankingClassDefinition(gender, birthYear, currentYear).className : null;
 
-      const userRowsPromise = client
+      const userRowsResponse = await client
         .from('Sverigelistan')
         .select('BirthYear, Club, ClubId, Gender, Name, PageIndex, Points, Rank, RunnerId, Updated')
         .eq('RunnerId', numericRunnerId)
         .order('Updated', { ascending: true });
-
-      let classRowsData: SverigelistanRow[] = [];
-      if (birthYear && gender) {
-        const currentClassDef = getRankingClassDefinition(gender, birthYear, currentYear);
-        const previousClassDef = getRankingClassDefinition(gender, birthYear, previousYear);
-        const widestMinBirthYear = Math.min(currentClassDef.minBirthYear, previousClassDef.minBirthYear);
-        const widestMaxBirthYear = Math.max(currentClassDef.maxBirthYear, previousClassDef.maxBirthYear);
-
-        const pageSize = 5000;
-        let offset = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const page = await client
-            .from('Sverigelistan')
-            .select('BirthYear, Gender, Rank, RunnerId, Updated')
-            .eq('Gender', gender)
-            .gte('Updated', oldestIncludedDate)
-            .gte('BirthYear', widestMinBirthYear)
-            .lte('BirthYear', widestMaxBirthYear)
-            .order('Updated', { ascending: true })
-            .range(offset, offset + pageSize - 1);
-
-          if (page.error) {
-            if (!isMounted) return;
-            setState({
-              ...emptyState(setRefreshKey),
-              error: page.error.message || 'Det gick inte att läsa klassplaceringar från Sverigelistan.',
-            });
-            return;
-          }
-
-          const batch = (page.data ?? []) as SverigelistanRow[];
-          classRowsData.push(...batch);
-          hasMore = batch.length === pageSize;
-          offset += pageSize;
-        }
-      }
-
-      const userRowsResponse = await userRowsPromise;
 
       if (!isMounted) {
         return;
@@ -160,8 +119,14 @@ export function useSverigelistan({ birthDate, gender, runnerId }: HookInput): Us
       const previousEntry = rows.length > 1 ? rows[rows.length - 2] : null;
       const monthlyTrend = buildMonthlyTrend(rows);
       const trendDirection = getTrendDirection(monthlyTrend);
+
       const classTrend =
-        birthYear && gender ? buildClassTrend(monthlyTrend, classRowsData, birthYear, gender, numericRunnerId) : buildMonthlyTrend([]);
+        birthYear && gender ? await buildClassTrendByCount(client, monthlyTrend, birthYear, gender) : buildMonthlyTrend([]);
+
+      if (!isMounted) {
+        return;
+      }
+
       const currentClassRank = getLatestRank(classTrend);
       const previousClassRank = getPreviousRank(classTrend);
 
@@ -244,48 +209,54 @@ function buildMonthlyTrend(rows: SverigelistanRow[]) {
   return points;
 }
 
-function buildClassTrend(monthlyTrend: SverigelistanTrendPoint[], classRows: SverigelistanRow[], birthYear: number, gender: 'D' | 'H', runnerId: number) {
-  const latestByRunnerAndMonth = new Map<string, SverigelistanRow>();
-
-  for (const row of classRows) {
-    if (row.BirthYear === null || row.RunnerId === null) {
-      continue;
-    }
-
-    const monthKey = row.Updated.slice(0, 7);
-    const compositeKey = `${monthKey}:${row.RunnerId}`;
-    const previous = latestByRunnerAndMonth.get(compositeKey);
-
-    if (!previous || previous.Updated < row.Updated) {
-      latestByRunnerAndMonth.set(compositeKey, row);
-    }
+function buildClassTrendByCount(
+  client: ReturnType<typeof getSupabaseClient>,
+  monthlyTrend: SverigelistanTrendPoint[],
+  birthYear: number,
+  gender: 'D' | 'H',
+): Promise<SverigelistanTrendPoint[]> {
+  if (!client) {
+    return Promise.resolve(buildMonthlyTrend([]));
   }
 
-  return monthlyTrend.map((point) => {
-    const rankingYear = point.updated ? Number(point.updated.slice(0, 4)) : inferRankingYear(point.label);
-    const classDefinition = getRankingClassDefinition(gender, birthYear, rankingYear);
-    const monthKey = point.updated?.slice(0, 7) ?? buildMonthKeyFromLabel(point.label, rankingYear);
+  // Class rank for a month = (number of class members with a better national
+  // rank than the runner that month) + 1. We let the database count this with a
+  // HEAD request per month, so we transfer only the counts instead of every
+  // class member row. This stays cheap regardless of how large the table grows.
+  return Promise.all(
+    monthlyTrend.map(async (point) => {
+      const rankingYear = point.updated ? Number(point.updated.slice(0, 4)) : null;
+      const classDefinition =
+        rankingYear !== null ? getRankingClassDefinition(gender, birthYear, rankingYear) : null;
 
-    const classMembers = Array.from(latestByRunnerAndMonth.values())
-      .filter(
-        (row) =>
-          row.Updated.slice(0, 7) === monthKey &&
-          row.BirthYear !== null &&
-          row.BirthYear >= classDefinition.minBirthYear &&
-          row.BirthYear <= classDefinition.maxBirthYear,
-      )
-      .sort((left, right) => left.Rank - right.Rank);
+      if (point.rank === null || !point.updated || !classDefinition) {
+        return {
+          className: classDefinition?.className ?? null,
+          label: point.label,
+          monthKey: point.monthKey,
+          rank: null,
+          updated: point.updated,
+        } satisfies SverigelistanTrendPoint;
+      }
 
-    const classRankIndex = classMembers.findIndex((row) => row.RunnerId === runnerId);
+      const { count, error } = await client
+        .from('Sverigelistan')
+        .select('RunnerId', { count: 'exact', head: true })
+        .eq('Gender', gender)
+        .eq('Updated', point.updated)
+        .gte('BirthYear', classDefinition.minBirthYear)
+        .lte('BirthYear', classDefinition.maxBirthYear)
+        .lt('Rank', point.rank);
 
-    return {
-      className: classDefinition.className,
-      label: point.label,
-      monthKey: point.monthKey,
-      rank: classRankIndex >= 0 ? classRankIndex + 1 : null,
-      updated: point.updated,
-    } satisfies SverigelistanTrendPoint;
-  });
+      return {
+        className: classDefinition.className,
+        label: point.label,
+        monthKey: point.monthKey,
+        rank: error ? null : (count ?? 0) + 1,
+        updated: point.updated,
+      } satisfies SverigelistanTrendPoint;
+    }),
+  );
 }
 
 function getLatestRank(points: SverigelistanTrendPoint[]) {
@@ -329,27 +300,4 @@ function extractBirthYear(birthDate: string | null) {
 
   const year = Number(birthDate.slice(0, 4));
   return Number.isFinite(year) ? year : null;
-}
-
-function getMonthStartOffset(offset: number) {
-  const current = new Date();
-  return new Date(current.getFullYear(), current.getMonth() - offset, 1).toISOString().slice(0, 10);
-}
-
-function inferRankingYear(label: string) {
-  const current = new Date();
-  const currentMonthIndex = current.getMonth();
-  const monthIndex = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'].indexOf(label.toLowerCase());
-
-  if (monthIndex < 0) {
-    return current.getFullYear();
-  }
-
-  return monthIndex > currentMonthIndex ? current.getFullYear() - 1 : current.getFullYear();
-}
-
-function buildMonthKeyFromLabel(label: string, year: number) {
-  const monthIndex = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'].indexOf(label.toLowerCase());
-  const month = monthIndex >= 0 ? monthIndex + 1 : 1;
-  return `${year}-${String(month).padStart(2, '0')}`;
 }

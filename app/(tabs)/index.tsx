@@ -156,7 +156,7 @@ export default function HomeScreen() {
 
           <View style={styles.heroStatsRow}>
             <HeroStat icon="calendar-outline" label="Idag" value={`${exactTodayEvents.length}`} />
-            <HeroStat icon="flag-outline" label="Starter" value={user ? `${upcomingStartCount}` : 'Logga in'} />
+            <HeroStat icon="flag-outline" label="Kommande starter" value={user ? `${upcomingStartCount}` : 'Logga in'} />
             <HeroStat icon="star-outline" label="Favoriter" value={`${favoriteEvents.length}`} />
           </View>
         </LinearGradient>
