@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { FlatList, ListRenderItemInfo, RefreshControl, StyleSheet, Text } from 'react-native';
+import { FlatList, ListRenderItemInfo, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
@@ -84,7 +84,11 @@ export function EventList({ entryCounts, error, events, onRefresh, refreshing }:
             return <Text style={styles.dateHeader}>{formatDisplayDate(item.date)}</Text>;
           }
           const entryCount = entryCounts?.[item.event.id.split('::')[0]] ?? undefined;
-          return <EventSummaryCard entryCount={entryCount} item={item.event} onOpenList={setActiveListModal} />;
+          return (
+            <View style={styles.eventRow}>
+              <EventSummaryCard entryCount={entryCount} item={item.event} onOpenList={setActiveListModal} />
+            </View>
+          );
         }}
         ListFooterComponent={error ? <Text style={styles.footerError}>{error}</Text> : null}
         showsVerticalScrollIndicator={false}
@@ -152,6 +156,9 @@ function createStyles(colors: ColorPalette) {
       paddingBottom: 4,
       paddingTop: 10,
       textTransform: 'capitalize',
+    },
+    eventRow: {
+      marginBottom: CARD_GAP,
     },
     footerError: {
       ...typography.caption,
