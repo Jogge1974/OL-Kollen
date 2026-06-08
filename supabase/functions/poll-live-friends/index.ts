@@ -23,6 +23,7 @@ type TokenRow = {
 
 type LiveStateRow = {
   event_id: string;
+  event_race_id: string;
   event_name: string | null;
   friend_person_id: string;
   last_live_status: number | null;
@@ -153,7 +154,7 @@ Deno.serve(async (request) => {
     // 2. Load active live state rows (matched competition, not yet finished).
     const { data: states, error: statesErr } = await supabase
       .from('friend_activity_state')
-      .select('event_id, event_name, friend_person_id, last_live_status, live_class_name, live_competition_id, live_result_notified_at, notified_split_codes, start_notified_at')
+      .select('event_id, event_race_id, event_name, friend_person_id, last_live_status, live_class_name, live_competition_id, live_result_notified_at, notified_split_codes, start_notified_at')
       .eq('event_date', todayStr)
       .gt('live_competition_id', 0)
       .is('live_result_notified_at', null)
@@ -230,6 +231,7 @@ Deno.serve(async (request) => {
         const upsert: Record<string, unknown> = {
           event_date: todayStr,
           event_id: row.event_id,
+          event_race_id: row.event_race_id,
           friend_person_id: row.friend_person_id,
           last_live_status: status,
           live_result_notified_at: nowIso, // stop polling this friend+event
@@ -257,6 +259,7 @@ Deno.serve(async (request) => {
         stateUpserts.push({
           event_date: todayStr,
           event_id: row.event_id,
+          event_race_id: row.event_race_id,
           friend_person_id: row.friend_person_id,
           last_live_status: status,
           updated_at: nowIso,
@@ -269,6 +272,7 @@ Deno.serve(async (request) => {
         stateUpserts.push({
           event_date: todayStr,
           event_id: row.event_id,
+          event_race_id: row.event_race_id,
           friend_person_id: row.friend_person_id,
           last_live_status: status,
           updated_at: nowIso,
@@ -279,6 +283,7 @@ Deno.serve(async (request) => {
       const upsert: Record<string, unknown> = {
         event_date: todayStr,
         event_id: row.event_id,
+        event_race_id: row.event_race_id,
         friend_person_id: row.friend_person_id,
         last_live_status: status,
         updated_at: nowIso,
@@ -328,7 +333,7 @@ Deno.serve(async (request) => {
     if (stateUpserts.length > 0) {
       await supabase
         .from('friend_activity_state')
-        .upsert(stateUpserts, { onConflict: 'friend_person_id,event_id' });
+        .upsert(stateUpserts, { onConflict: 'friend_person_id,event_id,event_race_id' });
     }
 
     return jsonOk({

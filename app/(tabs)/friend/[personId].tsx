@@ -183,7 +183,7 @@ export default function FriendDetailScreen() {
           titleRightContent={
             friend ? (
               <View style={styles.pushToggles}>
-                <View style={styles.pushTogglesRow}>
+                <View style={styles.pushToggleRow}>
                   <Pressable
                     onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
                     style={[styles.pushPill, friend.pushOnEntry ? styles.pushPillActive : null]}
@@ -196,10 +196,10 @@ export default function FriendDetailScreen() {
                     style={[styles.pushPill, friend.pushOnStart ? styles.pushPillActive : null]}
                   >
                     <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={11} />
-                    <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Sta.</Text>
+                    <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Start</Text>
                   </Pressable>
                 </View>
-                <View style={styles.pushTogglesRow}>
+                <View style={styles.pushToggleRow}>
                   <Pressable
                     onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
                     style={[styles.pushPill, friend.pushOnResult ? styles.pushPillActive : null]}
@@ -590,10 +590,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       alignItems: 'flex-end',
       alignSelf: 'flex-start',
       flexDirection: 'column',
-      gap: 4,
+      gap: 5,
       marginTop: -2,
     },
-    pushTogglesRow: {
+    pushToggleRow: {
+      alignItems: 'center',
       flexDirection: 'row',
       gap: 5,
     },

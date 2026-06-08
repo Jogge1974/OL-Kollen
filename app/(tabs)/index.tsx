@@ -1,9 +1,9 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
+import { router, useFocusEffect, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
@@ -49,11 +49,10 @@ export default function HomeScreen() {
     personId: user?.personId ?? null,
   });
 
-  const todayIso = React.useMemo(() => getLocalIsoDate(), []);
-  const tomorrowIso = React.useMemo(() => getLocalIsoDate(1), []);
+  const [todayIso, setTodayIso] = React.useState(() => getLocalIsoDate());
   const exactTodayEvents = React.useMemo(() => todayEvents.filter((event) => event.startDate === todayIso), [todayEvents, todayIso]);
   const nationalTodayEvents = React.useMemo(
-    () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
+    () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsByName),
     [exactTodayEvents],
   );
   const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
@@ -66,44 +65,50 @@ export default function HomeScreen() {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
   }, []);
 
+  const loadTodayEvents = React.useCallback(async () => {
+    const currentToday = getLocalIsoDate();
+    const currentTomorrow = getLocalIsoDate(1);
+    setTodayIso(currentToday);
+    setIsLoadingTodayEvents(true);
+    setTodayEventsError(null);
+
+    try {
+      const events = await fetchEventorEvents({
+        classificationIds: [0, 1, 2],
+        districtIds: [],
+        fromDate: currentToday,
+        toDate: currentTomorrow,
+      });
+
+      setTodayEvents(events.filter((event) => event.startDate === currentToday).sort(sortEventsAsc));
+    } catch (error) {
+      setTodayEvents([]);
+      setTodayEventsError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av dagens tävlingar.');
+    } finally {
+      setIsLoadingTodayEvents(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadTodayEvents();
+    }, [loadTodayEvents]),
+  );
+
   React.useEffect(() => {
-    let isMounted = true;
-
-    const loadTodayEvents = async () => {
-      setIsLoadingTodayEvents(true);
-      setTodayEventsError(null);
-
-      try {
-        const events = await fetchEventorEvents({
-          classificationIds: [0, 1, 2],
-          districtIds: [],
-          fromDate: todayIso,
-          toDate: tomorrowIso,
-        });
-
-        if (isMounted) {
-          setTodayEvents(events.filter((event) => event.startDate === todayIso).sort(sortEventsAsc));
-        }
-      } catch (error) {
-        if (isMounted) {
-          setTodayEvents([]);
-          setTodayEventsError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av dagens tävlingar.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingTodayEvents(false);
-        }
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void loadTodayEvents();
       }
-    };
+    });
 
-    void loadTodayEvents();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [todayIso]);
+    return () => subscription.remove();
+  }, [loadTodayEvents]);
 
   const refreshAll = React.useCallback(async () => {
+    const currentToday = getLocalIsoDate();
+    const currentTomorrow = getLocalIsoDate(1);
+    setTodayIso(currentToday);
     setIsLoadingTodayEvents(true);
     setTodayEventsError(null);
 
@@ -112,9 +117,9 @@ export default function HomeScreen() {
         fetchEventorEvents({
           classificationIds: [0, 1, 2],
           districtIds: [],
-          fromDate: todayIso,
-          toDate: todayIso,
-        }).then((events) => setTodayEvents(events.filter((event) => event.startDate === todayIso).sort(sortEventsAsc))),
+          fromDate: currentToday,
+          toDate: currentTomorrow,
+        }).then((events) => setTodayEvents(events.filter((event) => event.startDate === currentToday).sort(sortEventsAsc))),
         user?.personId ? refetchPersonLists() : Promise.resolve(),
       ]);
     } catch (error) {
@@ -123,7 +128,7 @@ export default function HomeScreen() {
     } finally {
       setIsLoadingTodayEvents(false);
     }
-  }, [refetchPersonLists, todayIso, user?.personId]);
+  }, [refetchPersonLists, user?.personId]);
 
   const greetingName = user?.firstName ?? user?.fullName ?? 'orienterare';
 
@@ -301,6 +306,10 @@ function sortEventsAsc(left: EventItem, right: EventItem) {
 
 function sortEventsDesc(left: EventItem, right: EventItem) {
   return sortEventsAsc(right, left);
+}
+
+function sortEventsByName(left: EventItem, right: EventItem) {
+  return left.name.localeCompare(right.name, 'sv');
 }
 
 function getLocalIsoDate(offsetDays = 0) {

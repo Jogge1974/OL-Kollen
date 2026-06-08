@@ -25,26 +25,33 @@ type TokenRow = {
 
 type ActivityStateRow = {
   event_id: string;
+  event_race_id: string;
   friend_person_id: string;
   result_notified_at: string | null;
   start_notified_at: string | null;
   start_time: string | null;
 };
 
-// Parsed from Eventor XML
+// Parsed from Eventor XML.
+// eventRaceId identifies a single stage (Eventor EventRaceId). For single-day
+// events it equals eventId so state stays keyed exactly as before.
 type ParsedStart = {
   eventId: string;
+  eventRaceId: string;
   eventName: string;
   startTime: string | null; // ISO 8601
+  raceDateStr: string | null; // YYYY-MM-DD of the stage
   className: string | null;
 };
 
 type ParsedResult = {
   classLabel: string | null;
   eventId: string;
+  eventRaceId: string;
   eventName: string;
   position: string | null;
   timeBehind: number | null;
+  raceDateStr: string | null; // YYYY-MM-DD of the stage
 };
 
 // ---------------------------------------------------------------------------
@@ -99,14 +106,35 @@ function extractStartTimeFromBlock(stBlock: string): string | null {
 }
 
 /**
- * For multi-stage (multi-day) events, Eventor returns starts for ALL stages
- * in the same response. We must only pick starts whose date matches today,
- * otherwise we risk sending push notifications on the wrong day.
+ * Build a map of EventRaceId → race date (YYYY-MM-DD) from an <Event> block.
+ * Multi-day events list one <EventRace> per stage, each with <EventRaceId> and
+ * <RaceDate><Date>. Used to attribute each start/result to the right stage day.
  */
-function parsePersonStartsXml(xml: string, todayDateStr: string): ParsedStart[] {
+function buildRaceDateMap(eventBlock: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const raceBlocks = eventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g);
+  if (!raceBlocks) return map;
+  for (const block of raceBlocks) {
+    const idMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+    const dateMatch = block.match(/<RaceDate>[\s\S]*?<Date>([^<]+)<\/Date>/);
+    if (idMatch && dateMatch) {
+      map.set(idMatch[1], dateMatch[1].trim());
+    }
+  }
+  return map;
+}
+
+/**
+ * Parse the person's start list into one entry PER stage (Eventor EventRaceId).
+ *
+ * Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
+ * Single-day events use <PersonStart>…<Start><StartTime> directly (no RaceStart);
+ * for those we use event_id as the race id so state stays keyed exactly as
+ * before. The caller filters to today's stage by raceDateStr.
+ */
+function parsePersonStartsXml(xml: string): ParsedStart[] {
   const results: ParsedStart[] = [];
-  // For multi-stage events: collect all starts per eventId, then pick today's.
-  const startsByEventId = new Map<string, ParsedStart[]>();
+  const seen = new Set<string>();
 
   // /starts/person returns StartListList > StartList > ClassStart > PersonStart
   // Split on StartList to get per-event context
@@ -118,125 +146,100 @@ function parsePersonStartsXml(xml: string, todayDateStr: string): ParsedStart[] 
     const eventIdMatch = eventBlock.match(/<EventId[^>]*>(\d+)<\/EventId>/);
     if (!eventIdMatch) continue;
     const eventId = eventIdMatch[1];
+    if (seen.has(eventId)) continue;
+    seen.add(eventId);
 
     // Event name
     const eventNameMatch = eventBlock.match(/<Name>([^<]+)<\/Name>/);
     const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
-
-    // Detect multi-stage event: multiple <EventRace> elements indicate stages.
-    // Find today's EventRaceId(s) by matching <RaceDate><Date>todayDateStr</Date>
-    const eventRaceBlocks = eventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g);
-    const isMultiStage = eventRaceBlocks != null && eventRaceBlocks.length > 1;
-    const todayRaceIds = new Set<string>();
-
-    if (isMultiStage && eventRaceBlocks) {
-      for (const raceBlock of eventRaceBlocks) {
-        const raceDateMatch = raceBlock.match(/<RaceDate[\s\S]*?<Date>([^<]+)<\/Date>/);
-        const raceDate = raceDateMatch?.[1]?.trim();
-        if (raceDate === todayDateStr) {
-          const raceIdMatch = raceBlock.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
-          if (raceIdMatch) todayRaceIds.add(raceIdMatch[1]);
-        }
-      }
-    }
-
-    // Find the person's start time within <Start>...<StartTime>
-    // Eventor format: <StartTime><Date>YYYY-MM-DD</Date><Clock>HH:MM:SS</Clock></StartTime>
-    // IOF 3.0 format: <StartTime><Date>YYYY-MM-DD</Date><Time>HH:MM:SSZ</Time></StartTime>
-    // Flat format: <StartTime>ISO-STRING</StartTime>
-    let startTime: string | null = null;
-
-    if (isMultiStage) {
-      // For multi-stage events, look for <RaceStart> blocks and pick the one
-      // that belongs to today's race.
-      const raceStartBlocks = eventBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
-      if (raceStartBlocks) {
-        for (const raceStartBlock of raceStartBlocks) {
-          // Check if this RaceStart belongs to today's race
-          const raceIdMatch = raceStartBlock.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
-
-          let belongsToToday = false;
-          if (raceIdMatch && todayRaceIds.has(raceIdMatch[1])) {
-            belongsToToday = true;
-          } else if (todayRaceIds.size === 0) {
-            // Could not determine today's race from EventRace dates — fall back
-            // to checking the start time date itself.
-            const stMatch = raceStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
-            if (stMatch) {
-              const candidate = extractStartTimeFromBlock(stMatch[1]);
-              if (candidate && candidate.startsWith(todayDateStr)) {
-                belongsToToday = true;
-              }
-            }
-          }
-
-          if (belongsToToday) {
-            const stMatch = raceStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
-            if (stMatch) {
-              startTime = extractStartTimeFromBlock(stMatch[1]);
-            }
-            break;
-          }
-        }
-      }
-
-      // If no RaceStart blocks found but this is multi-stage, try matching by
-      // start time date from the PersonStart block.
-      if (!startTime) {
-        const stRegex = /<StartTime>([\s\S]*?)<\/StartTime>/g;
-        let stMatch: RegExpExecArray | null;
-        while ((stMatch = stRegex.exec(eventBlock)) !== null) {
-          const candidate = extractStartTimeFromBlock(stMatch[1]);
-          if (candidate && candidate.startsWith(todayDateStr)) {
-            startTime = candidate;
-            break;
-          }
-        }
-      }
-    } else {
-      // Single-stage event: original logic
-      const personStartMatch = eventBlock.match(/<PersonStart\b[\s\S]*?<Start\b[\s\S]*?<StartTime>([\s\S]*?)<\/StartTime>/);
-      if (personStartMatch) {
-        startTime = extractStartTimeFromBlock(personStartMatch[1]);
-      }
-
-      // Fallback: any StartTime with Date+Clock anywhere in the event block
-      if (!startTime) {
-        const anyMatch = eventBlock.match(/<StartTime>\s*<Date>([^<]+)<\/Date>\s*<Clock>([^<]+)<\/Clock>/);
-        if (anyMatch) {
-          startTime = `${anyMatch[1].trim()}T${anyMatch[2].trim()}`;
-        }
-      }
-    }
 
     // Class name from <EventClass><Name> or <Class><Name> (used for live matching)
     const classNameMatch =
       eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
     const className = classNameMatch?.[1]?.trim() ?? null;
 
-    const entry: ParsedStart = { eventId, eventName, startTime, className };
-    const existing = startsByEventId.get(eventId) ?? [];
-    existing.push(entry);
-    startsByEventId.set(eventId, existing);
-  }
+    const raceDateMap = buildRaceDateMap(eventBlock);
 
-  // Deduplicate per eventId: prefer the entry whose start date matches today.
-  for (const [, entries] of startsByEventId) {
-    const todayEntry = entries.find((e) => e.startTime?.startsWith(todayDateStr));
-    if (todayEntry) {
-      results.push(todayEntry);
-    } else if (entries.length > 0) {
-      // No entry with today's date — use the first one (single-stage fallback)
-      results.push(entries[0]);
+    // Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
+    const raceStartBlocks = eventBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
+
+    if (raceStartBlocks && raceStartBlocks.length > 0) {
+      for (const block of raceStartBlocks) {
+        const raceIdMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+        if (!raceIdMatch) continue;
+        const eventRaceId = raceIdMatch[1];
+        const stMatch = block.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
+        const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
+        const raceDateStr = raceDateMap.get(eventRaceId) ?? startTime?.slice(0, 10) ?? null;
+        results.push({ eventId, eventRaceId, eventName, startTime, raceDateStr, className });
+      }
+      continue;
     }
+
+    // Single-day fallback: one <Start><StartTime> directly under <PersonStart>.
+    // Use event_id as the race id so single-day state is keyed exactly as before.
+    const personStartBlock =
+      eventBlock.match(/<PersonStart\b[\s\S]*?<\/PersonStart>/)?.[0] ?? eventBlock;
+    const stMatch = personStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
+    const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
+    const raceDateStr = startTime?.slice(0, 10) ?? null;
+    results.push({ eventId, eventRaceId: eventId, eventName, startTime, raceDateStr, className });
   }
 
   return results;
 }
 
+/**
+ * Parse a duration like "1:54:47" (h:mm:ss) or "12:21" (mm:ss) into seconds.
+ */
+function parseDurationToSeconds(raw: string): number | null {
+  const parts = raw.trim().split(':').map((p) => Number(p));
+  if (parts.length === 0 || parts.some((n) => Number.isNaN(n))) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0];
+}
+
+/** True if a result block represents a completed (or terminal) result. */
+function hasCompletedResult(block: string): boolean {
+  return (
+    /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(block) ||
+    /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/.test(block) ||
+    /<Time>[^<]+<\/Time>/.test(block)
+  );
+}
+
+/** Extract position + time-behind (seconds) from a result block. */
+function extractResultFields(block: string): { position: string | null; timeBehind: number | null } {
+  const positionMatch =
+    block.match(/<ResultPosition>(\d+)<\/ResultPosition>/) ??
+    block.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/);
+  const position = positionMatch?.[1] ?? null;
+
+  // Eventor publishes the gap as <TimeDiff> (h:mm:ss / mm:ss); fall back to the
+  // numeric <TimeBehind> (seconds) used by some IOF feeds.
+  let timeBehind: number | null = null;
+  const timeDiffMatch = block.match(/<TimeDiff>([^<]+)<\/TimeDiff>/);
+  if (timeDiffMatch) {
+    timeBehind = parseDurationToSeconds(timeDiffMatch[1]);
+  } else {
+    const tbMatch = block.match(/<TimeBehind>(\d+)<\/TimeBehind>/);
+    if (tbMatch) timeBehind = Number(tbMatch[1]);
+  }
+  return { position, timeBehind };
+}
+
+/**
+ * Parse the person's result list into one entry PER stage (Eventor EventRaceId).
+ *
+ * Multi-day events wrap each stage in <RaceResult><EventRaceId>…<Result>.
+ * Single-day events use <PersonResult>…<Result> directly (no RaceResult); for
+ * those we use event_id as the race id so state stays keyed exactly as before.
+ * The caller filters to today's stage by raceDateStr.
+ */
 function parsePersonResultsXml(xml: string): ParsedResult[] {
   const results: ParsedResult[] = [];
-  const seen = new Set<string>();
+  const seenRace = new Set<string>();
 
   // /results/person returns <ResultListList><ResultList>…</ResultList>…</ResultListList>
   // Each <ResultList> is one event. Split on it first to get event context.
@@ -245,79 +248,56 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
   for (let i = 1; i < eventBlocks.length; i++) {
     const eventBlock = eventBlocks[i];
 
-    // Extract event ID and name from within this ResultList
     const eventIdMatch = eventBlock.match(/<EventId[^>]*>(\d+)<\/EventId>/);
     if (!eventIdMatch) continue;
     const eventId = eventIdMatch[1];
-    if (seen.has(eventId)) continue;
 
     // Event name — first <Name> inside <Event>
     const eventNameMatch = eventBlock.match(/<Event\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
     const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
 
-    // Find ClassResult blocks within this event
-    const classBlocks = eventBlock.split(/<ClassResult\b/);
-    let foundResult = false;
+    // Class name from <EventClass><Name> or <Class><Name> (same for all stages)
+    const classLabel =
+      eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1] ?? null;
 
-    for (let c = 1; c < classBlocks.length; c++) {
-      if (foundResult) break;
-      const classBlock = classBlocks[c];
+    const raceDateMap = buildRaceDateMap(eventBlock);
 
-      // Verify there's an actual completed result for this person.
-      // /results/person returns only this person's ClassResult, so we look
-      // at the FIRST PersonResult block specifically (not other competitors).
-      // Eventor native: <CompetitorStatus value="OK" /> or value="MisPunch" etc.
-      // IOF 3.0: <Status>OK</Status>
-      // Extract the first PersonResult block to check status
-      const personResultMatch = classBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/);
-      const personResult = personResultMatch?.[0] ?? classBlock;
+    // Multi-day: one <RaceResult> per stage, each with <EventRaceId> + <Result>.
+    const raceResultBlocks = eventBlock.match(/<RaceResult\b[\s\S]*?<\/RaceResult>/g);
 
-      const hasEventorStatus = /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(personResult);
-      const hasIofStatus = /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/.test(personResult);
-      const hasTime = /<Time>[^<]+<\/Time>/.test(personResult);
-      if (!hasEventorStatus && !hasIofStatus && !hasTime) continue;
-
-      // Class name from <EventClass><Name> or <Class><Name>
-      const classNameMatch =
-        classBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
-      const classLabel = classNameMatch?.[1] ?? null;
-
-      // Position: Eventor native uses <ResultPosition>, IOF 3.0 uses <Position> inside <Result>
-      const positionMatch =
-        classBlock.match(/<ResultPosition>(\d+)<\/ResultPosition>/) ??
-        classBlock.match(/<Result\b[\s\S]*?<Position>(\d+)<\/Position>/);
-      const position = positionMatch?.[1] ?? null;
-
-      // TimeBehind in seconds
-      const timeBehindMatch = classBlock.match(/<TimeBehind>(\d+)<\/TimeBehind>/);
-      const timeBehind = timeBehindMatch ? Number(timeBehindMatch[1]) : null;
-
-      seen.add(eventId);
-      foundResult = true;
-      results.push({
-        classLabel,
-        eventId,
-        eventName,
-        position,
-        timeBehind,
-      });
-    }
-
-    // Fallback: if no ClassResult found, check eventBlock directly for a result
-    if (!foundResult && classBlocks.length <= 1) {
-      const personResult = eventBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/)?.[0] ?? eventBlock;
-      const hasStatus = /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(personResult);
-      const hasTime = /<Time>[^<]+<\/Time>/.test(personResult);
-
-      if (hasStatus || hasTime) {
-        const classLabel = eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1] ?? null;
-        const position = eventBlock.match(/<ResultPosition>(\d+)<\/ResultPosition>/)?.[1] ?? null;
-        const timeBehindMatch = eventBlock.match(/<TimeBehind>(\d+)<\/TimeBehind>/);
-        const timeBehind = timeBehindMatch ? Number(timeBehindMatch[1]) : null;
-        seen.add(eventId);
-        results.push({ classLabel, eventId, eventName, position, timeBehind });
+    if (raceResultBlocks && raceResultBlocks.length > 0) {
+      for (const block of raceResultBlocks) {
+        const raceIdMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+        if (!raceIdMatch) continue;
+        const eventRaceId = raceIdMatch[1];
+        const dedupKey = `${eventId}::${eventRaceId}`;
+        if (seenRace.has(dedupKey)) continue;
+        if (!hasCompletedResult(block)) continue;
+        seenRace.add(dedupKey);
+        const { position, timeBehind } = extractResultFields(block);
+        // Date from the EventRace metadata, else from the <Result> block's
+        // StartTime/FinishTime. (Scoped to <Result> so we never read a Person
+        // <BirthDate>.)
+        const resultBlock = block.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
+        const raceDateStr =
+          raceDateMap.get(eventRaceId) ?? resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
+        results.push({ classLabel, eventId, eventRaceId, eventName, position, timeBehind, raceDateStr });
       }
+      continue;
     }
+
+    // Single-day: <PersonResult>…<Result> directly. Use event_id as race id.
+    const dedupKey = `${eventId}::${eventId}`;
+    if (seenRace.has(dedupKey)) continue;
+    const personResult = eventBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/)?.[0] ?? eventBlock;
+    if (!hasCompletedResult(personResult)) continue;
+    seenRace.add(dedupKey);
+    const { position, timeBehind } = extractResultFields(personResult);
+    // Scope the date to the <Result> block so we read the race's StartTime/
+    // FinishTime date, not the Person <BirthDate> that precedes it.
+    const resultBlock = personResult.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
+    const raceDateStr = resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
+    results.push({ classLabel, eventId, eventRaceId: eventId, eventName, position, timeBehind, raceDateStr });
   }
 
   return results;
@@ -412,12 +392,12 @@ Deno.serve(async (request) => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const { data: existingStates } = await supabase
       .from('friend_activity_state')
-      .select('event_id, friend_person_id, result_notified_at, start_notified_at, start_time')
+      .select('event_id, event_race_id, friend_person_id, result_notified_at, start_notified_at, start_time')
       .eq('event_date', todayStr);
 
     const stateMap = new Map<string, ActivityStateRow>();
     for (const row of (existingStates ?? []) as ActivityStateRow[]) {
-      stateMap.set(`${row.friend_person_id}::${row.event_id}`, row);
+      stateMap.set(`${row.friend_person_id}::${row.event_id}::${row.event_race_id}`, row);
     }
 
     // 4. Fetch starts and results for each unique friend from Eventor
@@ -437,7 +417,7 @@ Deno.serve(async (request) => {
               fetchEventorXml(`/starts/person?personId=${friendId}&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`),
               fetchEventorXml(`/results/person?personId=${friendId}&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`),
             ]);
-            friendStartsMap.set(friendId, parsePersonStartsXml(startsXml, todayStr));
+            friendStartsMap.set(friendId, parsePersonStartsXml(startsXml));
             friendResultsMap.set(friendId, parsePersonResultsXml(resultsXml));
           } catch (err) {
             console.warn(`[poll-friend] Eventor fetch failed for friend ${friendId}:`, err);
@@ -483,7 +463,11 @@ Deno.serve(async (request) => {
       // --- Start activity tracking & notifications ---
       const starts = friendStartsMap.get(friendId) ?? [];
       for (const start of starts) {
-        const key = `${friendId}::${start.eventId}`;
+        // Multi-stage safety: only act on the stage that belongs to today.
+        // raceDateStr is the stage's date; skip any other stage so a future
+        // (or past) stage never notifies on the wrong day.
+        if (start.raceDateStr && start.raceDateStr !== todayStr) continue;
+        const key = `${friendId}::${start.eventId}::${start.eventRaceId}`;
         const existing = stateMap.get(key);
         if (existing?.start_notified_at) continue; // already notified
 
@@ -495,6 +479,7 @@ Deno.serve(async (request) => {
           stateUpserts.push({
             event_date: todayStr,
             event_id: start.eventId,
+            event_race_id: start.eventRaceId,
             event_name: start.eventName,
             friend_person_id: friendId,
             start_time: start.startTime,
@@ -504,10 +489,6 @@ Deno.serve(async (request) => {
 
         // Notification: only if within 5 min window and time is parseable
         if (!startDate) continue;
-        // Safety: for multi-stage events, verify the start time is actually today.
-        // This prevents sending notifications for a future stage's start time.
-        const startDateStr = startDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
-        if (startDateStr !== todayStr) continue;
         const diffMs = startDate.getTime() - now.getTime();
         if (diffMs > 0 && diffMs <= START_WINDOW_MS) {
           // Only send the push AND mark start_notified_at when this watcher
@@ -516,7 +497,7 @@ Deno.serve(async (request) => {
           // live poller send a "har startat" push when no Eventor reminder was
           // delivered, while still preventing two separate start notifications.
           if (watch.push_on_start) {
-            const idx = stateUpserts.findIndex((u) => u.friend_person_id === friendId && u.event_id === start.eventId);
+            const idx = stateUpserts.findIndex((u) => u.friend_person_id === friendId && u.event_id === start.eventId && u.event_race_id === start.eventRaceId);
             if (idx !== -1) {
               stateUpserts[idx].start_notified_at = nowIso;
             } else {
@@ -524,6 +505,7 @@ Deno.serve(async (request) => {
               stateUpserts.push({
                 event_date: todayStr,
                 event_id: start.eventId,
+                event_race_id: start.eventRaceId,
                 event_name: start.eventName,
                 friend_person_id: friendId,
                 start_notified_at: nowIso,
@@ -543,7 +525,9 @@ Deno.serve(async (request) => {
       // --- Result activity tracking & notifications ---
       const results = friendResultsMap.get(friendId) ?? [];
       for (const result of results) {
-        const key = `${friendId}::${result.eventId}`;
+        // Only act on today's stage result.
+        if (result.raceDateStr && result.raceDateStr !== todayStr) continue;
+        const key = `${friendId}::${result.eventId}::${result.eventRaceId}`;
         const existing = stateMap.get(key);
         if (existing?.result_notified_at) continue; // already tracked
 
@@ -553,6 +537,7 @@ Deno.serve(async (request) => {
           stateUpserts.push({
             event_date: todayStr,
             event_id: result.eventId,
+            event_race_id: result.eventRaceId,
             event_name: result.eventName,
             friend_person_id: friendId,
             result_notified_at: nowIso,
@@ -585,29 +570,31 @@ Deno.serve(async (request) => {
       allWatches.filter((w) => w.push_on_live).map((w) => w.friend_person_id),
     );
     if (liveWatchedFriendIds.size > 0) {
-      // Collect one candidate (eventId, eventName, className) per friend+event,
+      // Collect one candidate per friend + stage (EventRaceId) for TODAY,
       // preferring the start list (has class during the race) but falling back
       // to the result list.
-      type LiveCandidate = { friendId: string; eventId: string; eventName: string; className: string | null };
+      type LiveCandidate = { friendId: string; eventId: string; eventRaceId: string; eventName: string; className: string | null };
       const candidates = new Map<string, LiveCandidate>();
       for (const friendId of liveWatchedFriendIds) {
         for (const start of friendStartsMap.get(friendId) ?? []) {
-          candidates.set(`${friendId}::${start.eventId}`, {
-            friendId, eventId: start.eventId, eventName: start.eventName, className: start.className,
+          if (start.raceDateStr && start.raceDateStr !== todayStr) continue;
+          candidates.set(`${friendId}::${start.eventRaceId}`, {
+            friendId, eventId: start.eventId, eventRaceId: start.eventRaceId, eventName: start.eventName, className: start.className,
           });
         }
         for (const result of friendResultsMap.get(friendId) ?? []) {
-          const key = `${friendId}::${result.eventId}`;
+          if (result.raceDateStr && result.raceDateStr !== todayStr) continue;
+          const key = `${friendId}::${result.eventRaceId}`;
           if (!candidates.has(key)) {
             candidates.set(key, {
-              friendId, eventId: result.eventId, eventName: result.eventName, className: result.classLabel,
+              friendId, eventId: result.eventId, eventRaceId: result.eventRaceId, eventName: result.eventName, className: result.classLabel,
             });
           }
         }
       }
 
       if (candidates.size > 0) {
-        // Match unique events once.
+        // Match unique events once (liveresultat matches per event/day).
         const uniqueEvents = new Map<string, { eventId: string; eventName: string; eventDate: string }>();
         for (const c of candidates.values()) {
           if (!uniqueEvents.has(c.eventId)) {
@@ -621,6 +608,7 @@ Deno.serve(async (request) => {
           stateUpserts.push({
             event_date: todayStr,
             event_id: c.eventId,
+            event_race_id: c.eventRaceId,
             event_name: c.eventName,
             friend_person_id: c.friendId,
             live_class_name: c.className,
@@ -718,12 +706,14 @@ Deno.serve(async (request) => {
       await deactivateInvalidTokens(supabase, invalidTokens);
     }
 
-    // 7. Upsert activity state (deduplicate by friend_person_id + event_id)
+    // 7. Upsert activity state (deduplicate by friend_person_id + event_id + race)
     if (stateUpserts.length > 0) {
-      // Deduplicate: keep the one with the most info (notified timestamps)
+      // Deduplicate: keep the one with the most info (notified timestamps).
+      // Include event_race_id in the key so multi-day events (which share one
+      // event_id across stages) get one row per stage (Eventor EventRaceId).
       const deduped = new Map<string, Record<string, unknown>>();
       for (const row of stateUpserts) {
-        const key = `${row.friend_person_id}::${row.event_id}`;
+        const key = `${row.friend_person_id}::${row.event_id}::${row.event_race_id}`;
         const prev = deduped.get(key);
         if (prev) {
           // Merge: keep non-null values
@@ -740,7 +730,7 @@ Deno.serve(async (request) => {
 
       await supabase
         .from('friend_activity_state')
-        .upsert([...deduped.values()], { onConflict: 'friend_person_id,event_id' });
+        .upsert([...deduped.values()], { onConflict: 'friend_person_id,event_id,event_race_id' });
     }
 
     // Debug: collect starts info for response

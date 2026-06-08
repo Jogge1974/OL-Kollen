@@ -73,8 +73,8 @@ export function mapEventDetailXml(xml: string, selectedEventRaceId?: string | nu
     ...event,
     comment: getString(rawEvent.Comment),
     finishDate: extractDate(rawEvent.FinishDate),
-    hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult') || hasHashKeyPrefix(hashKeys, 'preliminaryResult'),
-    hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
+    hasPublishedResults: raceHasPublishedList(hashKeys, ['officialResult', 'preliminaryResult'], event.eventRaceId),
+    hasPublishedStarts: raceHasPublishedList(hashKeys, ['officialStart', 'startList'], event.eventRaceId),
     liveloxEventId: extractLiveloxEventId(hashEntries),
     modifyDate: extractDate(rawEvent.ModifyDate),
     organiserNames: extractOrganisationNames(rawEvent),
@@ -156,8 +156,8 @@ function mapEventItems(item: Record<string, unknown>): EventItem[] {
       eventRaceDate,
       eventRaceId,
       eventRaceName,
-      hasPublishedResults: hasHashKeyPrefix(hashKeys, 'officialResult') || hasHashKeyPrefix(hashKeys, 'preliminaryResult'),
-      hasPublishedStarts: hasHashKeyPrefix(hashKeys, 'officialStart') || hasHashKeyPrefix(hashKeys, 'startList'),
+      hasPublishedResults: raceHasPublishedList(hashKeys, ['officialResult', 'preliminaryResult'], eventRaceId),
+      hasPublishedStarts: raceHasPublishedList(hashKeys, ['officialStart', 'startList'], eventRaceId),
       id: `${id}::${eventRaceId}`,
       message,
       multiStage: eventForm === 'IndMultiStage',
@@ -343,8 +343,18 @@ function normalizeModifyDate(value: string | null) {
   return value.split('T')[0] ?? value;
 }
 
-function hasHashKeyPrefix(keys: string[], prefix: string) {
-  return keys.some((key) => key.startsWith(prefix));
+/**
+ * True if the event has a published list of the given kind for THIS specific
+ * race (stage). Eventor suffixes publication hash keys with the EventRaceId,
+ * e.g. `officialResult_58446`, `preliminaryResult_58447`, `startList_58448`.
+ * A multi-day event therefore has separate keys per stage; matching only the
+ * prefix makes every stage look published the moment any single stage is. We
+ * require an exact `<prefix>_<eventRaceId>` match, with a defensive fallback to
+ * a bare unsuffixed `<prefix>` so any legacy event that does not suffix its
+ * keys keeps its previous behaviour.
+ */
+function raceHasPublishedList(keys: string[], prefixes: string[], eventRaceId: string) {
+  return keys.some((key) => prefixes.some((prefix) => key === prefix || key === `${prefix}_${eventRaceId}`));
 }
 
 function extractLiveloxEventId(hashEntries: Record<string, unknown>[]) {

@@ -1071,7 +1071,7 @@ function createStyles(colors: ColorPalette) {
   },
   friendNotifToggles: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
   },
   friendNotifPill: {
     alignItems: 'center',
@@ -1079,8 +1079,8 @@ function createStyles(colors: ColorPalette) {
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 8,
+    gap: 3,
+    paddingHorizontal: 6,
     paddingVertical: 4,
   },
   friendNotifPillActive: {
