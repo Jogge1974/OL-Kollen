@@ -125,6 +125,35 @@ function buildRaceDateMap(eventBlock: string): Map<string, string> {
 }
 
 /**
+ * Build a map of EventRaceId → stage name (e.g. "Etapp 3") from an <Event> block.
+ * Multi-day events list one <EventRace> per stage, each with <EventRaceId> and a
+ * <Name>. Used to suffix the push title as "Event.Name - EventRace.Name".
+ */
+function buildRaceNameMap(eventBlock: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const raceBlocks = eventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g);
+  if (!raceBlocks) return map;
+  for (const block of raceBlocks) {
+    const idMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+    const nameMatch = block.match(/<Name>([^<]*)<\/Name>/);
+    if (idMatch && nameMatch) {
+      const name = nameMatch[1].trim();
+      if (name) map.set(idMatch[1], name);
+    }
+  }
+  return map;
+}
+
+/**
+ * Compose the display name for a stage. For multi-stage events the EventRace
+ * carries a stage name (e.g. "Etapp 3") which we append as "Event - Etapp 3".
+ * Single-day events have no stage name, so the plain event name is returned.
+ */
+function composeStageName(eventName: string, raceName: string | undefined): string {
+  return raceName ? `${eventName} - ${raceName}` : eventName;
+}
+
+/**
  * Parse the person's start list into one entry PER stage (Eventor EventRaceId).
  *
  * Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
@@ -159,6 +188,7 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
     const className = classNameMatch?.[1]?.trim() ?? null;
 
     const raceDateMap = buildRaceDateMap(eventBlock);
+    const raceNameMap = buildRaceNameMap(eventBlock);
 
     // Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
     const raceStartBlocks = eventBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
@@ -171,7 +201,8 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
         const stMatch = block.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
         const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
         const raceDateStr = raceDateMap.get(eventRaceId) ?? startTime?.slice(0, 10) ?? null;
-        results.push({ eventId, eventRaceId, eventName, startTime, raceDateStr, className });
+        const stageName = composeStageName(eventName, raceNameMap.get(eventRaceId));
+        results.push({ eventId, eventRaceId, eventName: stageName, startTime, raceDateStr, className });
       }
       continue;
     }
@@ -261,6 +292,7 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
       eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1] ?? null;
 
     const raceDateMap = buildRaceDateMap(eventBlock);
+    const raceNameMap = buildRaceNameMap(eventBlock);
 
     // Multi-day: one <RaceResult> per stage, each with <EventRaceId> + <Result>.
     const raceResultBlocks = eventBlock.match(/<RaceResult\b[\s\S]*?<\/RaceResult>/g);
@@ -281,7 +313,8 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
         const resultBlock = block.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
         const raceDateStr =
           raceDateMap.get(eventRaceId) ?? resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
-        results.push({ classLabel, eventId, eventRaceId, eventName, position, timeBehind, raceDateStr });
+        const stageName = composeStageName(eventName, raceNameMap.get(eventRaceId));
+        results.push({ classLabel, eventId, eventRaceId, eventName: stageName, position, timeBehind, raceDateStr });
       }
       continue;
     }
