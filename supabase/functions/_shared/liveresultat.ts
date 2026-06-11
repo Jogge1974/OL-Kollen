@@ -85,9 +85,20 @@ function nameSimilarity(eventorName: string, liveName: string): number {
 /**
  * Match a set of Eventor events (name + date) against today's liveresultat
  * competitions. Returns a map of eventId → liveCompetitionId for matches.
+ *
+ * When the event's organiser name is provided and matches the liveresultat
+ * competition's `organizer` (both are free-text club names), the event-name
+ * similarity threshold is relaxed from 0.6 to 0.3 — a confirmed organiser match
+ * is strong evidence the events are the same even if the names are spelled
+ * quite differently (e.g. Eventor's long official name vs. liveresultat's short
+ * label). Without an organiser match the original 0.6 threshold applies.
  */
+const NAME_THRESHOLD_DEFAULT = 0.6;
+const NAME_THRESHOLD_ORG_CONFIRMED = 0.3;
+const ORGANISER_MATCH_THRESHOLD = 0.6;
+
 export async function findLiveCompetitionIdsBatch(
-  events: Array<{ eventId: string; eventName: string; eventDate: string }>,
+  events: Array<{ eventId: string; eventName: string; eventDate: string; organizer?: string | null }>,
 ): Promise<Map<string, number>> {
   const matched = new Map<string, number>();
   if (events.length === 0) return matched;
@@ -108,7 +119,11 @@ export async function findLiveCompetitionIdsBatch(
       for (const comp of competitions) {
         if (comp.date !== event.eventDate) continue;
         const similarity = nameSimilarity(event.eventName, comp.name);
-        if (similarity >= 0.6 && similarity > bestSimilarity) {
+        // Relax the name threshold when the organiser clearly matches.
+        const organiserMatches = !!event.organizer && !!comp.organizer &&
+          nameSimilarity(event.organizer, comp.organizer) >= ORGANISER_MATCH_THRESHOLD;
+        const threshold = organiserMatches ? NAME_THRESHOLD_ORG_CONFIRMED : NAME_THRESHOLD_DEFAULT;
+        if (similarity >= threshold && similarity > bestSimilarity) {
           bestSimilarity = similarity;
           bestId = comp.id;
         }
@@ -134,6 +149,28 @@ export async function getLiveFavoriteResults(favorites: LiveFavorite[]): Promise
     });
     if (!response.ok) return [];
     return await response.json();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch the list of class names for a liveresultat competition.
+ *
+ * getFavoriteresult matches strictly on name + club + className, and the
+ * className must be liveresultat's own label (e.g. "Lång"), which often differs
+ * from the Eventor class we store (e.g. an age class). When we don't know the
+ * exact liveresultat class, we fetch the class list and submit one favorite per
+ * class — the backend then returns only the matching class for each runner.
+ */
+export async function getCompetitionClasses(competitionId: number): Promise<string[]> {
+  try {
+    const response = await fetch(`${BASE_URL}/getClasses?competitionId=${competitionId}`);
+    if (!response.ok) return [];
+    const data = await response.json() as { classes?: Array<{ className?: string }> };
+    return (data.classes ?? [])
+      .map((c) => c.className)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0);
   } catch {
     return [];
   }

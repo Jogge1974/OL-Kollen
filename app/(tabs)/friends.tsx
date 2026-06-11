@@ -10,8 +10,8 @@ import { useFocusEffect } from 'expo-router';
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
-import { fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
-import { findLiveCompetitionsBatch, findLiveCompetitionIdsBatch, getLiveFavoriteResults } from '@/src/services/liveresultat';
+import { fetchEventorEventById, fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
+import { findLiveCompetitionsBatch, findLiveCompetitionIdsBatch, getCompetitionClasses, getLiveFavoriteResults } from '@/src/services/liveresultat';
 import type { LiveFavorite, LiveFavoriteResult } from '@/src/services/liveresultat';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
@@ -64,10 +64,10 @@ export default function FriendsScreen() {
   const fetchTodayActivity = useFriendActivityStore((s) => s.fetchTodayActivity);
 
   // Entry counts per friend (future only, excluding today)
-  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[] }>>({});
+  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }>>({});
 
   // Today's starts fetched directly from Eventor (client-side fallback)
-  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null; className: string | null }>>({});
+  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null }>>({});
 
   // Friends who have results today (client-side check from Eventor)
   const [todayResultFriendIds, setTodayResultFriendIds] = React.useState<Set<string>>(new Set());
@@ -117,27 +117,40 @@ export default function FriendsScreen() {
   // Check liveresultat for events where friends have a start today
   React.useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
+    // key (eventId or eventName, matching the lookups below) → eventName
     const startEvents = new Map<string, string>();
+    // key → organiser name (used to relax the name-match threshold to 0.3)
+    const organiserByKey = new Map<string, string>();
+    // key → eventId, so we can resolve the organiser via the event detail API
+    // for sources that don't carry it (entries XML + backend activity).
+    const eventIdByKey = new Map<string, string>();
 
-    // From backend activity state
+    // From backend activity state (keyed by eventId)
     for (const entry of Object.values(activityByFriendId)) {
       if (entry.date === today && entry.type === 'friend-start' && entry.eventName) {
         startEvents.set(entry.eventId, entry.eventName);
+        eventIdByKey.set(entry.eventId, entry.eventId);
       }
     }
 
-    // From client-side today starts
+    // From client-side today starts (keyed by eventName; carries organiser)
     for (const start of Object.values(todayStartsByFriendId)) {
       if (!startEvents.has(start.eventName)) {
         startEvents.set(start.eventName, start.eventName);
       }
+      if (start.organiserName) {
+        organiserByKey.set(start.eventName, start.organiserName);
+      }
     }
 
-    // From client-side entry data (today's entries)
+    // From client-side entry data (keyed by eventName; carries eventId, no organiser)
     for (const counts of Object.values(entryCountByFriendId)) {
-      for (const name of counts.todayEventNames) {
-        if (!startEvents.has(name)) {
-          startEvents.set(name, name);
+      for (const ev of counts.todayEvents) {
+        if (!startEvents.has(ev.eventName)) {
+          startEvents.set(ev.eventName, ev.eventName);
+        }
+        if (!eventIdByKey.has(ev.eventName)) {
+          eventIdByKey.set(ev.eventName, ev.eventId);
         }
       }
     }
@@ -147,9 +160,52 @@ export default function FriendsScreen() {
       setLiveCompMap(new Map());
       return;
     }
-    const events = [...startEvents.entries()].map(([eventId, eventName]) => ({ eventId, eventName, eventDate: today }));
-    void findLiveCompetitionsBatch(events).then(setLiveEventIds);
-    void findLiveCompetitionIdsBatch(events).then(setLiveCompMap);
+
+    let cancelled = false;
+    void (async () => {
+      // Resolve organisers via the event detail API for keys that lack one
+      // (entries XML and backend activity don't include the organiser, but the
+      // organiser is what lets us match e.g. 'Veteran-OL Göteborg' to
+      // 'Veteral-OL IK Stern …' where the names alone score below 0.6).
+      const eventIdsToResolve = [...new Set(
+        [...startEvents.keys()]
+          .filter((key) => !organiserByKey.has(key) && eventIdByKey.has(key))
+          .map((key) => eventIdByKey.get(key) as string),
+      )];
+      const organiserByEventId = new Map<string, string>();
+      await Promise.all(eventIdsToResolve.map(async (eventId) => {
+        try {
+          const detail = await fetchEventorEventById(eventId, null);
+          if (detail.organiserNames.length > 0) {
+            organiserByEventId.set(eventId, detail.organiserNames.join(', '));
+          }
+        } catch {
+          // Ignore — fall back to name-only matching for this event.
+        }
+      }));
+      for (const key of startEvents.keys()) {
+        if (organiserByKey.has(key)) continue;
+        const eventId = eventIdByKey.get(key);
+        const organiser = eventId ? organiserByEventId.get(eventId) : undefined;
+        if (organiser) organiserByKey.set(key, organiser);
+      }
+
+      if (cancelled) return;
+      const events = [...startEvents.entries()].map(([eventId, eventName]) => ({
+        eventId,
+        eventName,
+        eventDate: today,
+        organizer: organiserByKey.get(eventId) ?? null,
+      }));
+      const [ids, comps] = await Promise.all([
+        findLiveCompetitionsBatch(events),
+        findLiveCompetitionIdsBatch(events),
+      ]);
+      if (cancelled) return;
+      setLiveEventIds(ids);
+      setLiveCompMap(comps);
+    })();
+    return () => { cancelled = true; };
   }, [activityByFriendId, todayStartsByFriendId, entryCountByFriendId]);
 
   // Friends who are currently "live" (orange dot) — derive their LiveFavorite payload
@@ -642,6 +698,16 @@ export default function FriendsScreen() {
 
 // --- Live Friends Panel ---
 
+/**
+ * Stable lookup key for matching a liveresultat result to a friend.
+ * Normalised name + club (case/space-insensitive); className is intentionally
+ * excluded because we resolve it from the response, not in advance.
+ */
+function liveResultKey(name: string, club: string): string {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  return `${norm(name)}|${norm(club)}`;
+}
+
 function LiveFriendsPanel({
   friends,
   onClose,
@@ -663,10 +729,38 @@ function LiveFriendsPanel({
 
   const fetchResults = React.useCallback(async () => {
     if (favorites.length === 0) return;
-    const data = await getLiveFavoriteResults(favorites);
+
+    // getFavoriteresult matches strictly on name + club + className. We often
+    // don't know a friend's liveresultat className (e.g. friends only entered,
+    // not yet started — the entries XML has no class we can rely on, and the
+    // class label can differ from Eventor's). So fetch the class list per
+    // competition and submit one favorite per class ("shotgun"); the backend
+    // returns only the matching class for each runner.
+    const competitionIds = [...new Set(favorites.map((f) => f.competitionId))];
+    const classesByComp = new Map<number, string[]>();
+    await Promise.all(competitionIds.map(async (compId) => {
+      classesByComp.set(compId, await getCompetitionClasses(compId));
+    }));
+
+    const expanded: LiveFavorite[] = [];
+    for (const fav of favorites) {
+      const classes = classesByComp.get(fav.competitionId) ?? [];
+      // Keep the known className first (cheap hit), then fan out to all classes.
+      const classNames = new Set<string>();
+      if (fav.className) classNames.add(fav.className);
+      for (const c of classes) classNames.add(c);
+      if (classNames.size === 0) classNames.add(fav.className); // may be ''
+      for (const className of classNames) {
+        expanded.push({ ...fav, className });
+      }
+    }
+
+    const data = await getLiveFavoriteResults(expanded);
     const map = new Map<string, LiveFavoriteResult>();
     for (const r of data) {
-      map.set(`${r.name}|${r.club}|${r.className}`, r);
+      // Key by name+club only — the friend is a unique person, and the response
+      // carries the real className (which we couldn't know in advance).
+      map.set(liveResultKey(r.name, r.club), r);
     }
     setResults(map);
     setIsLoading(false);
@@ -763,9 +857,23 @@ function LiveFriendsPanel({
       // Finished OK — find RESULT split for formatted timeplus
       const resultSplit = result.splitresults?.find((s) => s.splitname === 'RESULT');
       const tp = resultSplit?.splittimeplus || formatTimePlus(result.timeplus);
-      return { line1: `Plac: ${result.place}, ${tp}`, line2: result.className || '', style: 'finished' as const };
+      // The placement is only final once every runner in the class is in (none
+      // left in the forest). Until then it's preliminary.
+      const inForest = typeof result.inForest === 'number' ? result.inForest : 0;
+      return {
+        style: 'finished' as const,
+        time: formatCentis(result.result),
+        place: result.place || '',
+        timeplus: tp,
+        className: result.className || '',
+        classFinished: inForest <= 0,
+      };
     }
     if (result.status === 9 || result.status === 10) {
+      if (result.start <= 0) {
+        // No allotted start time (free start) — the runner can start whenever.
+        return { line1: 'Starttid saknas', line2: '', style: 'muted' as const };
+      }
       if (result.start > nowCentis) {
         return { line1: `Start ${formatStartClock(result.start)}`, line2: '', style: 'muted' as const };
       }
@@ -796,7 +904,7 @@ function LiveFriendsPanel({
           data={friends}
           keyExtractor={(item) => String(item.friend.personId)}
           renderItem={({ item }) => {
-            const key = `${item.favorite.name}|${item.favorite.club}|${item.favorite.className}`;
+            const key = liveResultKey(item.favorite.name, item.favorite.club);
             const result = results.get(key);
             const isExpanded = expandedFriends.has(item.friend.personId);
 
@@ -812,6 +920,43 @@ function LiveFriendsPanel({
                   </View>
                   {result ? (() => {
                     const summary = getCollapsedSummary(result);
+                    if (summary.style === 'finished') {
+                      return (
+                        <View style={styles.livePanelSummary}>
+                          <View style={styles.liveSummaryFinishedRow}>
+                            {/* Column 1: time over timeplus (same column) */}
+                            <View style={styles.liveSummaryTimeCol}>
+                              <Text style={styles.liveSummaryTime}>{summary.time}</Text>
+                              <Text style={styles.liveSummaryTimeplus}>{summary.timeplus}</Text>
+                            </View>
+                            {/* Column 2: placement chip over class */}
+                            <View style={styles.liveSummaryMetaCol}>
+                              {summary.place ? (
+                                <View style={[
+                                  styles.livePlaceChip,
+                                  summary.classFinished ? styles.livePlaceChipFinal : styles.livePlaceChipPrelim,
+                                ]}>
+                                  <Ionicons
+                                    color={summary.classFinished ? colors.primary : colors.textMuted}
+                                    name={summary.classFinished ? 'trophy' : 'hourglass-outline'}
+                                    size={12}
+                                  />
+                                  <Text style={[
+                                    styles.livePlaceChipText,
+                                    summary.classFinished ? styles.livePlaceChipTextFinal : styles.livePlaceChipTextPrelim,
+                                  ]}>
+                                    {summary.classFinished ? `Plac ${summary.place}` : `Prel ${summary.place}`}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              {summary.className ? (
+                                <Text style={styles.liveSummaryClass}>{summary.className}</Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    }
                     return (
                       <View style={styles.livePanelSummary}>
                         <Text style={[
@@ -834,7 +979,14 @@ function LiveFriendsPanel({
                   <View style={styles.livePanelExpanded}>
                     <View style={styles.livePanelCompRow}>
                       <Ionicons color={colors.textMuted} name="flag-outline" size={12} />
-                      <Text style={styles.livePanelCompName}>{result.competitionName}</Text>
+                      <Text style={styles.livePanelCompName} numberOfLines={1}>{result.competitionName}</Text>
+                      <Pressable
+                        onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${result.competitionId}`)}
+                        style={({ pressed }) => [styles.liveCompLink, pressed ? { opacity: 0.6 } : null]}
+                      >
+                        <Ionicons color={liveOrange} name="open-outline" size={13} />
+                        <Text style={styles.liveCompLinkText}>Till Liveresultat</Text>
+                      </Pressable>
                     </View>
 
                     <View style={styles.livePanelBodyRow}>
@@ -852,7 +1004,7 @@ function LiveFriendsPanel({
                                     <Ionicons color={liveOrange} name={iconName as any} size={12} style={styles.liveSplitIcon} />
                                     <Text style={styles.liveSplitName} numberOfLines={1}>{displayName}</Text>
                                     {s.splitname === 'STARTTIME' ? (
-                                      <Text style={styles.liveSplitResultWide}>{s.splitresult}</Text>
+                                      <Text style={styles.liveSplitResultWide}>{result.start > 0 ? s.splitresult : 'Starttid saknas'}</Text>
                                     ) : (
                                       <>
                                         <Text style={styles.liveSplitResult}>{s.splitresult}</Text>
@@ -868,7 +1020,7 @@ function LiveFriendsPanel({
                           ) : (
                             <Text style={styles.liveSubtext}>Inga sträcktider</Text>
                           )}
-                          {isRunning(result.status) && result.splitresults && result.splitresults.length > 0 && result.splitresults[result.splitresults.length - 1].splitname !== 'RESULT' ? (
+                          {isRunning(result.status) && result.start > 0 && result.splitresults && result.splitresults.length > 0 && result.splitresults[result.splitresults.length - 1].splitname !== 'RESULT' ? (
                             <>
                               <View style={styles.liveSplitDivider} />
                               <View style={styles.liveSplitRow}>
@@ -1271,6 +1423,59 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textSecondary,
       fontSize: 11,
     },
+    liveSummaryFinishedRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      justifyContent: 'flex-end',
+    },
+    liveSummaryTimeCol: {
+      alignItems: 'flex-end',
+    },
+    liveSummaryMetaCol: {
+      alignItems: 'flex-end',
+      gap: 2,
+    },
+    liveSummaryTime: {
+      ...typography.bodyStrong,
+      color: colors.primaryDeep,
+      fontSize: 15,
+    },
+    livePlaceChip: {
+      alignItems: 'center',
+      borderRadius: 6,
+      flexDirection: 'row',
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    livePlaceChipFinal: {
+      backgroundColor: isDark ? 'rgba(76, 139, 71, 0.20)' : 'rgba(76, 139, 71, 0.12)',
+    },
+    livePlaceChipPrelim: {
+      backgroundColor: isDark ? 'rgba(124, 134, 121, 0.20)' : 'rgba(124, 134, 121, 0.12)',
+    },
+    livePlaceChipText: {
+      ...typography.captionStrong,
+      fontSize: 13,
+    },
+    livePlaceChipTextFinal: {
+      color: colors.primary,
+    },
+    livePlaceChipTextPrelim: {
+      color: colors.textMuted,
+      fontStyle: 'italic',
+    },
+    liveSummaryTimeplus: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 12,
+    },
+    liveSummaryClass: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 11,
+    },
     livePanelExpanded: {
       backgroundColor: isDark ? 'rgba(246, 166, 10, 0.06)' : 'rgba(246, 166, 10, 0.03)',
       borderTopColor: isDark ? 'rgba(246, 166, 10, 0.2)' : 'rgba(246, 166, 10, 0.15)',
@@ -1399,6 +1604,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     livePanelCompName: {
       ...typography.bodyStrong,
       color: colors.textPrimary,
+      flex: 1,
       fontSize: 13,
     },
     livePanelStatsRow: {
@@ -1465,6 +1671,19 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: '#fff',
       fontSize: 12,
     },
+    liveCompLink: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      gap: 5,
+      paddingVertical: 4,
+    },
+    liveCompLinkText: {
+      ...typography.captionStrong,
+      color: isDark ? '#C48800' : '#F6A60A',
+      fontSize: 12,
+      textDecorationLine: 'underline',
+    },
   });
 }
 
@@ -1475,14 +1694,14 @@ function formatLocalIsoDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, { today: number; future: number; todayEventNames: string[] }>> {
+async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const fromDate = `${todayIso} 00:00:00`;
   const futureDate = new Date();
   futureDate.setMonth(futureDate.getMonth() + 9);
   const toDate = `${formatLocalIsoDate(futureDate)} 23:59:59`;
 
-  const result: Record<string, { today: number; future: number; todayEventNames: string[] }> = {};
+  const result: Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }> = {};
 
   await Promise.all(
     friends.map(async (friend) => {
@@ -1497,6 +1716,7 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
         let todayCount = 0;
         let futureCount = 0;
         const todayEventNames: string[] = [];
+        const todayEvents: { eventId: string; eventName: string }[] = [];
         for (const entry of entryArray) {
           const event = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>).Event : null;
           const eventIdNode = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).EventId : null;
@@ -1508,7 +1728,10 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
             if (dateStr === todayIso) {
               todayCount++;
               const eventName = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).Name : null;
-              if (typeof eventName === 'string') todayEventNames.push(eventName);
+              if (typeof eventName === 'string') {
+                todayEventNames.push(eventName);
+                todayEvents.push({ eventId, eventName });
+              }
             } else {
               futureCount++;
             }
@@ -1516,7 +1739,7 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
         }
 
         if (todayCount > 0 || futureCount > 0) {
-          result[String(friend.personId)] = { today: todayCount, future: futureCount, todayEventNames };
+          result[String(friend.personId)] = { today: todayCount, future: futureCount, todayEventNames, todayEvents };
         }
       } catch {
         // Silently skip on error
@@ -1550,12 +1773,12 @@ function hasStartTimePassed(startTime: string | null): boolean {
  * Fetches today's starts for each friend directly from Eventor /starts/person.
  * Returns a map of friendId → { eventName } for friends that have a start today.
  */
-async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null; className: string | null }>> {
+async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const from = `${todayIso} 00:00:00`;
   const to = `${todayIso} 23:59:59`;
 
-  const result: Record<string, { eventName: string; startTime: string | null; className: string | null }> = {};
+  const result: Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null }> = {};
 
   const BATCH_SIZE = 5;
   for (let i = 0; i < friends.length; i += BATCH_SIZE) {
@@ -1581,7 +1804,11 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
             // Extract class name
             const classMatch = xml.match(/<EventClass\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
             const className = classMatch ? classMatch[1] : null;
-            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime, className };
+            // Extract organiser name — scoped to the <Organiser> element so we never
+            // pick up the runner's own club (<PersonStart><Organisation><Name>).
+            const orgBlock = xml.match(/<Organiser\b[\s\S]*?<\/Organiser>/)?.[0];
+            const organiserName = orgBlock?.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? null;
+            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime, className, organiserName };
           }
         } catch {
           // Silently skip on error

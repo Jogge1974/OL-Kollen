@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { fetchEventDetailXml } from '../_shared/eventor.ts';
 import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
 import { findLiveCompetitionIdsBatch } from '../_shared/liveresultat.ts';
 
@@ -30,6 +31,8 @@ type ActivityStateRow = {
   result_notified_at: string | null;
   start_notified_at: string | null;
   start_time: string | null;
+  live_competition_id: number | null;
+  live_class_name: string | null;
 };
 
 // Parsed from Eventor XML.
@@ -39,6 +42,7 @@ type ParsedStart = {
   eventId: string;
   eventRaceId: string;
   eventName: string;
+  organiserName: string | null;
   startTime: string | null; // ISO 8601
   raceDateStr: string | null; // YYYY-MM-DD of the stage
   className: string | null;
@@ -49,6 +53,7 @@ type ParsedResult = {
   eventId: string;
   eventRaceId: string;
   eventName: string;
+  organiserName: string | null;
   position: string | null;
   timeBehind: number | null;
   raceDateStr: string | null; // YYYY-MM-DD of the stage
@@ -154,6 +159,52 @@ function composeStageName(eventName: string, raceName: string | undefined): stri
 }
 
 /**
+ * Extract the event ORGANISER's name from an <Event> block.
+ *
+ * Eventor wraps it as `<Organiser><Organisation>…<Name>OK X</Name>`. We scope to
+ * the <Organiser> element so we never pick up the competitor's own
+ * `<Organisation><Name>` (their club) that appears later under <PersonStart> /
+ * <PersonResult>. Returns null when only an <OrganisationId> is present (no name)
+ * so the caller can fall back to name-only matching.
+ */
+function extractOrganiserName(eventBlock: string): string | null {
+  const orgBlock = eventBlock.match(/<Organiser\b[\s\S]*?<\/Organiser>/)?.[0];
+  if (!orgBlock) return null;
+  const nameMatch = orgBlock.match(/<Name>([^<]+)<\/Name>/);
+  return nameMatch?.[1]?.trim() ?? null;
+}
+
+/**
+ * Parse the person's ENTRIES into unique events (eventId + name + start date).
+ *
+ * Free-start events give competitors no allotted start time, so such runners
+ * never appear in /starts/person and only land in /results/person once Eventor
+ * receives the official results — which can be long after they finish. They DO
+ * appear in /entries the whole time, so we use this as a third live-matching
+ * source to create the live_competition_id state row up front. Entries carry NO
+ * <Organiser> (the caller resolves it via /event/{id}) and no class info.
+ */
+function parseEntryEventsXml(xml: string): Array<{ eventId: string; eventName: string; eventDateStr: string | null }> {
+  const seen = new Map<string, { eventId: string; eventName: string; eventDateStr: string | null }>();
+  const entryBlocks = xml.split(/<Entry\b/);
+
+  for (let i = 1; i < entryBlocks.length; i++) {
+    const eventBlock = entryBlocks[i].match(/<Event\b[\s\S]*?<\/Event>/)?.[0];
+    if (!eventBlock) continue;
+
+    const eventId = eventBlock.match(/<EventId>(\d+)<\/EventId>/)?.[1];
+    if (!eventId) continue;
+
+    const eventName = eventBlock.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? 'Okänd tävling';
+    const eventDateStr = eventBlock.match(/<StartDate>[\s\S]*?<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
+
+    if (!seen.has(eventId)) seen.set(eventId, { eventId, eventName, eventDateStr });
+  }
+
+  return [...seen.values()];
+}
+
+/**
  * Parse the person's start list into one entry PER stage (Eventor EventRaceId).
  *
  * Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
@@ -187,6 +238,8 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
       eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
     const className = classNameMatch?.[1]?.trim() ?? null;
 
+    const organiserName = extractOrganiserName(eventBlock);
+
     const raceDateMap = buildRaceDateMap(eventBlock);
     const raceNameMap = buildRaceNameMap(eventBlock);
 
@@ -202,7 +255,7 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
         const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
         const raceDateStr = raceDateMap.get(eventRaceId) ?? startTime?.slice(0, 10) ?? null;
         const stageName = composeStageName(eventName, raceNameMap.get(eventRaceId));
-        results.push({ eventId, eventRaceId, eventName: stageName, startTime, raceDateStr, className });
+        results.push({ eventId, eventRaceId, eventName: stageName, organiserName, startTime, raceDateStr, className });
       }
       continue;
     }
@@ -214,7 +267,7 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
     const stMatch = personStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
     const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
     const raceDateStr = startTime?.slice(0, 10) ?? null;
-    results.push({ eventId, eventRaceId: eventId, eventName, startTime, raceDateStr, className });
+    results.push({ eventId, eventRaceId: eventId, eventName, organiserName, startTime, raceDateStr, className });
   }
 
   return results;
@@ -291,6 +344,8 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
     const classLabel =
       eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1] ?? null;
 
+    const organiserName = extractOrganiserName(eventBlock);
+
     const raceDateMap = buildRaceDateMap(eventBlock);
     const raceNameMap = buildRaceNameMap(eventBlock);
 
@@ -314,7 +369,7 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
         const raceDateStr =
           raceDateMap.get(eventRaceId) ?? resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
         const stageName = composeStageName(eventName, raceNameMap.get(eventRaceId));
-        results.push({ classLabel, eventId, eventRaceId, eventName: stageName, position, timeBehind, raceDateStr });
+        results.push({ classLabel, eventId, eventRaceId, eventName: stageName, organiserName, position, timeBehind, raceDateStr });
       }
       continue;
     }
@@ -330,7 +385,7 @@ function parsePersonResultsXml(xml: string): ParsedResult[] {
     // FinishTime date, not the Person <BirthDate> that precedes it.
     const resultBlock = personResult.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
     const raceDateStr = resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
-    results.push({ classLabel, eventId, eventRaceId: eventId, eventName, position, timeBehind, raceDateStr });
+    results.push({ classLabel, eventId, eventRaceId: eventId, eventName, organiserName, position, timeBehind, raceDateStr });
   }
 
   return results;
@@ -425,7 +480,7 @@ Deno.serve(async (request) => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const { data: existingStates } = await supabase
       .from('friend_activity_state')
-      .select('event_id, event_race_id, friend_person_id, result_notified_at, start_notified_at, start_time')
+      .select('event_id, event_race_id, friend_person_id, result_notified_at, start_notified_at, start_time, live_competition_id, live_class_name')
       .eq('event_date', todayStr);
 
     const stateMap = new Map<string, ActivityStateRow>();
@@ -603,16 +658,44 @@ Deno.serve(async (request) => {
       allWatches.filter((w) => w.push_on_live).map((w) => w.friend_person_id),
     );
     if (liveWatchedFriendIds.size > 0) {
+      // Free-start runners have no allotted start time, so they never show up in
+      // /starts/person and only reach /results/person once Eventor gets the
+      // official results (often well after they finish). To still push when they
+      // cross the line, fetch today's ENTRIES for live-watched friends and use
+      // them as a third matching source — this creates the live_competition_id
+      // row up front so poll-live-friends can poll liveresultat and catch the
+      // finish. Entries carry no organiser, so it is resolved via /event/{id}.
+      const liveFriendIds = [...liveWatchedFriendIds];
+      const entryEventsByFriend = new Map<string, Array<{ eventId: string; eventName: string }>>();
+      for (let i = 0; i < liveFriendIds.length; i += BATCH_SIZE) {
+        const batch = liveFriendIds.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (friendId) => {
+            try {
+              const xml = await fetchEventorXml(
+                `/entries?personIds=${friendId}&includeEventElement=true&fromEventDate=${todayStr}&toEventDate=${todayStr}`,
+              );
+              const events = parseEntryEventsXml(xml)
+                .filter((e) => !e.eventDateStr || e.eventDateStr === todayStr)
+                .map((e) => ({ eventId: e.eventId, eventName: e.eventName }));
+              if (events.length > 0) entryEventsByFriend.set(friendId, events);
+            } catch (err) {
+              console.warn(`[poll-friend] Eventor entries fetch failed for friend ${friendId}:`, err);
+            }
+          }),
+        );
+      }
+
       // Collect one candidate per friend + stage (EventRaceId) for TODAY,
       // preferring the start list (has class during the race) but falling back
-      // to the result list.
-      type LiveCandidate = { friendId: string; eventId: string; eventRaceId: string; eventName: string; className: string | null };
+      // to the result list, then to entries (free-start, no start/result yet).
+      type LiveCandidate = { friendId: string; eventId: string; eventRaceId: string; eventName: string; organiserName: string | null; className: string | null };
       const candidates = new Map<string, LiveCandidate>();
       for (const friendId of liveWatchedFriendIds) {
         for (const start of friendStartsMap.get(friendId) ?? []) {
           if (start.raceDateStr && start.raceDateStr !== todayStr) continue;
           candidates.set(`${friendId}::${start.eventRaceId}`, {
-            friendId, eventId: start.eventId, eventRaceId: start.eventRaceId, eventName: start.eventName, className: start.className,
+            friendId, eventId: start.eventId, eventRaceId: start.eventRaceId, eventName: start.eventName, organiserName: start.organiserName, className: start.className,
           });
         }
         for (const result of friendResultsMap.get(friendId) ?? []) {
@@ -620,7 +703,17 @@ Deno.serve(async (request) => {
           const key = `${friendId}::${result.eventRaceId}`;
           if (!candidates.has(key)) {
             candidates.set(key, {
-              friendId, eventId: result.eventId, eventRaceId: result.eventRaceId, eventName: result.eventName, className: result.classLabel,
+              friendId, eventId: result.eventId, eventRaceId: result.eventRaceId, eventName: result.eventName, organiserName: result.organiserName, className: result.classLabel,
+            });
+          }
+        }
+        for (const entryEvent of entryEventsByFriend.get(friendId) ?? []) {
+          // Free-start events are single-day, so event_race_id == event_id (the
+          // same convention parsePersonStartsXml uses for single-day stages).
+          const key = `${friendId}::${entryEvent.eventId}`;
+          if (!candidates.has(key)) {
+            candidates.set(key, {
+              friendId, eventId: entryEvent.eventId, eventRaceId: entryEvent.eventId, eventName: entryEvent.eventName, organiserName: null, className: null,
             });
           }
         }
@@ -628,24 +721,62 @@ Deno.serve(async (request) => {
 
       if (candidates.size > 0) {
         // Match unique events once (liveresultat matches per event/day).
-        const uniqueEvents = new Map<string, { eventId: string; eventName: string; eventDate: string }>();
+        const uniqueEvents = new Map<string, { eventId: string; eventName: string; eventDate: string; organizer: string | null }>();
         for (const c of candidates.values()) {
-          if (!uniqueEvents.has(c.eventId)) {
-            uniqueEvents.set(c.eventId, { eventId: c.eventId, eventName: c.eventName, eventDate: todayStr });
+          const existing = uniqueEvents.get(c.eventId);
+          if (!existing) {
+            uniqueEvents.set(c.eventId, { eventId: c.eventId, eventName: c.eventName, eventDate: todayStr, organizer: c.organiserName });
+          } else if (!existing.organizer && c.organiserName) {
+            // Prefer a real organiser from any candidate (starts/results) over a
+            // null from an entry-only candidate.
+            existing.organizer = c.organiserName;
           }
         }
+
+        // Resolve the organiser for events that still lack one (entry-only,
+        // free-start). /event/{id} returns <Organiser><Organisation><Name>,
+        // which the organiser-boosted matcher uses to relax the name threshold.
+        for (const ev of uniqueEvents.values()) {
+          if (ev.organizer) continue;
+          try {
+            ev.organizer = extractOrganiserName(await fetchEventDetailXml(ev.eventId));
+          } catch (err) {
+            console.warn(`[poll-friend] Eventor event detail fetch failed for ${ev.eventId}:`, err);
+          }
+        }
+
         const liveIdByEvent = await findLiveCompetitionIdsBatch([...uniqueEvents.values()]);
 
         for (const c of candidates.values()) {
-          const liveId = liveIdByEvent.get(c.eventId) ?? 0; // 0 = checked, no match
+          const existing = stateMap.get(`${c.friendId}::${c.eventId}::${c.eventRaceId}`);
+          const freshId = liveIdByEvent.get(c.eventId);
+          // Never DOWNGRADE a confirmed match (>0) back to 0. The match can miss
+          // on any cycle where liveresultat is momentarily unavailable, drops the
+          // event from today's list, or the name similarity dips. Writing 0 in
+          // that case would push live_competition_id below poll-live-friends'
+          // `> 0` filter and permanently stop every further live push (splits,
+          // finish) for the rest of the event. Keep the prior match instead.
+          const liveId = (freshId && freshId > 0)
+            ? freshId
+            : (existing?.live_competition_id && existing.live_competition_id > 0 ? existing.live_competition_id : 0);
+          // Likewise never wipe a known class name with a null from a thinner candidate.
+          const liveClassName = c.className ?? existing?.live_class_name ?? null;
+          // Carry forward start/result flags from the existing row. The bulk
+          // upsert builds its column list from the union of all object keys and
+          // writes NULL for any key an object omits (ON CONFLICT DO UPDATE), so
+          // omitting these here would let another row's start_notified_at column
+          // wipe this friend's already-sent start flag → duplicate live "har
+          // startat" pushes. Seeding from state keeps the array safe.
           stateUpserts.push({
             event_date: todayStr,
             event_id: c.eventId,
             event_race_id: c.eventRaceId,
             event_name: c.eventName,
             friend_person_id: c.friendId,
-            live_class_name: c.className,
+            live_class_name: liveClassName,
             live_competition_id: liveId,
+            result_notified_at: existing?.result_notified_at ?? null,
+            start_notified_at: existing?.start_notified_at ?? null,
             updated_at: nowIso,
           });
         }

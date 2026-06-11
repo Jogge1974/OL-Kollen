@@ -18,7 +18,6 @@ import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useAuthStore } from '@/src/store/authStore';
-import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -29,7 +28,6 @@ export default function HomeScreen() {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
-  const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
   const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
   const [isLoadingTodayEvents, setIsLoadingTodayEvents] = React.useState(true);
@@ -56,10 +54,6 @@ export default function HomeScreen() {
     [exactTodayEvents],
   );
   const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
-  const upcomingStartCount = React.useMemo(
-    () => startsSections.reduce((sum, section) => sum + section.rows.length, 0),
-    [startsSections],
-  );
 
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
@@ -153,12 +147,6 @@ export default function HomeScreen() {
             </View>
             {user?.accessLevel ? <View style={styles.accessPill}><Text style={styles.accessPillText}>{formatAccessLevel(user.accessLevel)}</Text></View> : null}
           </View>
-
-          <View style={styles.heroStatsRow}>
-            <HeroStat icon="calendar-outline" label="Idag" value={`${exactTodayEvents.length}`} />
-            <HeroStat icon="flag-outline" label="Kommande starter" value={user ? `${upcomingStartCount}` : 'Logga in'} />
-            <HeroStat icon="star-outline" label="Favoriter" value={`${favoriteEvents.length}`} />
-          </View>
         </LinearGradient>
 
         <View style={styles.shortcutSection}>
@@ -241,23 +229,6 @@ export default function HomeScreen() {
       <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeSplitTimesModal} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </SafeAreaView>
-  );
-}
-
-function HeroStat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
-  const colors = useColors();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-
-  return (
-    <View style={styles.statPill}>
-      <Ionicons color={colors.heroText} name={icon} size={16} />
-      <View style={styles.statTextWrap}>
-        <Text style={styles.statLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.statValue}>
-          {value}
-        </Text>
-      </View>
-    </View>
   );
 }
 
@@ -383,10 +354,6 @@ function createStyles(colors: ColorPalette) {
     color: colors.heroEyebrow,
     fontSize: 11,
   },
-  heroStatsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
   heroTitle: {
     ...typography.heroTitle,
     color: colors.heroText,
@@ -473,15 +440,16 @@ function createStyles(colors: ColorPalette) {
   },
   shortcutCard: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 1.5,
     flex: 1,
     gap: spacing.xs,
     justifyContent: 'center',
-    minHeight: 84,
-    padding: spacing.sm,
+    minHeight: 92,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
   },
   shortcutCardPressed: {
     opacity: 0.9,
@@ -491,7 +459,6 @@ function createStyles(colors: ColorPalette) {
   },
   shortcutGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   shortcutIconWrap: {
@@ -506,31 +473,6 @@ function createStyles(colors: ColorPalette) {
     ...typography.captionStrong,
     color: colors.textPrimary,
     textAlign: 'center',
-  },
-  statLabel: {
-    color: colors.heroTextMuted,
-    fontSize: 10,
-    lineHeight: 12,
-  },
-  statPill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 18,
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minWidth: 92,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  statTextWrap: {
-    flex: 1,
-  },
-  statValue: {
-    ...typography.captionStrong,
-    color: colors.heroText,
-    fontSize: 13,
-    lineHeight: 15,
   },
   sunGlow: {
     backgroundColor: colors.accentGlow,

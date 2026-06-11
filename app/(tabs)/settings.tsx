@@ -55,6 +55,14 @@ export default function SettingsScreen() {
   const setAllFriendsPush = useFriendsStore((state) => state.setAllFriendsPush);
   const { districtOptions, error: districtError, organisationToDistrictId } = useEventorDistricts(isCalendarFiltersExpanded);
 
+  // In the two dark themes, render active notification toggles with a light background for better contrast.
+  const isDarkTheme = themeName === 'dark' || themeName === 'soft-dark';
+  const activePillFg = isDarkTheme ? (themeName === 'soft-dark' ? '#001A4F' : '#284321') : colors.primaryDeep;
+  const activePillStyle = isDarkTheme
+    ? { backgroundColor: themeName === 'soft-dark' ? '#D6E6F7' : '#DCEFD6', borderColor: colors.primary }
+    : styles.friendNotifPillActive;
+  const activePillTextStyle = isDarkTheme ? { color: activePillFg } : styles.friendNotifPillTextActive;
+
   React.useEffect(() => {
     setCalendarDefaultDraft(calendarDefaultFilterTemplate);
   }, [calendarDefaultFilterTemplate]);
@@ -313,10 +321,10 @@ export default function SettingsScreen() {
                         const allOn = friends.every((f) => f.pushOnEntry);
                         void setAllFriendsPush('pushOnEntry', !allOn);
                       }}
-                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnEntry) ? styles.friendNotifPillActive : null]}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnEntry) ? activePillStyle : null]}
                     >
                       <Ionicons
-                        color={friends.every((f) => f.pushOnEntry) ? colors.primaryDeep : colors.textMuted}
+                        color={friends.every((f) => f.pushOnEntry) ? activePillFg : colors.textMuted}
                         name={
                           friends.every((f) => f.pushOnEntry) ? 'checkbox' :
                           friends.some((f) => f.pushOnEntry) ? 'remove-outline' :
@@ -324,17 +332,17 @@ export default function SettingsScreen() {
                         }
                         size={14}
                       />
-                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnEntry) ? styles.friendNotifPillTextActive : null]}>Anm.</Text>
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnEntry) ? activePillTextStyle : null]}>Anm.</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => {
                         const allOn = friends.every((f) => f.pushOnStart);
                         void setAllFriendsPush('pushOnStart', !allOn);
                       }}
-                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnStart) ? styles.friendNotifPillActive : null]}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnStart) ? activePillStyle : null]}
                     >
                       <Ionicons
-                        color={friends.every((f) => f.pushOnStart) ? colors.primaryDeep : colors.textMuted}
+                        color={friends.every((f) => f.pushOnStart) ? activePillFg : colors.textMuted}
                         name={
                           friends.every((f) => f.pushOnStart) ? 'checkbox' :
                           friends.some((f) => f.pushOnStart) ? 'remove-outline' :
@@ -342,17 +350,17 @@ export default function SettingsScreen() {
                         }
                         size={14}
                       />
-                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnStart) ? styles.friendNotifPillTextActive : null]}>Start</Text>
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnStart) ? activePillTextStyle : null]}>Start</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => {
                         const allOn = friends.every((f) => f.pushOnResult);
                         void setAllFriendsPush('pushOnResult', !allOn);
                       }}
-                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnResult) ? styles.friendNotifPillActive : null]}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnResult) ? activePillStyle : null]}
                     >
                       <Ionicons
-                        color={friends.every((f) => f.pushOnResult) ? colors.primaryDeep : colors.textMuted}
+                        color={friends.every((f) => f.pushOnResult) ? activePillFg : colors.textMuted}
                         name={
                           friends.every((f) => f.pushOnResult) ? 'checkbox' :
                           friends.some((f) => f.pushOnResult) ? 'remove-outline' :
@@ -360,17 +368,17 @@ export default function SettingsScreen() {
                         }
                         size={14}
                       />
-                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnResult) ? styles.friendNotifPillTextActive : null]}>Resultat</Text>
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnResult) ? activePillTextStyle : null]}>Resultat</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => {
                         const allOn = friends.every((f) => f.pushOnLive);
                         void setAllFriendsPush('pushOnLive', !allOn);
                       }}
-                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnLive) ? styles.friendNotifPillActive : null]}
+                      style={[styles.friendNotifPill, friends.every((f) => f.pushOnLive) ? activePillStyle : null]}
                     >
                       <Ionicons
-                        color={friends.every((f) => f.pushOnLive) ? colors.primaryDeep : colors.textMuted}
+                        color={friends.every((f) => f.pushOnLive) ? activePillFg : colors.textMuted}
                         name={
                           friends.every((f) => f.pushOnLive) ? 'checkbox' :
                           friends.some((f) => f.pushOnLive) ? 'remove-outline' :
@@ -378,7 +386,7 @@ export default function SettingsScreen() {
                         }
                         size={14}
                       />
-                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnLive) ? styles.friendNotifPillTextActive : null]}>Live</Text>
+                      <Text style={[styles.friendNotifPillText, friends.every((f) => f.pushOnLive) ? activePillTextStyle : null]}>Live</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -390,31 +398,31 @@ export default function SettingsScreen() {
                     <View style={styles.friendNotifToggles}>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
-                        style={[styles.friendNotifPill, friend.pushOnEntry ? styles.friendNotifPillActive : null]}
+                        style={[styles.friendNotifPill, friend.pushOnEntry ? activePillStyle : null]}
                       >
-                        <Ionicons color={friend.pushOnEntry ? colors.primaryDeep : colors.textMuted} name="clipboard-outline" size={13} />
-                        <Text style={[styles.friendNotifPillText, friend.pushOnEntry ? styles.friendNotifPillTextActive : null]}>Anm.</Text>
+                        <Ionicons color={friend.pushOnEntry ? activePillFg : colors.textMuted} name="clipboard-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnEntry ? activePillTextStyle : null]}>Anm.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
-                        style={[styles.friendNotifPill, friend.pushOnStart ? styles.friendNotifPillActive : null]}
+                        style={[styles.friendNotifPill, friend.pushOnStart ? activePillStyle : null]}
                       >
-                        <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={13} />
-                        <Text style={[styles.friendNotifPillText, friend.pushOnStart ? styles.friendNotifPillTextActive : null]}>Sta.</Text>
+                        <Ionicons color={friend.pushOnStart ? activePillFg : colors.textMuted} name="time-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnStart ? activePillTextStyle : null]}>Sta.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
-                        style={[styles.friendNotifPill, friend.pushOnResult ? styles.friendNotifPillActive : null]}
+                        style={[styles.friendNotifPill, friend.pushOnResult ? activePillStyle : null]}
                       >
-                        <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={13} />
-                        <Text style={[styles.friendNotifPillText, friend.pushOnResult ? styles.friendNotifPillTextActive : null]}>Res.</Text>
+                        <Ionicons color={friend.pushOnResult ? activePillFg : colors.textMuted} name="trophy-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnResult ? activePillTextStyle : null]}>Res.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => void updateFriendPush(friend.personId, 'pushOnLive', !friend.pushOnLive)}
-                        style={[styles.friendNotifPill, friend.pushOnLive ? styles.friendNotifPillActive : null]}
+                        style={[styles.friendNotifPill, friend.pushOnLive ? activePillStyle : null]}
                       >
-                        <Ionicons color={friend.pushOnLive ? colors.primaryDeep : colors.textMuted} name="radio-outline" size={13} />
-                        <Text style={[styles.friendNotifPillText, friend.pushOnLive ? styles.friendNotifPillTextActive : null]}>Live</Text>
+                        <Ionicons color={friend.pushOnLive ? activePillFg : colors.textMuted} name="radio-outline" size={13} />
+                        <Text style={[styles.friendNotifPillText, friend.pushOnLive ? activePillTextStyle : null]}>Live</Text>
                       </Pressable>
                     </View>
                   </View>

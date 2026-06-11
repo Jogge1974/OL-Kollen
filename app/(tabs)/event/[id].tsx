@@ -65,7 +65,7 @@ export default function EventDetailScreen() {
     }
 
     let cancelled = false;
-    void findLiveCompetition(event.name, event.eventRaceDate).then((match) => {
+    void findLiveCompetition(event.name, event.eventRaceDate, event.organiserNames.join(', ')).then((match) => {
       if (!cancelled) setLiveMatch(match);
     });
     return () => { cancelled = true; };

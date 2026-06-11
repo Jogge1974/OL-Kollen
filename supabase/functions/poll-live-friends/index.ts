@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
-import { formatCentis, getLiveFavoriteResults, LiveFavorite, LiveFavoriteResult } from '../_shared/liveresultat.ts';
+import { formatCentis, getCompetitionClasses, getLiveFavoriteResults, LiveFavorite, LiveFavoriteResult } from '../_shared/liveresultat.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -168,24 +168,59 @@ Deno.serve(async (request) => {
     }
 
     // 3. Build favorites for the batch query + an index back to the state row.
+    //
+    // getFavoriteresult matches STRICTLY on name + club + className, and the
+    // className must be liveresultat's own label (e.g. "Lång"), which often
+    // differs from the Eventor class we store on the row (e.g. an age class) —
+    // or is unknown entirely for free-start runners who only appear at the
+    // finish. A wrong/empty className makes getFavoriteresult silently return
+    // nothing → no finish push ever. So we "shotgun": fetch each competition's
+    // class list and submit one favorite per class. The backend returns only the
+    // matching class, and we join results back by competition+name (below).
+    const competitionIds = [...new Set(
+      activeStates.map((r) => r.live_competition_id).filter((id): id is number => !!id && id > 0),
+    )];
+    const classesByComp = new Map<number, string[]>();
+    await Promise.all(competitionIds.map(async (compId) => {
+      classesByComp.set(compId, await getCompetitionClasses(compId));
+    }));
+
     const favorites: LiveFavorite[] = [];
     const stateByFavorite = new Map<string, LiveStateRow>();
+    // Fallback index keyed by competition + runner name only. Eventor and
+    // liveresultat frequently spell class names differently (e.g. Eventor
+    // "Herrar 21 Lång" vs liveresultat "H21L"), which would break the strict
+    // competition+name+class join and silently drop every push. Name within one
+    // competition is unique enough to recover the state row in that case.
+    const stateByNameKey = new Map<string, LiveStateRow>();
     const seenFavorites = new Set<string>();
     for (const row of activeStates) {
       const meta = friendMeta.get(row.friend_person_id);
       if (!meta || !row.live_competition_id) continue;
-      const className = row.live_class_name ?? '';
-      const key = favoriteKey(row.live_competition_id, meta.name, className);
-      if (seenFavorites.has(key)) continue;
-      seenFavorites.add(key);
-      favorites.push({
-        club: meta.club,
-        className,
-        competitionId: row.live_competition_id,
-        competitionName: row.event_name ?? '',
-        name: meta.name,
-      });
-      stateByFavorite.set(key, row);
+      const nameKey = `${row.live_competition_id}::${normalizeKeyPart(meta.name)}`;
+      if (!stateByNameKey.has(nameKey)) stateByNameKey.set(nameKey, row);
+
+      // Candidate class names: the stored one first (cheap hit), then every
+      // class in the competition so we still match when the stored class differs
+      // or is missing.
+      const classCandidates = new Set<string>();
+      if (row.live_class_name) classCandidates.add(row.live_class_name);
+      for (const c of classesByComp.get(row.live_competition_id) ?? []) classCandidates.add(c);
+      if (classCandidates.size === 0) classCandidates.add(row.live_class_name ?? '');
+
+      for (const className of classCandidates) {
+        const key = favoriteKey(row.live_competition_id, meta.name, className);
+        if (seenFavorites.has(key)) continue;
+        seenFavorites.add(key);
+        favorites.push({
+          club: meta.club,
+          className,
+          competitionId: row.live_competition_id,
+          competitionName: row.event_name ?? '',
+          name: meta.name,
+        });
+        stateByFavorite.set(key, row);
+      }
     }
 
     if (favorites.length === 0) {
@@ -212,11 +247,40 @@ Deno.serve(async (request) => {
       }
     };
 
+    // Build an upsert object that carries forward EVERY stateful column from the
+    // existing row. This keeps the bulk-upsert array homogeneous: PostgREST builds
+    // its column list from the union of all object keys and writes NULL for any
+    // key a given object omits (via ON CONFLICT DO UPDATE). Seeding from the row
+    // guarantees we never accidentally wipe another row's start_notified_at,
+    // notified_split_codes, etc. Each branch then overrides only what it changes.
+    const baseUpsertFor = (row: LiveStateRow, status: number): Record<string, unknown> => ({
+      event_date: todayStr,
+      event_id: row.event_id,
+      event_race_id: row.event_race_id,
+      friend_person_id: row.friend_person_id,
+      last_live_status: status,
+      live_competition_id: row.live_competition_id,
+      live_class_name: row.live_class_name,
+      live_result_notified_at: row.live_result_notified_at,
+      notified_split_codes: Array.isArray(row.notified_split_codes) ? row.notified_split_codes : [],
+      start_notified_at: row.start_notified_at,
+      updated_at: nowIso,
+    });
+
     // 5. Evaluate each live result against stored state.
+    let matchedResults = 0;
+    let unmatchedResults = 0;
     for (const result of results) {
       const key = favoriteKey(result.competitionId, result.name, result.className);
-      const row = stateByFavorite.get(key);
-      if (!row) continue;
+      // Strict (competition+name+class) first, then fall back to competition+name
+      // so a class-name spelling mismatch can't silently drop the push.
+      const row = stateByFavorite.get(key)
+        ?? stateByNameKey.get(`${result.competitionId}::${normalizeKeyPart(result.name)}`);
+      if (!row) {
+        unmatchedResults++;
+        continue;
+      }
+      matchedResults++;
 
       const meta = friendMeta.get(row.friend_person_id);
       const friendName = meta?.name ?? result.name;
@@ -224,29 +288,40 @@ Deno.serve(async (request) => {
       const eventName = row.event_name ?? result.competitionName;
       const status = result.status;
 
+      // A finished runner exposes a RESULT split with a real time. Free-start
+      // runners (fri starttid) frequently KEEP a running status (9/10) at the
+      // finish while liveresultat backfills their start time and the RESULT
+      // split, so the status code alone never turns terminal. Detect the finish
+      // from the RESULT split too — otherwise the running branch below fires a
+      // bogus "har startat" push (the start time only appears at finish) and the
+      // result push is never sent.
+      const resultSplit = (result.splitresults ?? []).find(
+        (s) => s.splitname === 'RESULT' && s.splitresult && s.splitresult !== '0',
+      );
+      const isFinished = TERMINAL_STATUSES.has(status) || !!resultSplit;
+
       // --- Result first: a finish/terminal status suppresses any backfilled
       //     start/split passings (these often appear when the runner reads out
       //     their card at the finish). ---
-      if (TERMINAL_STATUSES.has(status)) {
-        const upsert: Record<string, unknown> = {
-          event_date: todayStr,
-          event_id: row.event_id,
-          event_race_id: row.event_race_id,
-          friend_person_id: row.friend_person_id,
-          last_live_status: status,
-          live_result_notified_at: nowIso, // stop polling this friend+event
-          updated_at: nowIso,
-        };
+      if (isFinished) {
+        const upsert = baseUpsertFor(row, status);
+        upsert.live_result_notified_at = nowIso; // stop polling this friend+event
 
-        if (status === STATUS_FINISHED) {
-          const placeStr = result.place ? `plats ${result.place}` : 'mål';
-          const timeStr = result.result ? `, tid ${formatCentis(Number(result.result))}` : '';
+        // Textual reason only applies to the real terminal failure statuses
+        // (DNF/MP/DSQ/OT). A RESULT split on a still-"running" status is a normal
+        // finish.
+        const terminalText = TERMINAL_STATUSES.has(status) ? terminalStatusText(status) : null;
+        const isOkFinish = status === STATUS_FINISHED || (!TERMINAL_STATUSES.has(status) && !!resultSplit);
+
+        if (isOkFinish) {
+          const place = result.place || resultSplit?.splitplace || '';
+          const placeStr = place && place !== '0' ? `plats ${place}` : 'mål';
+          let timeStr = '';
+          if (result.result && result.result !== '0') timeStr = `, tid ${formatCentis(Number(result.result))}`;
+          else if (resultSplit?.splitresult) timeStr = `, tid ${resultSplit.splitresult}`;
           queueForFriend(row.friend_person_id, `${friendName}${clubSuffix} gick i mål på ${placeStr}${timeStr} (${eventName}).`, 'friend-live-result');
-        } else {
-          const text = terminalStatusText(status);
-          if (text) {
-            queueForFriend(row.friend_person_id, `${friendName}${clubSuffix} ${text} i ${eventName}.`, 'friend-live-result');
-          }
+        } else if (terminalText) {
+          queueForFriend(row.friend_person_id, `${friendName}${clubSuffix} ${terminalText} i ${eventName}.`, 'friend-live-result');
         }
 
         stateUpserts.push(upsert);
@@ -256,38 +331,24 @@ Deno.serve(async (request) => {
       // --- Running: start + split passings. ---
       if (!RUNNING_STATUSES.has(status)) {
         // Unknown / not-yet-running status — just record it.
-        stateUpserts.push({
-          event_date: todayStr,
-          event_id: row.event_id,
-          event_race_id: row.event_race_id,
-          friend_person_id: row.friend_person_id,
-          last_live_status: status,
-          updated_at: nowIso,
-        });
+        stateUpserts.push(baseUpsertFor(row, status));
         continue;
       }
 
-      const hasStarted = result.start > 0 && result.start <= nowCentis;
+      // A runner is "started" once their allotted start time has passed. Runners
+      // with a free start time (fri starttid) have no allotted time, so
+      // liveresultat reports start <= 0; for them a running status (9/10) is
+      // itself proof they have started (the backend only flips to running after a
+      // punch). Without this, free-start runners never got a "har startat" push,
+      // any split pushes, and the running clock was meaningless.
+      const hasAllottedStart = result.start > 0;
+      const hasStarted = hasAllottedStart ? result.start <= nowCentis : true;
       if (!hasStarted) {
-        stateUpserts.push({
-          event_date: todayStr,
-          event_id: row.event_id,
-          event_race_id: row.event_race_id,
-          friend_person_id: row.friend_person_id,
-          last_live_status: status,
-          updated_at: nowIso,
-        });
+        stateUpserts.push(baseUpsertFor(row, status));
         continue;
       }
 
-      const upsert: Record<string, unknown> = {
-        event_date: todayStr,
-        event_id: row.event_id,
-        event_race_id: row.event_race_id,
-        friend_person_id: row.friend_person_id,
-        last_live_status: status,
-        updated_at: nowIso,
-      };
+      const upsert = baseUpsertFor(row, status);
 
       // Start notification — synced with the Eventor start via the shared
       // start_notified_at flag so only one start push is ever delivered.
@@ -331,16 +392,24 @@ Deno.serve(async (request) => {
 
     // 7. Persist state.
     if (stateUpserts.length > 0) {
-      await supabase
+      const { error: upsertErr } = await supabase
         .from('friend_activity_state')
         .upsert(stateUpserts, { onConflict: 'friend_person_id,event_id,event_race_id' });
+      if (upsertErr) console.error('[poll-live-friends] state upsert failed:', upsertErr);
     }
+
+    console.log(
+      `[poll-live-friends] favorites=${favorites.length} results=${results.length} ` +
+      `matched=${matchedResults} unmatched=${unmatchedResults} pushes=${messages.length}`,
+    );
 
     return jsonOk({
       ok: true,
       activeFriends: activeStates.length,
       favorites: favorites.length,
       results: results.length,
+      matched: matchedResults,
+      unmatched: unmatchedResults,
       pushCount: messages.length,
     });
   } catch (error) {

@@ -42,6 +42,14 @@ export default function FriendDetailScreen() {
     [friends, personId],
   );
 
+  // In the two dark themes, render active notification toggles with a light background for better contrast.
+  const isDarkTheme = themeName === 'dark' || themeName === 'soft-dark';
+  const activePillFg = isDarkTheme ? (themeName === 'soft-dark' ? '#001A4F' : '#284321') : colors.primaryDeep;
+  const activePillStyle = isDarkTheme
+    ? { backgroundColor: themeName === 'soft-dark' ? '#D6E6F7' : '#DCEFD6', borderColor: colors.primary }
+    : styles.pushPillActive;
+  const activePillTextStyle = isDarkTheme ? { color: activePillFg } : styles.pushPillTextActive;
+
   const h2h = useHeadToHead(user?.personId ?? null, personId);
 
   const {
@@ -186,33 +194,33 @@ export default function FriendDetailScreen() {
                 <View style={styles.pushToggleRow}>
                   <Pressable
                     onPress={() => void updateFriendPush(friend.personId, 'pushOnEntry', !friend.pushOnEntry)}
-                    style={[styles.pushPill, friend.pushOnEntry ? styles.pushPillActive : null]}
+                    style={[styles.pushPill, friend.pushOnEntry ? activePillStyle : null]}
                   >
-                    <Ionicons color={friend.pushOnEntry ? colors.primaryDeep : colors.textMuted} name="clipboard-outline" size={11} />
-                    <Text style={[styles.pushPillText, friend.pushOnEntry ? styles.pushPillTextActive : null]}>Anm.</Text>
+                    <Ionicons color={friend.pushOnEntry ? activePillFg : colors.textMuted} name="clipboard-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnEntry ? activePillTextStyle : null]}>Anm.</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void updateFriendPush(friend.personId, 'pushOnStart', !friend.pushOnStart)}
-                    style={[styles.pushPill, friend.pushOnStart ? styles.pushPillActive : null]}
+                    style={[styles.pushPill, friend.pushOnStart ? activePillStyle : null]}
                   >
-                    <Ionicons color={friend.pushOnStart ? colors.primaryDeep : colors.textMuted} name="time-outline" size={11} />
-                    <Text style={[styles.pushPillText, friend.pushOnStart ? styles.pushPillTextActive : null]}>Start</Text>
+                    <Ionicons color={friend.pushOnStart ? activePillFg : colors.textMuted} name="time-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnStart ? activePillTextStyle : null]}>Start</Text>
                   </Pressable>
                 </View>
                 <View style={styles.pushToggleRow}>
                   <Pressable
                     onPress={() => void updateFriendPush(friend.personId, 'pushOnResult', !friend.pushOnResult)}
-                    style={[styles.pushPill, friend.pushOnResult ? styles.pushPillActive : null]}
+                    style={[styles.pushPill, friend.pushOnResult ? activePillStyle : null]}
                   >
-                    <Ionicons color={friend.pushOnResult ? colors.primaryDeep : colors.textMuted} name="trophy-outline" size={11} />
-                    <Text style={[styles.pushPillText, friend.pushOnResult ? styles.pushPillTextActive : null]}>Res.</Text>
+                    <Ionicons color={friend.pushOnResult ? activePillFg : colors.textMuted} name="trophy-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnResult ? activePillTextStyle : null]}>Res.</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void updateFriendPush(friend.personId, 'pushOnLive', !friend.pushOnLive)}
-                    style={[styles.pushPill, friend.pushOnLive ? styles.pushPillActive : null]}
+                    style={[styles.pushPill, friend.pushOnLive ? activePillStyle : null]}
                   >
-                    <Ionicons color={friend.pushOnLive ? colors.primaryDeep : colors.textMuted} name="radio-outline" size={11} />
-                    <Text style={[styles.pushPillText, friend.pushOnLive ? styles.pushPillTextActive : null]}>Live</Text>
+                    <Ionicons color={friend.pushOnLive ? activePillFg : colors.textMuted} name="radio-outline" size={11} />
+                    <Text style={[styles.pushPillText, friend.pushOnLive ? activePillTextStyle : null]}>Live</Text>
                   </Pressable>
                 </View>
               </View>
