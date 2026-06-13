@@ -22,6 +22,10 @@ import { typography } from '@/src/theme/typography';
 
 const PERSON_SEARCH_URL = 'https://hvscmyudneihjbtitffy.supabase.co/functions/v1/person-search';
 
+// How long cached friend status stays fresh before a re-focus triggers a full
+// reload. Within this window, re-entering the friends view reuses the cache.
+const STATUS_TTL_MS = 5 * 60 * 1000;
+
 import { XMLParser } from 'fast-xml-parser';
 
 const entryParser = new XMLParser({
@@ -67,7 +71,7 @@ export default function FriendsScreen() {
   const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }>>({});
 
   // Today's starts fetched directly from Eventor (client-side fallback)
-  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null }>>({});
+  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null; remainingStages: number }>>({});
 
   // Friends who have results today (client-side check from Eventor)
   const [todayResultFriendIds, setTodayResultFriendIds] = React.useState<Set<string>>(new Set());
@@ -81,38 +85,117 @@ export default function FriendsScreen() {
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [statusLoading, setStatusLoading] = React.useState(true);
+  // Friends whose status is being (re)loaded incrementally (e.g. a newly added
+  // friend) — only their row shows a spinner, not every friend.
+  const [pendingFriendIds, setPendingFriendIds] = React.useState<Set<string>>(new Set());
+
+  // Tracks what the cached status reflects so re-focusing the screen doesn't
+  // re-spin everything: `at` = when the last full load ran, `ids` = the friend
+  // ids whose status is already loaded. A focus reloads only when the cache is
+  // stale (older than STATUS_TTL_MS) or there are friends not yet loaded.
+  const loadedRef = React.useRef<{ at: number; ids: Set<string> }>({ at: 0, ids: new Set() });
+
+  // Reset the cache when the signed-in user changes so the next focus does a
+  // fresh full load.
+  React.useEffect(() => {
+    loadedRef.current = { at: 0, ids: new Set() };
+  }, [user]);
+
+  // Fetch the (expensive, per-friend) Eventor status for a subset of friends.
+  // The friend_activity_state lookup is a single batched Supabase query keyed by
+  // all friend ids, so it stays cheap and is run with the full list by callers.
+  const fetchEventorStatusFor = React.useCallback(async (targets: Friend[]) => {
+    const [entryCounts, todayStarts, resultIds] = await Promise.all([
+      fetchFriendEntryCounts(targets),
+      fetchFriendTodayStarts(targets),
+      fetchFriendTodayResults(targets),
+    ]);
+    return { entryCounts, todayStarts, resultIds };
+  }, []);
+
+  // Full (re)load of every friend's status — replaces the cached state and shows
+  // the global per-row spinners.
+  const runFullLoad = React.useCallback(async () => {
+    if (friends.length === 0) return;
+    setStatusLoading(true);
+    try {
+      const allIds = friends.map((f) => String(f.personId));
+      const [, eventor] = await Promise.all([
+        fetchTodayActivity(allIds),
+        fetchEventorStatusFor(friends),
+      ]);
+      setEntryCountByFriendId(eventor.entryCounts);
+      setTodayStartsByFriendId(eventor.todayStarts);
+      setTodayResultFriendIds(eventor.resultIds);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [friends, fetchTodayActivity, fetchEventorStatusFor]);
+
+  // Incremental load for newly added friends — merges into the cached state and
+  // spins only the affected rows. fetchTodayActivity replaces the activity store
+  // wholesale, so it is called with the full id list to keep existing friends.
+  const runIncrementalLoad = React.useCallback(async (targets: Friend[]) => {
+    if (targets.length === 0) return;
+    const targetIds = targets.map((f) => String(f.personId));
+    setPendingFriendIds((prev) => new Set([...prev, ...targetIds]));
+    try {
+      const allIds = friends.map((f) => String(f.personId));
+      const [, eventor] = await Promise.all([
+        fetchTodayActivity(allIds),
+        fetchEventorStatusFor(targets),
+      ]);
+      setEntryCountByFriendId((prev) => ({ ...prev, ...eventor.entryCounts }));
+      setTodayStartsByFriendId((prev) => ({ ...prev, ...eventor.todayStarts }));
+      setTodayResultFriendIds((prev) => new Set([...prev, ...eventor.resultIds]));
+    } finally {
+      setPendingFriendIds((prev) => {
+        const next = new Set(prev);
+        for (const id of targetIds) next.delete(id);
+        return next;
+      });
+    }
+  }, [friends, fetchTodayActivity, fetchEventorStatusFor]);
 
   useFocusEffect(
     React.useCallback(() => {
-      if (friends.length > 0) {
-        setStatusLoading(true);
-        const p1 = fetchTodayActivity(friends.map((f) => String(f.personId)));
-        const p2 = fetchFriendEntryCounts(friends).then(setEntryCountByFriendId);
-        const p3 = fetchFriendTodayStarts(friends).then(setTodayStartsByFriendId);
-        const p4 = fetchFriendTodayResults(friends).then(setTodayResultFriendIds);
-        void Promise.all([p1, p2, p3, p4]).finally(() => setStatusLoading(false));
+      if (friends.length === 0) return;
+      const currentIds = friends.map((f) => String(f.personId));
+      const now = Date.now();
+      const neverLoaded = loadedRef.current.at === 0;
+      const isStale = now - loadedRef.current.at > STATUS_TTL_MS;
+
+      if (neverLoaded || isStale) {
+        loadedRef.current = { at: now, ids: new Set(currentIds) };
+        void runFullLoad();
+        return;
       }
-    }, [friends, fetchTodayActivity, user]),
+
+      // Cache is fresh — only load friends we haven't loaded yet (e.g. just added).
+      const newFriends = friends.filter((f) => !loadedRef.current.ids.has(String(f.personId)));
+      if (newFriends.length > 0) {
+        loadedRef.current = { at: loadedRef.current.at, ids: new Set([...loadedRef.current.ids, ...currentIds]) };
+        void runIncrementalLoad(newFriends);
+      }
+    }, [friends, runFullLoad, runIncrementalLoad]),
   );
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
-    setStatusLoading(true);
     try {
-      await fetchTodayActivity(friends.map((f) => String(f.personId)));
-      const [entryCounts, todayStarts, resultIds] = await Promise.all([
-        fetchFriendEntryCounts(friends),
-        fetchFriendTodayStarts(friends),
-        fetchFriendTodayResults(friends),
+      const allIds = friends.map((f) => String(f.personId));
+      const [, eventor] = await Promise.all([
+        fetchTodayActivity(allIds),
+        fetchEventorStatusFor(friends),
       ]);
-      setEntryCountByFriendId(entryCounts);
-      setTodayStartsByFriendId(todayStarts);
-      setTodayResultFriendIds(resultIds);
+      setEntryCountByFriendId(eventor.entryCounts);
+      setTodayStartsByFriendId(eventor.todayStarts);
+      setTodayResultFriendIds(eventor.resultIds);
+      loadedRef.current = { at: Date.now(), ids: new Set(allIds) };
     } finally {
       setIsRefreshing(false);
-      setStatusLoading(false);
     }
-  }, [friends, fetchTodayActivity]);
+  }, [friends, fetchTodayActivity, fetchEventorStatusFor]);
 
   // Check liveresultat for events where friends have a start today
   React.useEffect(() => {
@@ -318,7 +401,17 @@ export default function FriendsScreen() {
   }, [addFriend]);
 
   const handleRemoveFriend = React.useCallback((personId: number) => {
+    const pid = String(personId);
     void removeFriend(personId);
+    // Drop the removed friend from the status cache + loaded set so it doesn't
+    // linger and so a future re-add re-fetches it.
+    loadedRef.current = {
+      at: loadedRef.current.at,
+      ids: new Set([...loadedRef.current.ids].filter((id) => id !== pid)),
+    };
+    setEntryCountByFriendId((prev) => { const next = { ...prev }; delete next[pid]; return next; });
+    setTodayStartsByFriendId((prev) => { const next = { ...prev }; delete next[pid]; return next; });
+    setTodayResultFriendIds((prev) => { const next = new Set(prev); next.delete(pid); return next; });
   }, [removeFriend]);
 
   if (!isLoggedIn) {
@@ -422,15 +515,22 @@ export default function FriendsScreen() {
             const showBorder = isResult || hasStarted;
             const borderColor = isResult ? colors.primary : startDotColor;
 
-            // Other entries (future, excluding today's activity)
-            const otherEntries = futureEntries;
+            // Other entries (future single events) plus the remaining stages of a
+            // multi-stage event the friend is in today — each upcoming stage is
+            // treated as its own "event" so multi-day participation renders with
+            // the multi-stage dots icon (e.g. a fresh 3-stage event = two dots
+            // and a plus).
+            const remainingStages = hasTodayStartFromStarts
+              ? todayStartsByFriendId[String(item.personId)].remainingStages
+              : 0;
+            const otherEntries = futureEntries + remainingStages;
 
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}
               style={({ pressed }) => [styles.friendCard, showBorder ? { borderColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
             >
-              {statusLoading ? (
+              {statusLoading || pendingFriendIds.has(String(item.personId)) ? (
                 <View style={styles.entryDotsColumn}>
                   <ActivityIndicator color={colors.textMuted} size={10} />
                 </View>
@@ -1773,12 +1873,12 @@ function hasStartTimePassed(startTime: string | null): boolean {
  * Fetches today's starts for each friend directly from Eventor /starts/person.
  * Returns a map of friendId → { eventName } for friends that have a start today.
  */
-async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null }>> {
+async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null; remainingStages: number }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const from = `${todayIso} 00:00:00`;
   const to = `${todayIso} 23:59:59`;
 
-  const result: Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null }> = {};
+  const result: Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null; remainingStages: number }> = {};
 
   const BATCH_SIZE = 5;
   for (let i = 0; i < friends.length; i += BATCH_SIZE) {
@@ -1808,7 +1908,20 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
             // pick up the runner's own club (<PersonStart><Organisation><Name>).
             const orgBlock = xml.match(/<Organiser\b[\s\S]*?<\/Organiser>/)?.[0];
             const organiserName = orgBlock?.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? null;
-            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime, className, organiserName };
+            // Count remaining stages of a multi-stage (multi-day) event so the
+            // friends view can represent each stage as its own "event" via the
+            // multi-stage dots icon. A multi-day event lists one <EventRace> per
+            // stage with its own <RaceDate>; stages dated strictly after today are
+            // still to come (today's stage is shown as the active dot). Scoped to
+            // the first <StartList> block (the event we extracted above).
+            const firstEventBlock = xml.split(/<StartList\b/)[1] ?? xml;
+            let remainingStages = 0;
+            const eventRaceBlocks = firstEventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g) ?? [];
+            for (const block of eventRaceBlocks) {
+              const raceDate = block.match(/<RaceDate>[\s\S]*?<Date>([^<]+)<\/Date>/)?.[1]?.trim();
+              if (raceDate && raceDate > todayIso) remainingStages++;
+            }
+            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime, className, organiserName, remainingStages };
           }
         } catch {
           // Silently skip on error
@@ -1818,6 +1931,68 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
   }
 
   return result;
+}
+
+// A completed (or terminal) result status. Excludes NotCompeting/NotYetStarted/
+// Inactive which are not real results.
+const FINISHING_STATUS_RE =
+  /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"|<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/;
+
+/**
+ * True if the person has a completed result for a stage taking place TODAY.
+ *
+ * Multi-stage (multi-day) events return the WHOLE event's <ResultList>,
+ * including already-finished earlier stages — so a naive "any finishing status"
+ * check wrongly marks a friend as finished today when only yesterday's stage is
+ * done (which then shows green instead of the orange "live" status for today's
+ * stage). We therefore attribute each <RaceResult> to its own stage date (from
+ * the <EventRace> metadata, else the <Result> block's own <Date>) and only count
+ * a result whose stage date is today. Single-day events (no <RaceResult>) are
+ * already date-filtered by the Eventor query.
+ */
+function hasFinishingResultToday(xml: string, todayIso: string): boolean {
+  // Each <ResultList> is one event. Split to get per-event context.
+  const eventBlocks = xml.split(/<ResultList\b/);
+  for (let i = 1; i < eventBlocks.length; i++) {
+    const eventBlock = eventBlocks[i];
+
+    // Map EventRaceId → stage date (YYYY-MM-DD) from the <EventRace> metadata.
+    const raceDateById = new Map<string, string>();
+    const eventRaceBlocks = eventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g) ?? [];
+    for (const block of eventRaceBlocks) {
+      const idMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+      const dateMatch = block.match(/<RaceDate>[\s\S]*?<Date>([^<]+)<\/Date>/);
+      if (idMatch && dateMatch) raceDateById.set(idMatch[1], dateMatch[1].trim());
+    }
+
+    // Multi-day: one <RaceResult> per stage, each with <EventRaceId> + <Result>.
+    const raceResultBlocks = eventBlock.match(/<RaceResult\b[\s\S]*?<\/RaceResult>/g);
+    if (raceResultBlocks && raceResultBlocks.length > 0) {
+      for (const block of raceResultBlocks) {
+        if (!FINISHING_STATUS_RE.test(block)) continue;
+        const idMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+        // Scope the date to <Result> so we never read a Person <BirthDate>.
+        const resultBlock = block.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
+        const stageDate =
+          (idMatch ? raceDateById.get(idMatch[1]) : undefined) ??
+          resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ??
+          null;
+        if (stageDate === todayIso) return true;
+      }
+      continue;
+    }
+
+    // Single-day: <PersonResult>…<Result> directly. The Eventor query already
+    // restricts to today, so any finishing status here is today's.
+    const personResult = eventBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/)?.[0] ?? eventBlock;
+    if (FINISHING_STATUS_RE.test(personResult)) {
+      const resultBlock = personResult.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
+      const stageDate = resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
+      // No date found → trust the query's date filter (single-day = today).
+      if (stageDate === null || stageDate === todayIso) return true;
+    }
+  }
+  return false;
 }
 
 async function fetchFriendTodayResults(friends: Friend[]): Promise<Set<string>> {
@@ -1834,13 +2009,9 @@ async function fetchFriendTodayResults(friends: Friend[]): Promise<Set<string>> 
       batch.map(async (friend) => {
         try {
           const xml = await fetchPersonResultsXml(String(friend.personId), from, to);
-          // Only count as result if there's an actual PersonResult with a finishing status
-          // Exclude NotCompeting/NotYetStarted/Inactive which are not real results
-          const hasFinishingResult =
-            (/<PersonResult\b/.test(xml) || /<Result\b/.test(xml)) &&
-            (/<CompetitorStatus\s+value="(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"/.test(xml) ||
-              /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/.test(xml));
-          if (hasFinishingResult) {
+          // Only count a result for a stage taking place TODAY — multi-day events
+          // return earlier (already-finished) stages too.
+          if (hasFinishingResultToday(xml, todayIso)) {
             result.add(String(friend.personId));
           }
         } catch {

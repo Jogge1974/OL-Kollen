@@ -268,8 +268,18 @@ Deno.serve(async (request) => {
     });
 
     // 5. Evaluate each live result against stored state.
+    //
+    // A single state row can be hit by MORE THAN ONE result entry: the shotgun
+    // submits one favorite per class, and a FINISHED runner is returned by the
+    // backend for several of those class favorites at once (while running, only
+    // the exact class matches — which is why start/split pushes were single but
+    // the finish fired twice). Processing the same row twice would queue a
+    // duplicate push for every watcher and push two upsert objects sharing the
+    // same ON CONFLICT key (which makes the whole upsert throw). Guard with a
+    // per-cycle set so each friend+event row is evaluated exactly once.
     let matchedResults = 0;
     let unmatchedResults = 0;
+    const processedRowKeys = new Set<string>();
     for (const result of results) {
       const key = favoriteKey(result.competitionId, result.name, result.className);
       // Strict (competition+name+class) first, then fall back to competition+name
@@ -280,6 +290,9 @@ Deno.serve(async (request) => {
         unmatchedResults++;
         continue;
       }
+      const rowKey = `${row.friend_person_id}::${row.event_id}::${row.event_race_id}`;
+      if (processedRowKeys.has(rowKey)) continue; // duplicate result for an already-handled row
+      processedRowKeys.add(rowKey);
       matchedResults++;
 
       const meta = friendMeta.get(row.friend_person_id);

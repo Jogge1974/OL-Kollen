@@ -1,7 +1,12 @@
 // Shared liveresultat backend helpers for Supabase edge functions (Deno runtime).
 // Mirrors src/services/liveresultat.ts but trimmed to what the pollers need.
 
-const BASE_URL = 'https://liveresultatbackend.azurewebsites.net/api/Competition';
+// The liveresultat backend base URL. Overridable via the LIVERESULTAT_BASE_URL
+// secret so we can point the pollers at a test/simulator endpoint (e.g. an
+// ngrok tunnel or an Azure web service) without a code change. Falls back to
+// the real backend when the secret is unset. NOTE: no trailing slash.
+const BASE_URL = Deno.env.get('LIVERESULTAT_BASE_URL')?.replace(/\/$/, '') ||
+  'https://liveresultatbackend.azurewebsites.net/api/Competition';
 
 type LiveCompetition = {
   id: number;
