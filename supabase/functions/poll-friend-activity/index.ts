@@ -247,15 +247,36 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
     const raceStartBlocks = eventBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
 
     if (raceStartBlocks && raceStartBlocks.length > 0) {
+      const coveredRaceIds = new Set<string>();
       for (const block of raceStartBlocks) {
         const raceIdMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
         if (!raceIdMatch) continue;
         const eventRaceId = raceIdMatch[1];
+        coveredRaceIds.add(eventRaceId);
         const stMatch = block.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
         const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
         const raceDateStr = raceDateMap.get(eventRaceId) ?? startTime?.slice(0, 10) ?? null;
         const stageName = composeStageName(eventName, raceNameMap.get(eventRaceId));
         results.push({ eventId, eventRaceId, eventName: stageName, organiserName, startTime, raceDateStr, className });
+      }
+      // Emit free-start stages that have no <RaceStart> block. These stages are
+      // listed in the EventRace metadata (raceDateMap) but have no allocated
+      // start time, so Eventor omits the <RaceStart>. Without this they'd be
+      // invisible to the live matching in section 5b.
+      for (const [raceId, dateStr] of raceDateMap) {
+        if (coveredRaceIds.has(raceId)) continue;
+        const stageName = composeStageName(eventName, raceNameMap.get(raceId));
+        results.push({ eventId, eventRaceId: raceId, eventName: stageName, organiserName, startTime: null, raceDateStr: dateStr, className });
+      }
+      continue;
+    }
+
+    // Multi-day event with NO RaceStart blocks at all (all stages are free-start):
+    // emit one entry per stage from the EventRace metadata.
+    if (raceDateMap.size > 0) {
+      for (const [raceId, dateStr] of raceDateMap) {
+        const stageName = composeStageName(eventName, raceNameMap.get(raceId));
+        results.push({ eventId, eventRaceId: raceId, eventName: stageName, organiserName, startTime: null, raceDateStr: dateStr, className });
       }
       continue;
     }
