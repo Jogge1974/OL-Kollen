@@ -14,6 +14,7 @@ import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
+import { WeatherForecastPanel } from '@/src/components/WeatherForecastPanel';
 import { useEventCompetitorCount } from '@/src/hooks/useEventCompetitorCount';
 import { useEventDocuments } from '@/src/hooks/useEventDocuments';
 import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
@@ -236,6 +237,18 @@ export default function EventDetailScreen() {
             </View>
           ) : null}
         </View>
+
+        {event.centerPosition &&
+         event.eventRaceDate >= new Date().toISOString().slice(0, 10) &&
+         Number.isFinite(event.centerPosition.latitude) &&
+         Number.isFinite(event.centerPosition.longitude) &&
+         !(event.centerPosition.latitude === 0 && event.centerPosition.longitude === 0) ? (
+          <WeatherForecastPanel
+            eventDate={event.eventRaceDate}
+            latitude={event.centerPosition.latitude}
+            longitude={event.centerPosition.longitude}
+          />
+        ) : null}
 
         {isLoggedIn && !organisationId ? (
           <View style={styles.clubHint}>

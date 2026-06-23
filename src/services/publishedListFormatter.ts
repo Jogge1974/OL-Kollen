@@ -405,6 +405,16 @@ function formatRelayStartsXml(
   const classStarts = toArray<Record<string, unknown>>(classStartNodes).map((classStart) => {
     const eventClass = getRecord(classStart.Class);
     const classLabel = getString(eventClass?.Name) ?? 'Klass';
+
+    // Class-level race filter for relay starts
+    if (selectedRaceNumber) {
+      const raceClass = toArray<Record<string, unknown>>(eventClass?.RaceClass);
+      const classRaceNumber = raceClass.length > 0 ? getRaceNumberValue(raceClass[0]?.raceNumber ?? raceClass[0]?.RaceNumber) : null;
+      if (classRaceNumber && classRaceNumber !== selectedRaceNumber) {
+        return { classLabel, courseLengthLabel: null, rows: [] as (PublishedListRow & { sortBibKey: number; sortKey: number })[], startCount: '0' };
+      }
+    }
+
     const course = getRecord(classStart.Course);
     const courseLengthLabel = formatCourseLength(toNumber(course?.Length));
     const teamRows = toArray<Record<string, unknown>>(classStart.TeamStart)
@@ -497,6 +507,17 @@ function formatRelayResultsXml(
   const classResults = toArray<Record<string, unknown>>(classResultNodes).map((classResult) => {
     const eventClass = getRecord(classResult.Class);
     const classLabel = getString(eventClass?.Name) ?? 'Klass';
+
+    // Class-level race filter: check if this class belongs to the selected race
+    // by inspecting the RaceClass or first team member's raceNumber.
+    if (selectedRaceNumber) {
+      const raceClass = toArray<Record<string, unknown>>(eventClass?.RaceClass);
+      const classRaceNumber = raceClass.length > 0 ? getRaceNumberValue(raceClass[0]?.raceNumber ?? raceClass[0]?.RaceNumber) : null;
+      if (classRaceNumber && classRaceNumber !== selectedRaceNumber) {
+        return { classLabel, courseLengthLabel: null, rows: [] as (PublishedListRow & { sortKey: number })[], startCount: '0' };
+      }
+    }
+
     const course = getRecord(classResult.Course);
     const courseLengthLabel = formatCourseLength(toNumber(course?.Length));
     const teamRows = toArray<Record<string, unknown>>(classResult.TeamResult)
@@ -603,10 +624,10 @@ function buildRelayStartTeamRow(
 ): (PublishedListRow & { sortBibKey: number; sortKey: number }) | null {
   const organisation = getRecord(teamStart.Organisation);
   const organisationId = getIdValue(organisation?.Id);
-  const teamName = getString(teamStart.Name) ?? 'Lag';
+  const teamName = getNodeText(teamStart.Name) ?? getString(teamStart.Name) ?? getString(organisation?.Name) ?? 'Lag';
   const memberRows = toArray<Record<string, unknown>>(teamStart.TeamMemberStart)
     .map((memberStart, memberIndex) =>
-      buildRelayStartMemberRow(memberStart, context.raceLookup, context.selectedEventRaceId, context.selectedRaceNumber, memberIndex),
+      buildRelayStartMemberRow(memberStart, memberIndex),
     )
     .filter((row): row is PublishedListRelayMemberRow & { sortKey: number } => Boolean(row));
 
@@ -635,23 +656,14 @@ function buildRelayStartTeamRow(
 
 function buildRelayStartMemberRow(
   memberStart: Record<string, unknown>,
-  raceLookup: RaceLookup,
-  selectedEventRaceId: string | null | undefined,
-  selectedRaceNumber: string | null,
   memberIndex: number,
 ): (PublishedListRelayMemberRow & { sortKey: number }) | null {
   const person = getRecord(memberStart.Person);
   const personName = getPersonNameParts(person);
   const start = getRecord(memberStart.Start);
-  const raceNumber = getRaceNumberValue(start?.raceNumber ?? start?.RaceNumber);
-  const raceId = raceNumber ? raceLookup.raceIdByNumber.get(raceNumber) ?? getNodeText(start?.EventRaceId) ?? undefined : getNodeText(start?.EventRaceId) ?? undefined;
   const startTime = getEventorClockValue(start?.StartTime) ?? null;
   const bibNumber = getNodeText(start?.BibNumber) ?? getNodeText(memberStart.BibNumber) ?? undefined;
   const controlCard = getNodeText(memberStart.ControlCard) ?? getNodeText(start?.ControlCard) ?? '';
-
-  if (!rowMatchesSelectedRace(raceNumber, raceId, selectedEventRaceId, selectedRaceNumber)) {
-    return null;
-  }
 
   return {
     bibNumber,
@@ -684,10 +696,10 @@ function buildRelayResultTeamRow(
 ): (PublishedListRow & { sortKey: number }) | null {
   const organisation = getRecord(teamResult.Organisation);
   const organisationId = getIdValue(organisation?.Id);
-  const teamName = getString(teamResult.Name) ?? 'Lag';
+  const teamName = getNodeText(teamResult.Name) ?? getString(teamResult.Name) ?? getString(organisation?.Name) ?? 'Lag';
   const memberRows = toArray<Record<string, unknown>>(teamResult.TeamMemberResult)
     .map((memberResult, memberIndex) =>
-      buildRelayResultMemberRow(memberResult, context.raceLookup, context.selectedEventRaceId, context.selectedRaceNumber, memberIndex),
+      buildRelayResultMemberRow(memberResult, memberIndex),
     )
     .filter((row): row is PublishedListRelayMemberRow & { sortKey: number } => Boolean(row));
 
@@ -704,12 +716,36 @@ function buildRelayResultTeamRow(
     }
   }
 
-  const lastMember = sortedMembers[sortedMembers.length - 1];
-  const overallPosition = lastMember?.overallPosition ?? lastMember?.position;
+  // When multiple runners share the highest leg (e.g. Ungdomskavlen allows
+  // several runners on legs 2 & 3), pick the BEST one as the team's anchor.
+  const maxLeg = sortedMembers[sortedMembers.length - 1]?.sortKey ?? 0;
+  const lastLegMembers = sortedMembers.filter((m) => m.sortKey === maxLeg);
+  const lastMember = lastLegMembers.reduce<(typeof sortedMembers)[number] | null>((best, cur) => {
+    if (!best) return cur;
+    // Prefer the member with overallTimeSeconds; pick lowest
+    const bestTime = best.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+    const curTime = cur.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+    return curTime < bestTime ? cur : best;
+  }, null) ?? sortedMembers[sortedMembers.length - 1];
+  // Use strictly overall values — never fall back to leg-level position/diff
+  // which would show nonsensical data (e.g. a team that won overall but lost
+  // the last leg would display the leg diff as if it were behind overall).
+  const overallPosition = lastMember?.overallPosition ?? null;
   const overallTime = lastMember?.overallTime ?? lastMember?.time;
-  const overallDiff = lastMember?.overallDiff ?? lastMember?.diff;
+  const overallDiff = lastMember?.overallDiff ?? null;
   const overallStatus = teamStatus ?? lastMember?.overallStatus ?? lastMember?.status;
-  const sortKey = overallStatus && overallStatus !== 'OK' ? Number.MAX_SAFE_INTEGER : overallPosition ? Number(overallPosition) : lastMember?.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+  // Sort by position first (Eventor's authoritative placement). Fall back to
+  // overall time for teams without a position. NEVER mix position (1-50 range)
+  // with time (thousands) — that causes interleaving where small position
+  // numbers sort before large time values.
+  const overallTimeSeconds = lastMember?.overallTimeSeconds ?? lastMember?.timeSeconds;
+  const sortKey = overallStatus && overallStatus !== 'OK'
+    ? Number.MAX_SAFE_INTEGER
+    : overallPosition
+      ? Number(overallPosition)
+      : overallTimeSeconds
+        ? overallTimeSeconds + 1000000
+        : Number.MAX_SAFE_INTEGER;
 
   return {
     classLabel: context.classLabel,
@@ -731,16 +767,11 @@ function buildRelayResultTeamRow(
 
 function buildRelayResultMemberRow(
   memberResult: Record<string, unknown>,
-  raceLookup: RaceLookup,
-  selectedEventRaceId: string | null | undefined,
-  selectedRaceNumber: string | null,
   memberIndex: number,
 ): (PublishedListRelayMemberRow & { sortKey: number }) | null {
   const person = getRecord(memberResult.Person);
   const personName = getPersonNameParts(person);
   const result = getRecord(memberResult.Result);
-  const raceNumber = getRaceNumberValue(result?.raceNumber ?? result?.RaceNumber);
-  const raceId = raceNumber ? raceLookup.raceIdByNumber.get(raceNumber) ?? getNodeText(result?.EventRaceId) ?? undefined : getNodeText(result?.EventRaceId) ?? undefined;
   const leg = getNodeText(result?.Leg) ?? getNodeText(result?.LegOrder) ?? `${memberIndex + 1}`;
   const legTimeText = getTextValue(result?.Time) ?? null;
   const legDiffText = getLegNodeText(result?.TimeBehind) ?? getLegNodeText(result?.TimeDiff) ?? null;
@@ -776,10 +807,6 @@ function buildRelayResultMemberRow(
       nestedOverall?.Status ??
       nestedOverall?.ResultStatus,
   );
-
-  if (!rowMatchesSelectedRace(raceNumber, raceId, selectedEventRaceId, selectedRaceNumber)) {
-    return null;
-  }
 
   return {
     bibNumber: getNodeText(result?.BibNumber) ?? getNodeText(memberResult.BibNumber) ?? undefined,
@@ -878,6 +905,45 @@ function fillMissingRelayOverallDiffs(teamRows: (PublishedListRow & { sortKey: n
         const diff = seconds - best;
         if (diff > 0) {
           member.diff = `+${formatSeconds(diff)}`;
+        }
+      }
+    }
+  }
+
+  // Fill in missing team-level position and diff from the anchor leg's overall time.
+  // Some relay XML formats omit <OverallResult> on member results, leaving the
+  // team position/diff empty (buildRelayResultTeamRow no longer falls back to
+  // leg-level values which would be misleading).
+  const lastLeg = [...bestByLeg.keys()].sort((a, b) => Number(b) - Number(a))[0];
+  if (lastLeg != null) {
+    const bestOverallTime = bestByLeg.get(lastLeg);
+    // Collect all team overall times from their last member for sorting/position
+    const teamOverallTimes: { row: PublishedListRow & { sortKey: number }; seconds: number }[] = [];
+    for (const row of teamRows) {
+      // When multiple runners share the last leg, pick the best (lowest time)
+      const lastLegCandidates = (row.relayMembers ?? []).filter((m) => m.leg === lastLeg);
+      const bestLastLegMember = lastLegCandidates.reduce<(typeof lastLegCandidates)[number] | undefined>((best, cur) => {
+        if (!best) return cur;
+        const bestTime = best.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+        const curTime = cur.overallTimeSeconds ?? Number.MAX_SAFE_INTEGER;
+        return curTime < bestTime ? cur : best;
+      }, undefined);
+      const seconds = bestLastLegMember?.overallTimeSeconds;
+      if (seconds != null && seconds > 0) {
+        teamOverallTimes.push({ row, seconds });
+      }
+    }
+    teamOverallTimes.sort((a, b) => a.seconds - b.seconds);
+
+    for (let i = 0; i < teamOverallTimes.length; i++) {
+      const { row, seconds } = teamOverallTimes[i];
+      if (row.position === '-' || !row.position) {
+        row.position = `${i + 1}`;
+      }
+      if (!row.diff && bestOverallTime != null) {
+        const diff = seconds - bestOverallTime;
+        if (diff > 0) {
+          row.diff = `+${formatSeconds(diff)}`;
         }
       }
     }
