@@ -198,7 +198,7 @@ export default function EventDetailScreen() {
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
-              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : (themeName === 'soft' || themeName === 'soft-dark') ? '#001A4F' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
+              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : (themeName === 'soft' || themeName === 'soft-dark') ? '#001A4F' : colors.primaryDeep) : (isDark ? colors.textSecondary : colors.heroText)} name={isFavorite ? 'star' : 'star-outline'} size={14} />
               <Text style={[styles.heroFavoriteBadgeText, isFavorite ? styles.heroFavoriteBadgeTextActive : null]}>Favorit</Text>
             </Pressable>
           </View>
@@ -605,8 +605,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   heroFavoriteBadge: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: isDark ? colors.surface : 'rgba(255, 255, 255, 0.16)',
+    borderColor: isDark ? colors.border : 'rgba(247, 250, 243, 0.6)',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
@@ -620,7 +620,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   heroFavoriteBadgeText: {
     ...typography.captionStrong,
-    color: colors.textSecondary,
+    color: isDark ? colors.textSecondary : colors.heroText,
   },
   heroFavoriteBadgeTextActive: {
     color: isDark ? '#F3DA3E' : colors.primaryDeep,

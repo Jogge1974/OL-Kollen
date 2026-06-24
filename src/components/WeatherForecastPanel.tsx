@@ -1,16 +1,22 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useWeatherForecast, WeatherForecastDayEntry } from '@/src/hooks/useWeatherForecast';
-import { formatDisplayDate } from '@/src/services/dateService';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 15;
+
+const SMHI_LOGO = require('@/assets/smhi-logo.png');
+const SMHI_LOGO_SOURCE = Image.resolveAssetSource(SMHI_LOGO);
+const SMHI_LOGO_ASPECT =
+  SMHI_LOGO_SOURCE && SMHI_LOGO_SOURCE.height > 0
+    ? SMHI_LOGO_SOURCE.width / SMHI_LOGO_SOURCE.height
+    : 3;
 
 // Metro requires static require() calls, so the weather symbols are mapped explicitly.
 const WEATHER_SYMBOLS: Record<number, number> = {
@@ -70,7 +76,7 @@ function formatWind(speed: number | null, gust: number | null) {
   return `${Math.round(speed)}${gustPart}`;
 }
 
-function formatPrecipitation(min: number | null, max: number | null, probability: number | null) {
+function formatPrecipitation(min: number | null, max: number | null) {
   if (min === null && max === null) {
     return '–';
   }
@@ -82,8 +88,7 @@ function formatPrecipitation(min: number | null, max: number | null, probability
     return '0';
   }
 
-  const probabilityPart = probability === null ? '' : ` (${Math.round(probability)}%)`;
-  return `${safeMin.toFixed(1)}-${safeMax.toFixed(1)}${probabilityPart}`;
+  return `${safeMin.toFixed(1)}-${safeMax.toFixed(1)}`;
 }
 
 export function WeatherForecastPanel({ eventDate, latitude, longitude }: WeatherForecastPanelProps) {
@@ -91,24 +96,43 @@ export function WeatherForecastPanel({ eventDate, latitude, longitude }: Weather
   const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [showWholeDay, setShowWholeDay] = React.useState(false);
+  const [isInfoVisible, setIsInfoVisible] = React.useState(false);
 
   const { availableFromDate, entries, error, isLoading } = useWeatherForecast(latitude, longitude, eventDate);
 
+  // With few entries left there is no point in filtering to daytime hours, so
+  // show them all and hide the toggle.
+  const showAllHours = entries.length < 6;
+
   const visibleEntries = React.useMemo(() => {
-    if (showWholeDay) {
+    if (showWholeDay || showAllHours) {
       return entries;
     }
 
     return entries.filter((entry) => entry.hour >= DEFAULT_START_HOUR && entry.hour <= DEFAULT_END_HOUR);
-  }, [entries, showWholeDay]);
+  }, [entries, showAllHours, showWholeDay]);
 
   const hasEntriesOutsideDefault = React.useMemo(
     () => entries.some((entry) => entry.hour < DEFAULT_START_HOUR || entry.hour > DEFAULT_END_HOUR),
     [entries],
   );
 
+  // Hide the whole panel when there is no forecast to show (event too far ahead
+  // or no matching data for the day) instead of rendering an empty message.
+  const hasNoForecast = !isLoading && !error && entries.length === 0;
+  if (availableFromDate !== null || hasNoForecast) {
+    return null;
+  }
+
   return (
-    <View style={[styles.panel, styles.weatherPanel]}>
+    <Pressable
+      onPress={() => {
+        if (!isExpanded) {
+          setIsExpanded(true);
+        }
+      }}
+      style={[styles.panel, styles.weatherPanel]}
+    >
       <Pressable onPress={() => setIsExpanded((current) => !current)} style={styles.header}>
         <View style={styles.headerTitleRow}>
           <Ionicons color={colors.primary} name="partly-sunny-outline" size={18} />
@@ -119,16 +143,10 @@ export function WeatherForecastPanel({ eventDate, latitude, longitude }: Weather
 
       {isExpanded ? (
         <View style={styles.body}>
-          {availableFromDate ? (
-            <Text style={styles.messageText}>
-              Prognos tillgänglig först {formatDisplayDate(availableFromDate)}
-            </Text>
-          ) : isLoading ? (
+          {isLoading ? (
             <Text style={styles.messageText}>Hämtar väderprognos…</Text>
           ) : error ? (
             <Text style={styles.messageText}>{error}</Text>
-          ) : visibleEntries.length === 0 ? (
-            <Text style={styles.messageText}>Ingen väderprognos tillgänglig för tävlingsdagen.</Text>
           ) : (
             <>
               <View style={styles.list}>
@@ -145,27 +163,63 @@ export function WeatherForecastPanel({ eventDate, latitude, longitude }: Weather
                   <View style={styles.windCell}>
                     <Text style={styles.headerText}>Vind (m/s)</Text>
                   </View>
-                  <View style={styles.precipCell}>
-                    <Text style={styles.headerText}>Nederb. (mm)</Text>
+                  <View style={styles.valueCell}>
+                    <Text style={styles.headerText}>Ned (mm)</Text>
+                  </View>
+                  <View style={styles.valueCell}>
+                    <Text style={styles.headerText}>Risk (%)</Text>
                   </View>
                 </View>
                 {visibleEntries.map((entry) => (
                   <WeatherRow key={entry.intervalStartTime} entry={entry} styles={styles} colors={colors} />
                 ))}
               </View>
-
-              {(showWholeDay || hasEntriesOutsideDefault) ? (
-                <Pressable onPress={() => setShowWholeDay((current) => !current)} style={styles.toggleButton}>
-                  <Text style={styles.toggleButtonText}>
-                    {showWholeDay ? 'Visa kl 9–15' : 'Visa hela dagen'}
-                  </Text>
-                </Pressable>
-              ) : null}
             </>
           )}
+
+          <View style={styles.footerRow}>
+            <View style={styles.footerSide} />
+            {!showAllHours && (showWholeDay || hasEntriesOutsideDefault) ? (
+              <Pressable onPress={() => setShowWholeDay((current) => !current)} style={styles.toggleButton}>
+                <Text style={styles.toggleButtonText}>
+                  {showWholeDay ? 'Visa kl 9–15' : 'Visa hela dagen'}
+                </Text>
+              </Pressable>
+            ) : null}
+            <View style={styles.footerSideRight}>
+              <Pressable hitSlop={8} onPress={() => setIsInfoVisible(true)}>
+                <Ionicons color={colors.primary} name="information-circle-outline" size={19} />
+              </Pressable>
+            </View>
+          </View>
         </View>
       ) : null}
-    </View>
+
+      <Modal animationType="fade" onRequestClose={() => setIsInfoVisible(false)} transparent visible={isInfoVisible}>
+        <Pressable style={styles.infoModalOverlay} onPress={() => setIsInfoVisible(false)}>
+          <Pressable style={styles.infoModalCard}>
+            <View style={styles.infoModalTitleRow}>
+              <Ionicons color={colors.primary} name="partly-sunny-outline" size={20} />
+              <Text style={styles.infoModalTitle}>Väderprognos</Text>
+            </View>
+            <Text style={styles.infoModalText}>
+              Prognosen hämtas från SMHI och gäller för tävlingsdagen.
+            </Text>
+            <View style={styles.infoModalSourceRow}>
+              <Text style={styles.infoModalSourceLabel}>Källa</Text>
+              <Image
+                resizeMode="contain"
+                source={SMHI_LOGO}
+                style={styles.smhiLogo}
+              />
+            </View>
+            <Pressable onPress={() => setIsInfoVisible(false)} style={styles.infoModalButton}>
+              <Text style={styles.infoModalButtonText}>Stäng</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </Pressable>
   );
 }
 
@@ -213,14 +267,32 @@ function WeatherRow({
         </View>
       </View>
 
-      <View style={styles.precipCell}>
-        <Text style={styles.valueText}>
-          {formatPrecipitation(
-            entry.precipitationAmountMin,
-            entry.precipitationAmountMax,
-            entry.probabilityOfPrecipitation,
-          )}
+      <View style={styles.valueCell}>
+        <Text style={styles.precipText}>
+          {formatPrecipitation(entry.precipitationAmountMin, entry.precipitationAmountMax)}
         </Text>
+      </View>
+
+      <View style={styles.valueCell}>
+        {entry.probabilityOfPrecipitation === null ? (
+          <Text style={styles.precipText}>–</Text>
+        ) : (
+          <View
+            style={[
+              styles.riskBadge,
+              entry.probabilityOfPrecipitation > 40 ? styles.riskBadgeHigh : styles.riskBadgeLow,
+            ]}
+          >
+            <Text
+              style={[
+                styles.riskText,
+                entry.probabilityOfPrecipitation > 40 ? styles.riskTextHigh : styles.riskTextLow,
+              ]}
+            >
+              {Math.round(entry.probabilityOfPrecipitation)}%
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -235,7 +307,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
       borderRadius: 24,
       borderWidth: 1,
       gap: 8,
-      padding: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
     },
     weatherPanel: {
       backgroundColor: isDark ? (isSoft ? '#0E1A38' : '#17301A') : isSoft ? '#E0ECF8' : '#EAF4E0',
@@ -255,7 +328,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
       ...typography.bodyStrong,
       color: colors.textPrimary,
       fontSize: 14,
-      lineHeight: 17,
+      includeFontPadding: false,
+      lineHeight: 18,
+      textAlignVertical: 'center',
     },
     body: {
       gap: spacing.sm,
@@ -318,11 +393,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
       flex: 1.5,
       gap: 1,
     },
-    precipCell: {
-      alignItems: 'center',
-      flex: 2.2,
-      gap: 1,
-    },
     windValueRow: {
       alignItems: 'center',
       flexDirection: 'row',
@@ -334,6 +404,34 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
       fontSize: 14,
       lineHeight: 18,
     },
+    precipText: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    riskBadge: {
+      borderRadius: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    riskBadgeLow: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.07)',
+    },
+    riskBadgeHigh: {
+      backgroundColor: '#1E88E5',
+    },
+    riskText: {
+      ...typography.bodyStrong,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    riskTextLow: {
+      color: colors.textSecondary,
+    },
+    riskTextHigh: {
+      color: '#FFFFFF',
+    },
     unitText: {
       ...typography.caption,
       color: colors.textMuted,
@@ -344,10 +442,79 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
       alignItems: 'center',
       paddingVertical: spacing.xs,
     },
+    footerRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      paddingTop: spacing.xs,
+    },
+    footerSide: {
+      flex: 1,
+    },
+    footerSideRight: {
+      alignItems: 'flex-end',
+      flex: 1,
+    },
     toggleButtonText: {
       ...typography.captionStrong,
       color: colors.primary,
       fontSize: 13,
+    },
+    infoModalOverlay: {
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.45)',
+      flex: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+    },
+    infoModalCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 20,
+      borderWidth: 1,
+      gap: spacing.sm,
+      maxWidth: 360,
+      padding: spacing.lg,
+      width: '100%',
+    },
+    infoModalTitleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    infoModalTitle: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 16,
+    },
+    infoModalText: {
+      ...typography.body,
+      color: colors.textSecondary,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    infoModalSourceRow: {
+      alignItems: 'flex-start',
+      gap: spacing.xs,
+      paddingTop: spacing.xs,
+    },
+    infoModalSourceLabel: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 12,
+    },
+    smhiLogo: {
+      height: 26,
+      width: 26 * SMHI_LOGO_ASPECT,
+    },
+    infoModalButton: {
+      alignSelf: 'flex-end',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    infoModalButtonText: {
+      ...typography.bodyStrong,
+      color: colors.primary,
+      fontSize: 14,
     },
   });
 }
