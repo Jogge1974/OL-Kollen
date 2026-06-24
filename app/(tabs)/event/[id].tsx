@@ -14,6 +14,7 @@ import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
+import { WeatherForecastPanel } from '@/src/components/WeatherForecastPanel';
 import { useEventCompetitorCount } from '@/src/hooks/useEventCompetitorCount';
 import { useEventDocuments } from '@/src/hooks/useEventDocuments';
 import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
@@ -65,7 +66,7 @@ export default function EventDetailScreen() {
     }
 
     let cancelled = false;
-    void findLiveCompetition(event.name, event.eventRaceDate).then((match) => {
+    void findLiveCompetition(event.name, event.eventRaceDate, event.organiserNames.join(', ')).then((match) => {
       if (!cancelled) setLiveMatch(match);
     });
     return () => { cancelled = true; };
@@ -197,7 +198,7 @@ export default function EventDetailScreen() {
             </Pressable>
 
             <Pressable onPress={() => void handleToggleFavorite()} style={[styles.heroFavoriteBadge, isFavorite ? styles.heroFavoriteBadgeActive : null]}>
-              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : (themeName === 'soft' || themeName === 'soft-dark') ? '#001A4F' : colors.primaryDeep) : colors.textSecondary} name={isFavorite ? 'star' : 'star-outline'} size={14} />
+              <Ionicons color={isFavorite ? (isDark ? '#F3DA3E' : (themeName === 'soft' || themeName === 'soft-dark') ? '#001A4F' : colors.primaryDeep) : (isDark ? colors.textSecondary : colors.heroText)} name={isFavorite ? 'star' : 'star-outline'} size={14} />
               <Text style={[styles.heroFavoriteBadgeText, isFavorite ? styles.heroFavoriteBadgeTextActive : null]}>Favorit</Text>
             </Pressable>
           </View>
@@ -236,6 +237,18 @@ export default function EventDetailScreen() {
             </View>
           ) : null}
         </View>
+
+        {event.centerPosition &&
+         event.eventRaceDate >= new Date().toISOString().slice(0, 10) &&
+         Number.isFinite(event.centerPosition.latitude) &&
+         Number.isFinite(event.centerPosition.longitude) &&
+         !(event.centerPosition.latitude === 0 && event.centerPosition.longitude === 0) ? (
+          <WeatherForecastPanel
+            eventDate={event.eventRaceDate}
+            latitude={event.centerPosition.latitude}
+            longitude={event.centerPosition.longitude}
+          />
+        ) : null}
 
         {isLoggedIn && !organisationId ? (
           <View style={styles.clubHint}>
@@ -592,8 +605,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   heroFavoriteBadge: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: isDark ? colors.surface : 'rgba(255, 255, 255, 0.16)',
+    borderColor: isDark ? colors.border : 'rgba(247, 250, 243, 0.6)',
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
@@ -607,7 +620,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   heroFavoriteBadgeText: {
     ...typography.captionStrong,
-    color: colors.textSecondary,
+    color: isDark ? colors.textSecondary : colors.heroText,
   },
   heroFavoriteBadgeTextActive: {
     color: isDark ? '#F3DA3E' : colors.primaryDeep,

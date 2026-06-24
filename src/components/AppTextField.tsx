@@ -8,17 +8,18 @@ import { typography } from '@/src/theme/typography';
 
 type AppTextFieldProps = TextInputProps & {
   label: string;
+  labelColor?: string;
   onClearText?: () => void;
 };
 
-export function AppTextField({ label, onClearText, style, value, ...props }: AppTextFieldProps) {
+export function AppTextField({ label, labelColor, onClearText, style, value, ...props }: AppTextFieldProps) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const hasClearButton = Boolean(onClearText && typeof value === 'string' && value.length > 0);
 
   return (
     <View style={styles.wrapper}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, labelColor ? { color: labelColor } : null]}>{label}</Text>
       <View style={styles.inputWrap}>
         <TextInput placeholderTextColor={colors.textMuted} style={[styles.input, hasClearButton ? styles.inputWithClear : null, style]} value={value} {...props} />
         {hasClearButton ? (

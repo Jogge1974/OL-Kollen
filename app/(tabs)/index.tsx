@@ -1,9 +1,9 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
+import { router, useFocusEffect, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
@@ -18,7 +18,6 @@ import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useAuthStore } from '@/src/store/authStore';
-import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -29,7 +28,6 @@ export default function HomeScreen() {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
-  const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
   const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
   const [isLoadingTodayEvents, setIsLoadingTodayEvents] = React.useState(true);
@@ -49,61 +47,62 @@ export default function HomeScreen() {
     personId: user?.personId ?? null,
   });
 
-  const todayIso = React.useMemo(() => getLocalIsoDate(), []);
-  const tomorrowIso = React.useMemo(() => getLocalIsoDate(1), []);
+  const [todayIso, setTodayIso] = React.useState(() => getLocalIsoDate());
   const exactTodayEvents = React.useMemo(() => todayEvents.filter((event) => event.startDate === todayIso), [todayEvents, todayIso]);
   const nationalTodayEvents = React.useMemo(
-    () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsAsc),
+    () => exactTodayEvents.filter((event) => [0, 1, 2].includes(event.classificationId)).sort(sortEventsByName),
     [exactTodayEvents],
   );
   const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
-  const upcomingStartCount = React.useMemo(
-    () => startsSections.reduce((sum, section) => sum + section.rows.length, 0),
-    [startsSections],
-  );
 
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
   }, []);
 
+  const loadTodayEvents = React.useCallback(async () => {
+    const currentToday = getLocalIsoDate();
+    const currentTomorrow = getLocalIsoDate(1);
+    setTodayIso(currentToday);
+    setIsLoadingTodayEvents(true);
+    setTodayEventsError(null);
+
+    try {
+      const events = await fetchEventorEvents({
+        classificationIds: [0, 1, 2],
+        districtIds: [],
+        fromDate: currentToday,
+        toDate: currentTomorrow,
+      });
+
+      setTodayEvents(events.filter((event) => event.startDate === currentToday).sort(sortEventsAsc));
+    } catch (error) {
+      setTodayEvents([]);
+      setTodayEventsError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av dagens tävlingar.');
+    } finally {
+      setIsLoadingTodayEvents(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadTodayEvents();
+    }, [loadTodayEvents]),
+  );
+
   React.useEffect(() => {
-    let isMounted = true;
-
-    const loadTodayEvents = async () => {
-      setIsLoadingTodayEvents(true);
-      setTodayEventsError(null);
-
-      try {
-        const events = await fetchEventorEvents({
-          classificationIds: [0, 1, 2],
-          districtIds: [],
-          fromDate: todayIso,
-          toDate: tomorrowIso,
-        });
-
-        if (isMounted) {
-          setTodayEvents(events.filter((event) => event.startDate === todayIso).sort(sortEventsAsc));
-        }
-      } catch (error) {
-        if (isMounted) {
-          setTodayEvents([]);
-          setTodayEventsError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av dagens tävlingar.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingTodayEvents(false);
-        }
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void loadTodayEvents();
       }
-    };
+    });
 
-    void loadTodayEvents();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [todayIso]);
+    return () => subscription.remove();
+  }, [loadTodayEvents]);
 
   const refreshAll = React.useCallback(async () => {
+    const currentToday = getLocalIsoDate();
+    const currentTomorrow = getLocalIsoDate(1);
+    setTodayIso(currentToday);
     setIsLoadingTodayEvents(true);
     setTodayEventsError(null);
 
@@ -112,9 +111,9 @@ export default function HomeScreen() {
         fetchEventorEvents({
           classificationIds: [0, 1, 2],
           districtIds: [],
-          fromDate: todayIso,
-          toDate: todayIso,
-        }).then((events) => setTodayEvents(events.filter((event) => event.startDate === todayIso).sort(sortEventsAsc))),
+          fromDate: currentToday,
+          toDate: currentTomorrow,
+        }).then((events) => setTodayEvents(events.filter((event) => event.startDate === currentToday).sort(sortEventsAsc))),
         user?.personId ? refetchPersonLists() : Promise.resolve(),
       ]);
     } catch (error) {
@@ -123,7 +122,7 @@ export default function HomeScreen() {
     } finally {
       setIsLoadingTodayEvents(false);
     }
-  }, [refetchPersonLists, todayIso, user?.personId]);
+  }, [refetchPersonLists, user?.personId]);
 
   const greetingName = user?.firstName ?? user?.fullName ?? 'orienterare';
 
@@ -148,12 +147,6 @@ export default function HomeScreen() {
             </View>
             {user?.accessLevel ? <View style={styles.accessPill}><Text style={styles.accessPillText}>{formatAccessLevel(user.accessLevel)}</Text></View> : null}
           </View>
-
-          <View style={styles.heroStatsRow}>
-            <HeroStat icon="calendar-outline" label="Idag" value={`${exactTodayEvents.length}`} />
-            <HeroStat icon="flag-outline" label="Starter" value={user ? `${upcomingStartCount}` : 'Logga in'} />
-            <HeroStat icon="star-outline" label="Favoriter" value={`${favoriteEvents.length}`} />
-          </View>
         </LinearGradient>
 
         <View style={styles.shortcutSection}>
@@ -176,7 +169,7 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.sectionSpacer}>
-          <SectionCard flat icon="calendar-outline" title="Dagens tävlingar">
+          <SectionCard icon="calendar-outline" title="Dagens tävlingar">
           {isLoadingTodayEvents ? <LoadingState label="Hämtar tävlingar från Eventor..." /> : null}
 
           {!isLoadingTodayEvents && todayEventsError && nationalTodayEvents.length === 0 ? (
@@ -206,7 +199,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.sectionSpacer}>
-        <SectionCard flat icon="ribbon-outline" title="Mina senaste tävlingar">
+        <SectionCard icon="ribbon-outline" title="Mina senaste tävlingar">
           {user ? (
             <PersonActivitySectionList
               emptyLabel="Inga senaste tävlingar att visa just nu."
@@ -239,23 +232,6 @@ export default function HomeScreen() {
   );
 }
 
-function HeroStat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
-  const colors = useColors();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-
-  return (
-    <View style={styles.statPill}>
-      <Ionicons color={colors.heroText} name={icon} size={16} />
-      <View style={styles.statTextWrap}>
-        <Text style={styles.statLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.statValue}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
@@ -270,23 +246,28 @@ function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.gl
   );
 }
 
-function SectionCard({ children, flat = false, icon, subtitle, title }: { children: React.ReactNode; flat?: boolean; icon?: keyof typeof Ionicons.glyphMap; subtitle?: string; title: string }) {
+function SectionCard({ children, icon, subtitle, title }: { children: React.ReactNode; icon?: keyof typeof Ionicons.glyphMap; subtitle?: string; title: string }) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={[styles.sectionCard, flat ? styles.sectionCardFlat : null]}>
+    <LinearGradient
+      colors={[colors.heroBottom, colors.heroTop, colors.primary]}
+      end={{ x: 0, y: 1 }}
+      start={{ x: 0, y: 0 }}
+      style={styles.sectionCard}
+    >
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderCopy}>
           <View style={styles.sectionTitleRow}>
-            {icon ? <Ionicons color={colors.textMuted} name={icon} size={16} /> : null}
+            {icon ? <Ionicons color={colors.heroText} name={icon} size={16} /> : null}
             <Text style={styles.sectionTitle}>{title}</Text>
           </View>
           {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
         </View>
       </View>
       <View style={styles.sectionBody}>{children}</View>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -301,6 +282,10 @@ function sortEventsAsc(left: EventItem, right: EventItem) {
 
 function sortEventsDesc(left: EventItem, right: EventItem) {
   return sortEventsAsc(right, left);
+}
+
+function sortEventsByName(left: EventItem, right: EventItem) {
+  return left.name.localeCompare(right.name, 'sv');
 }
 
 function getLocalIsoDate(offsetDays = 0) {
@@ -369,10 +354,6 @@ function createStyles(colors: ColorPalette) {
     color: colors.heroEyebrow,
     fontSize: 11,
   },
-  heroStatsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
   heroTitle: {
     ...typography.heroTitle,
     color: colors.heroText,
@@ -418,19 +399,12 @@ function createStyles(colors: ColorPalette) {
     color: colors.textSecondary,
   },
   sectionCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.primaryDeep,
     borderRadius: 24,
     borderWidth: 1,
     gap: spacing.sm,
+    overflow: 'hidden',
     padding: spacing.sm,
-  },
-  sectionCardFlat: {
-    backgroundColor: 'transparent',
-    borderColor: colors.primary,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
   },
   sectionHeader: {
     alignItems: 'flex-start',
@@ -451,11 +425,11 @@ function createStyles(colors: ColorPalette) {
   },
   sectionSubtitle: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: colors.heroTextMuted,
   },
   sectionTitle: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: colors.heroText,
     fontSize: 17,
     lineHeight: 21,
   },
@@ -466,15 +440,16 @@ function createStyles(colors: ColorPalette) {
   },
   shortcutCard: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 1.5,
     flex: 1,
     gap: spacing.xs,
     justifyContent: 'center',
-    minHeight: 84,
-    padding: spacing.sm,
+    minHeight: 92,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
   },
   shortcutCardPressed: {
     opacity: 0.9,
@@ -484,7 +459,6 @@ function createStyles(colors: ColorPalette) {
   },
   shortcutGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   shortcutIconWrap: {
@@ -500,31 +474,6 @@ function createStyles(colors: ColorPalette) {
     color: colors.textPrimary,
     textAlign: 'center',
   },
-  statLabel: {
-    color: colors.heroTextMuted,
-    fontSize: 10,
-    lineHeight: 12,
-  },
-  statPill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 18,
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minWidth: 92,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  statTextWrap: {
-    flex: 1,
-  },
-  statValue: {
-    ...typography.captionStrong,
-    color: colors.heroText,
-    fontSize: 13,
-    lineHeight: 15,
-  },
   sunGlow: {
     backgroundColor: colors.accentGlow,
     borderRadius: 999,
@@ -539,7 +488,7 @@ function createStyles(colors: ColorPalette) {
   },
   loginPromptText: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: colors.heroTextMuted,
   },
 });
 }

@@ -2,16 +2,17 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFocusEffect } from 'expo-router';
 
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
-import { fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
-import { findLiveCompetitionsBatch } from '@/src/services/liveresultat';
+import { fetchEventorEventById, fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
+import { findLiveCompetitionsBatch, findLiveCompetitionIdsBatch, getCompetitionClasses, getLiveFavoriteResults } from '@/src/services/liveresultat';
+import type { LiveFavorite, LiveFavoriteResult } from '@/src/services/liveresultat';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
 import { Friend, useFriendsStore } from '@/src/store/friendsStore';
@@ -20,6 +21,10 @@ import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 const PERSON_SEARCH_URL = 'https://hvscmyudneihjbtitffy.supabase.co/functions/v1/person-search';
+
+// How long cached friend status stays fresh before a re-focus triggers a full
+// reload. Within this window, re-entering the friends view reuses the cache.
+const STATUS_TTL_MS = 5 * 60 * 1000;
 
 import { XMLParser } from 'fast-xml-parser';
 
@@ -63,87 +68,283 @@ export default function FriendsScreen() {
   const fetchTodayActivity = useFriendActivityStore((s) => s.fetchTodayActivity);
 
   // Entry counts per friend (future only, excluding today)
-  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[] }>>({});
+  const [entryCountByFriendId, setEntryCountByFriendId] = React.useState<Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }>>({});
 
   // Today's starts fetched directly from Eventor (client-side fallback)
-  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null }>>({});
+  const [todayStartsByFriendId, setTodayStartsByFriendId] = React.useState<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null; remainingStages: number }>>({});
 
   // Friends who have results today (client-side check from Eventor)
   const [todayResultFriendIds, setTodayResultFriendIds] = React.useState<Set<string>>(new Set());
 
   // Set of eventIds that have a liveresultat match today
   const [liveEventIds, setLiveEventIds] = React.useState<Set<string>>(new Set());
+  // Map of eventId/eventName → liveCompetitionId + competitionName
+  const [liveCompMap, setLiveCompMap] = React.useState<Map<string, number>>(new Map());
+  // Live friends modal
+  const [liveModalVisible, setLiveModalVisible] = React.useState(false);
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [statusLoading, setStatusLoading] = React.useState(true);
+  // Friends whose status is being (re)loaded incrementally (e.g. a newly added
+  // friend) — only their row shows a spinner, not every friend.
+  const [pendingFriendIds, setPendingFriendIds] = React.useState<Set<string>>(new Set());
+
+  // Tracks what the cached status reflects so re-focusing the screen doesn't
+  // re-spin everything: `at` = when the last full load ran, `ids` = the friend
+  // ids whose status is already loaded. A focus reloads only when the cache is
+  // stale (older than STATUS_TTL_MS) or there are friends not yet loaded.
+  const loadedRef = React.useRef<{ at: number; ids: Set<string> }>({ at: 0, ids: new Set() });
+
+  // Reset the cache when the signed-in user changes so the next focus does a
+  // fresh full load.
+  React.useEffect(() => {
+    loadedRef.current = { at: 0, ids: new Set() };
+  }, [user]);
+
+  // Fetch the (expensive, per-friend) Eventor status for a subset of friends.
+  // The friend_activity_state lookup is a single batched Supabase query keyed by
+  // all friend ids, so it stays cheap and is run with the full list by callers.
+  const fetchEventorStatusFor = React.useCallback(async (targets: Friend[]) => {
+    const [entryCounts, todayStarts, resultIds] = await Promise.all([
+      fetchFriendEntryCounts(targets),
+      fetchFriendTodayStarts(targets),
+      fetchFriendTodayResults(targets),
+    ]);
+    return { entryCounts, todayStarts, resultIds };
+  }, []);
+
+  // Full (re)load of every friend's status — replaces the cached state and shows
+  // the global per-row spinners.
+  const runFullLoad = React.useCallback(async () => {
+    if (friends.length === 0) return;
+    setStatusLoading(true);
+    try {
+      const allIds = friends.map((f) => String(f.personId));
+      const [, eventor] = await Promise.all([
+        fetchTodayActivity(allIds),
+        fetchEventorStatusFor(friends),
+      ]);
+      setEntryCountByFriendId(eventor.entryCounts);
+      setTodayStartsByFriendId(eventor.todayStarts);
+      setTodayResultFriendIds(eventor.resultIds);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [friends, fetchTodayActivity, fetchEventorStatusFor]);
+
+  // Incremental load for newly added friends — merges into the cached state and
+  // spins only the affected rows. fetchTodayActivity replaces the activity store
+  // wholesale, so it is called with the full id list to keep existing friends.
+  const runIncrementalLoad = React.useCallback(async (targets: Friend[]) => {
+    if (targets.length === 0) return;
+    const targetIds = targets.map((f) => String(f.personId));
+    setPendingFriendIds((prev) => new Set([...prev, ...targetIds]));
+    try {
+      const allIds = friends.map((f) => String(f.personId));
+      const [, eventor] = await Promise.all([
+        fetchTodayActivity(allIds),
+        fetchEventorStatusFor(targets),
+      ]);
+      setEntryCountByFriendId((prev) => ({ ...prev, ...eventor.entryCounts }));
+      setTodayStartsByFriendId((prev) => ({ ...prev, ...eventor.todayStarts }));
+      setTodayResultFriendIds((prev) => new Set([...prev, ...eventor.resultIds]));
+    } finally {
+      setPendingFriendIds((prev) => {
+        const next = new Set(prev);
+        for (const id of targetIds) next.delete(id);
+        return next;
+      });
+    }
+  }, [friends, fetchTodayActivity, fetchEventorStatusFor]);
 
   useFocusEffect(
     React.useCallback(() => {
-      if (friends.length > 0) {
-        setStatusLoading(true);
-        const p1 = fetchTodayActivity(friends.map((f) => String(f.personId)));
-        const p2 = fetchFriendEntryCounts(friends).then(setEntryCountByFriendId);
-        const p3 = fetchFriendTodayStarts(friends).then(setTodayStartsByFriendId);
-        const p4 = fetchFriendTodayResults(friends).then(setTodayResultFriendIds);
-        void Promise.all([p1, p2, p3, p4]).finally(() => setStatusLoading(false));
+      if (friends.length === 0) return;
+      const currentIds = friends.map((f) => String(f.personId));
+      const now = Date.now();
+      const neverLoaded = loadedRef.current.at === 0;
+      const isStale = now - loadedRef.current.at > STATUS_TTL_MS;
+
+      if (neverLoaded || isStale) {
+        loadedRef.current = { at: now, ids: new Set(currentIds) };
+        void runFullLoad();
+        return;
       }
-    }, [friends, fetchTodayActivity, user]),
+
+      // Cache is fresh — only load friends we haven't loaded yet (e.g. just added).
+      const newFriends = friends.filter((f) => !loadedRef.current.ids.has(String(f.personId)));
+      if (newFriends.length > 0) {
+        loadedRef.current = { at: loadedRef.current.at, ids: new Set([...loadedRef.current.ids, ...currentIds]) };
+        void runIncrementalLoad(newFriends);
+      }
+    }, [friends, runFullLoad, runIncrementalLoad]),
   );
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
-    setStatusLoading(true);
     try {
-      await fetchTodayActivity(friends.map((f) => String(f.personId)));
-      const [entryCounts, todayStarts, resultIds] = await Promise.all([
-        fetchFriendEntryCounts(friends),
-        fetchFriendTodayStarts(friends),
-        fetchFriendTodayResults(friends),
+      const allIds = friends.map((f) => String(f.personId));
+      const [, eventor] = await Promise.all([
+        fetchTodayActivity(allIds),
+        fetchEventorStatusFor(friends),
       ]);
-      setEntryCountByFriendId(entryCounts);
-      setTodayStartsByFriendId(todayStarts);
-      setTodayResultFriendIds(resultIds);
+      setEntryCountByFriendId(eventor.entryCounts);
+      setTodayStartsByFriendId(eventor.todayStarts);
+      setTodayResultFriendIds(eventor.resultIds);
+      loadedRef.current = { at: Date.now(), ids: new Set(allIds) };
     } finally {
       setIsRefreshing(false);
-      setStatusLoading(false);
     }
-  }, [friends, fetchTodayActivity]);
+  }, [friends, fetchTodayActivity, fetchEventorStatusFor]);
 
   // Check liveresultat for events where friends have a start today
   React.useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
+    // key (eventId or eventName, matching the lookups below) → eventName
     const startEvents = new Map<string, string>();
+    // key → organiser name (used to relax the name-match threshold to 0.3)
+    const organiserByKey = new Map<string, string>();
+    // key → eventId, so we can resolve the organiser via the event detail API
+    // for sources that don't carry it (entries XML + backend activity).
+    const eventIdByKey = new Map<string, string>();
 
-    // From backend activity state
+    // From backend activity state (keyed by eventId)
     for (const entry of Object.values(activityByFriendId)) {
       if (entry.date === today && entry.type === 'friend-start' && entry.eventName) {
         startEvents.set(entry.eventId, entry.eventName);
+        eventIdByKey.set(entry.eventId, entry.eventId);
       }
     }
 
-    // From client-side today starts
+    // From client-side today starts (keyed by eventName; carries organiser)
     for (const start of Object.values(todayStartsByFriendId)) {
       if (!startEvents.has(start.eventName)) {
         startEvents.set(start.eventName, start.eventName);
       }
+      if (start.organiserName) {
+        organiserByKey.set(start.eventName, start.organiserName);
+      }
     }
 
-    // From client-side entry data (today's entries)
+    // From client-side entry data (keyed by eventName; carries eventId, no organiser)
     for (const counts of Object.values(entryCountByFriendId)) {
-      for (const name of counts.todayEventNames) {
-        if (!startEvents.has(name)) {
-          startEvents.set(name, name);
+      for (const ev of counts.todayEvents) {
+        if (!startEvents.has(ev.eventName)) {
+          startEvents.set(ev.eventName, ev.eventName);
+        }
+        if (!eventIdByKey.has(ev.eventName)) {
+          eventIdByKey.set(ev.eventName, ev.eventId);
         }
       }
     }
 
     if (startEvents.size === 0) {
       setLiveEventIds(new Set());
+      setLiveCompMap(new Map());
       return;
     }
-    const events = [...startEvents.entries()].map(([eventId, eventName]) => ({ eventId, eventName, eventDate: today }));
-    void findLiveCompetitionsBatch(events).then(setLiveEventIds);
+
+    let cancelled = false;
+    void (async () => {
+      // Resolve organisers via the event detail API for keys that lack one
+      // (entries XML and backend activity don't include the organiser, but the
+      // organiser is what lets us match e.g. 'Veteran-OL Göteborg' to
+      // 'Veteral-OL IK Stern …' where the names alone score below 0.6).
+      const eventIdsToResolve = [...new Set(
+        [...startEvents.keys()]
+          .filter((key) => !organiserByKey.has(key) && eventIdByKey.has(key))
+          .map((key) => eventIdByKey.get(key) as string),
+      )];
+      const organiserByEventId = new Map<string, string>();
+      await Promise.all(eventIdsToResolve.map(async (eventId) => {
+        try {
+          const detail = await fetchEventorEventById(eventId, null);
+          if (detail.organiserNames.length > 0) {
+            organiserByEventId.set(eventId, detail.organiserNames.join(', '));
+          }
+        } catch {
+          // Ignore — fall back to name-only matching for this event.
+        }
+      }));
+      for (const key of startEvents.keys()) {
+        if (organiserByKey.has(key)) continue;
+        const eventId = eventIdByKey.get(key);
+        const organiser = eventId ? organiserByEventId.get(eventId) : undefined;
+        if (organiser) organiserByKey.set(key, organiser);
+      }
+
+      if (cancelled) return;
+      const events = [...startEvents.entries()].map(([eventId, eventName]) => ({
+        eventId,
+        eventName,
+        eventDate: today,
+        organizer: organiserByKey.get(eventId) ?? null,
+      }));
+      const [ids, comps] = await Promise.all([
+        findLiveCompetitionsBatch(events),
+        findLiveCompetitionIdsBatch(events),
+      ]);
+      if (cancelled) return;
+      setLiveEventIds(ids);
+      setLiveCompMap(comps);
+    })();
+    return () => { cancelled = true; };
   }, [activityByFriendId, todayStartsByFriendId, entryCountByFriendId]);
+
+  // Friends who are currently "live" (orange dot) — derive their LiveFavorite payload
+  const liveFriends = React.useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const result: Array<{ friend: Friend; favorite: LiveFavorite }> = [];
+
+    for (const friend of friends) {
+      const pid = String(friend.personId);
+      const activity = activityByFriendId[pid];
+      const hasActivity = activity != null && activity.date === today;
+      const isResult = (hasActivity && activity.type === 'friend-results') || todayResultFriendIds.has(pid);
+      if (isResult) continue; // results trump live status
+
+      const isStart = hasActivity && activity.type === 'friend-start';
+      const hasTodayStartFromStarts = todayStartsByFriendId[pid] != null;
+      const counts = entryCountByFriendId[pid];
+      const todayEntries = counts?.today ?? 0;
+      const hasTodayStart = isStart || hasTodayStartFromStarts || todayEntries > 0;
+      if (!hasTodayStart) continue;
+
+      // Determine if this event is live
+      let eventKey: string | null = null;
+      let compId: number | null = null;
+      let compName = '';
+
+      if (isStart && liveEventIds.has(activity.eventId)) {
+        eventKey = activity.eventId;
+        compName = activity.eventName ?? '';
+      } else if (hasTodayStartFromStarts && liveEventIds.has(todayStartsByFriendId[pid].eventName)) {
+        eventKey = todayStartsByFriendId[pid].eventName;
+        compName = todayStartsByFriendId[pid].eventName;
+      } else if (counts && counts.todayEventNames.some((n) => liveEventIds.has(n))) {
+        eventKey = counts.todayEventNames.find((n) => liveEventIds.has(n)) ?? null;
+        compName = eventKey ?? '';
+      }
+
+      if (!eventKey) continue;
+      compId = liveCompMap.get(eventKey) ?? null;
+      if (!compId) continue;
+
+      const className = todayStartsByFriendId[pid]?.className ?? '';
+      result.push({
+        friend,
+        favorite: {
+          competitionId: compId,
+          competitionName: compName,
+          className,
+          name: friend.name,
+          club: friend.club,
+        },
+      });
+    }
+
+    return result;
+  }, [friends, activityByFriendId, todayStartsByFriendId, entryCountByFriendId, todayResultFriendIds, liveEventIds, liveCompMap]);
 
   const uniqueClubs = React.useMemo(() => new Set(friends.map((f) => f.club)).size, [friends]);
   const genderSummary = React.useMemo(() => {
@@ -192,6 +393,7 @@ export default function FriendsScreen() {
       name: result.name,
       personId: result.personId,
       pushOnEntry: false,
+      pushOnLive: false,
       pushOnResult: true,
       pushOnStart: true,
     };
@@ -199,7 +401,17 @@ export default function FriendsScreen() {
   }, [addFriend]);
 
   const handleRemoveFriend = React.useCallback((personId: number) => {
+    const pid = String(personId);
     void removeFriend(personId);
+    // Drop the removed friend from the status cache + loaded set so it doesn't
+    // linger and so a future re-add re-fetches it.
+    loadedRef.current = {
+      at: loadedRef.current.at,
+      ids: new Set([...loadedRef.current.ids].filter((id) => id !== pid)),
+    };
+    setEntryCountByFriendId((prev) => { const next = { ...prev }; delete next[pid]; return next; });
+    setTodayStartsByFriendId((prev) => { const next = { ...prev }; delete next[pid]; return next; });
+    setTodayResultFriendIds((prev) => { const next = new Set(prev); next.delete(pid); return next; });
   }, [removeFriend]);
 
   if (!isLoggedIn) {
@@ -235,6 +447,12 @@ export default function FriendsScreen() {
           <Ionicons color={colors.primaryDeep} name="search-outline" size={14} />
           <Text style={styles.searchBadgeText}>Sök vänner</Text>
         </Pressable>
+        {liveFriends.length > 0 ? (
+          <Pressable onPress={() => setLiveModalVisible(true)} style={({ pressed }) => [styles.liveBadge, pressed ? { opacity: 0.8 } : null]}>
+            <Ionicons color="#fff" name="radio-outline" size={14} />
+            <Text style={styles.liveBadgeText}>Följ vänner LIVE</Text>
+          </Pressable>
+        ) : null}
         <View style={{ flex: 1 }} />
         <Pressable onPress={() => setLegendVisible(true)} style={({ pressed }) => [styles.legendInfoBadge, pressed ? { opacity: 0.7 } : null]}>
           <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={20} />
@@ -297,15 +515,22 @@ export default function FriendsScreen() {
             const showBorder = isResult || hasStarted;
             const borderColor = isResult ? colors.primary : startDotColor;
 
-            // Other entries (future, excluding today's activity)
-            const otherEntries = futureEntries;
+            // Other entries (future single events) plus the remaining stages of a
+            // multi-stage event the friend is in today — each upcoming stage is
+            // treated as its own "event" so multi-day participation renders with
+            // the multi-stage dots icon (e.g. a fresh 3-stage event = two dots
+            // and a plus).
+            const remainingStages = hasTodayStartFromStarts
+              ? todayStartsByFriendId[String(item.personId)].remainingStages
+              : 0;
+            const otherEntries = futureEntries + remainingStages;
 
             return (
             <Pressable
               onPress={() => router.push(`/friend/${item.personId}`)}
               style={({ pressed }) => [styles.friendCard, showBorder ? { borderColor, borderWidth: 1.5 } : null, pressed ? styles.friendCardPressed : null]}
             >
-              {statusLoading ? (
+              {statusLoading || pendingFriendIds.has(String(item.personId)) ? (
                 <View style={styles.entryDotsColumn}>
                   <ActivityIndicator color={colors.textMuted} size={10} />
                 </View>
@@ -555,7 +780,406 @@ export default function FriendsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Live Friends Modal */}
+      <Modal animationType="slide" onRequestClose={() => setLiveModalVisible(false)} visible={liveModalVisible}>
+        <SafeAreaProvider>
+          <SafeAreaView edges={['top', 'bottom']} style={styles.screen}>
+            <LiveFriendsPanel
+              friends={liveFriends}
+              onClose={() => setLiveModalVisible(false)}
+            />
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+// --- Live Friends Panel ---
+
+/**
+ * Stable lookup key for matching a liveresultat result to a friend.
+ * Normalised name + club (case/space-insensitive); className is intentionally
+ * excluded because we resolve it from the response, not in advance.
+ */
+function liveResultKey(name: string, club: string): string {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  return `${norm(name)}|${norm(club)}`;
+}
+
+function LiveFriendsPanel({
+  friends,
+  onClose,
+}: {
+  friends: Array<{ friend: Friend; favorite: LiveFavorite }>;
+  onClose: () => void;
+}) {
+  const { colors, isDark, themeName } = useTheme();
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
+  const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
+  const liveOrange = isDark ? '#C48800' : '#F6A60A';
+
+  const [results, setResults] = React.useState<Map<string, LiveFavoriteResult>>(new Map());
+  const [expandedFriends, setExpandedFriends] = React.useState<Set<number>>(new Set());
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [countdown, setCountdown] = React.useState(15);
+
+  const favorites = React.useMemo(() => friends.map((f) => f.favorite), [friends]);
+
+  const fetchResults = React.useCallback(async () => {
+    if (favorites.length === 0) return;
+
+    // getFavoriteresult matches strictly on name + club + className. We often
+    // don't know a friend's liveresultat className (e.g. friends only entered,
+    // not yet started — the entries XML has no class we can rely on, and the
+    // class label can differ from Eventor's). So fetch the class list per
+    // competition and submit one favorite per class ("shotgun"); the backend
+    // returns only the matching class for each runner.
+    const competitionIds = [...new Set(favorites.map((f) => f.competitionId))];
+    const classesByComp = new Map<number, string[]>();
+    await Promise.all(competitionIds.map(async (compId) => {
+      classesByComp.set(compId, await getCompetitionClasses(compId));
+    }));
+
+    const expanded: LiveFavorite[] = [];
+    for (const fav of favorites) {
+      const classes = classesByComp.get(fav.competitionId) ?? [];
+      // Keep the known className first (cheap hit), then fan out to all classes.
+      const classNames = new Set<string>();
+      if (fav.className) classNames.add(fav.className);
+      for (const c of classes) classNames.add(c);
+      if (classNames.size === 0) classNames.add(fav.className); // may be ''
+      for (const className of classNames) {
+        expanded.push({ ...fav, className });
+      }
+    }
+
+    const data = await getLiveFavoriteResults(expanded);
+    const map = new Map<string, LiveFavoriteResult>();
+    for (const r of data) {
+      // Key by name+club only — the friend is a unique person, and the response
+      // carries the real className (which we couldn't know in advance).
+      map.set(liveResultKey(r.name, r.club), r);
+    }
+    setResults(map);
+    setIsLoading(false);
+  }, [favorites]);
+
+  // Initial fetch + 15s polling
+  React.useEffect(() => {
+    void fetchResults();
+    setCountdown(15);
+    const interval = setInterval(() => { void fetchResults(); setCountdown(15); }, 15000);
+    return () => clearInterval(interval);
+  }, [fetchResults]);
+
+  // Tick every second: countdown + running time
+  const [nowCentis, setNowCentis] = React.useState(() => {
+    const now = new Date();
+    return (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 100;
+  });
+
+  React.useEffect(() => {
+    const tick = setInterval(() => {
+      setCountdown((c) => (c > 0 ? c - 1 : 0));
+      const now = new Date();
+      setNowCentis((now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 100);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
+
+  const toggleExpand = (personId: number) => {
+    setExpandedFriends((prev) => {
+      const next = new Set(prev);
+      if (next.has(personId)) next.delete(personId);
+      else next.add(personId);
+      return next;
+    });
+  };
+
+  const formatStatus = (status: number) => {
+    switch (status) {
+      case 0: return 'OK';
+      case 1: return 'DNS';
+      case 2: return 'DNF';
+      case 3: return 'MP';
+      case 4: return 'DSQ';
+      case 5: return 'OT';
+      case 9: case 10: return 'I skogen';
+      case 11: return 'WO';
+      case 12: return 'MU';
+      default: return 'Ej startat';
+    }
+  };
+
+  const isRunning = (status: number) => status === 9 || status === 10;
+
+  const formatCentis = (centis: string | number | null | undefined): string => {
+    if (centis == null) return '-';
+    const c = typeof centis === 'string' ? parseInt(centis, 10) : centis;
+    if (isNaN(c) || c <= 0) return '-';
+    const totalSec = Math.floor(c / 100);
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (hours > 0) return `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const formatTimePlus = (centis: string | number | null | undefined): string => {
+    if (centis == null) return '-';
+    const c = typeof centis === 'string' ? parseInt(centis, 10) : centis;
+    if (isNaN(c) || c === 0) return '±0';
+    const totalSec = Math.floor(Math.abs(c) / 100);
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    const sign = c > 0 ? '+' : '-';
+    if (mins > 0) return `${sign}${mins}:${String(secs).padStart(2, '0')}`;
+    return `${sign}${secs}s`;
+  };
+
+  const getRunningTime = (startCentis: number): string => {
+    const elapsed = nowCentis - startCentis;
+    if (elapsed <= 0) return '0:00';
+    return formatCentis(elapsed);
+  };
+
+  const formatStartClock = (startCentis: number): string => {
+    const totalSec = Math.floor(startCentis / 100);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  const getCollapsedSummary = (result: LiveFavoriteResult) => {
+    if (result.status === 0) {
+      // Finished OK — find RESULT split for formatted timeplus
+      const resultSplit = result.splitresults?.find((s) => s.splitname === 'RESULT');
+      const tp = resultSplit?.splittimeplus || formatTimePlus(result.timeplus);
+      // The placement is only final once every runner in the class is in (none
+      // left in the forest). Until then it's preliminary.
+      const inForest = typeof result.inForest === 'number' ? result.inForest : 0;
+      return {
+        style: 'finished' as const,
+        time: formatCentis(result.result),
+        place: result.place || '',
+        timeplus: tp,
+        className: result.className || '',
+        classFinished: inForest <= 0,
+      };
+    }
+    if (result.status === 9 || result.status === 10) {
+      if (result.start <= 0) {
+        // No allotted start time (free start) — the runner can start whenever.
+        return { line1: 'Starttid saknas', line2: '', style: 'muted' as const };
+      }
+      if (result.start > nowCentis) {
+        return { line1: `Start ${formatStartClock(result.start)}`, line2: '', style: 'muted' as const };
+      }
+      return { line1: getRunningTime(result.start), line2: '', style: 'running' as const };
+    }
+    return { line1: formatStatus(result.status), line2: '', style: 'muted' as const };
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.liveHeader}>
+        <Ionicons color={liveOrange} name="radio-outline" size={20} />
+        <Text style={[styles.searchTitle, { flex: 1 }]}>Följ vänner LIVE</Text>
+        <Pressable onPress={onClose} style={styles.searchCloseButton}>
+          <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+          <Text style={styles.searchCloseText}>Stäng</Text>
+        </Pressable>
+      </View>
+
+      {isLoading ? (
+        <View style={{ alignItems: 'center', paddingTop: 40 }}>
+          <ActivityIndicator color={liveOrange} size="large" />
+          <Text style={[styles.liveSubtext, { marginTop: 12 }]}>Hämtar livedata...</Text>
+        </View>
+      ) : (
+        <FlatList
+          contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: 40 }}
+          data={friends}
+          keyExtractor={(item) => String(item.friend.personId)}
+          renderItem={({ item }) => {
+            const key = liveResultKey(item.favorite.name, item.favorite.club);
+            const result = results.get(key);
+            const isExpanded = expandedFriends.has(item.friend.personId);
+
+            return (
+              <View style={styles.livePanelItem}>
+                <Pressable onPress={() => toggleExpand(item.friend.personId)} style={styles.livePanelHeader}>
+                  <View style={styles.liveDotPulse}>
+                    <View style={[styles.liveDotSmall, { backgroundColor: liveOrange }]} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.livePanelName}>{item.friend.name}</Text>
+                    <Text style={styles.livePanelMeta}>{item.friend.club}</Text>
+                  </View>
+                  {result ? (() => {
+                    const summary = getCollapsedSummary(result);
+                    if (summary.style === 'finished') {
+                      return (
+                        <View style={styles.livePanelSummary}>
+                          <View style={styles.liveSummaryFinishedRow}>
+                            {/* Column 1: time over timeplus (same column) */}
+                            <View style={styles.liveSummaryTimeCol}>
+                              <Text style={styles.liveSummaryTime}>{summary.time}</Text>
+                              <Text style={styles.liveSummaryTimeplus}>{summary.timeplus}</Text>
+                            </View>
+                            {/* Column 2: placement chip over class */}
+                            <View style={styles.liveSummaryMetaCol}>
+                              {summary.place ? (
+                                <View style={[
+                                  styles.livePlaceChip,
+                                  summary.classFinished ? styles.livePlaceChipFinal : styles.livePlaceChipPrelim,
+                                ]}>
+                                  <Ionicons
+                                    color={summary.classFinished ? colors.primary : colors.textMuted}
+                                    name={summary.classFinished ? 'trophy' : 'hourglass-outline'}
+                                    size={12}
+                                  />
+                                  <Text style={[
+                                    styles.livePlaceChipText,
+                                    summary.classFinished ? styles.livePlaceChipTextFinal : styles.livePlaceChipTextPrelim,
+                                  ]}>
+                                    {summary.classFinished ? `Plac ${summary.place}` : `Prel ${summary.place}`}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              {summary.className ? (
+                                <Text style={styles.liveSummaryClass}>{summary.className}</Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    }
+                    return (
+                      <View style={styles.livePanelSummary}>
+                        <Text style={[
+                          styles.livePanelPlace,
+                          summary.style === 'running' ? { color: liveOrange } : null,
+                          summary.style === 'muted' ? { color: colors.textMuted, fontSize: 13 } : null,
+                        ]}>
+                          {summary.line1}
+                        </Text>
+                        {summary.line2 ? (
+                          <Text style={styles.livePanelTime}>{summary.line2}</Text>
+                        ) : null}
+                      </View>
+                    );
+                  })() : null}
+                  <Ionicons color={colors.textMuted} name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+                </Pressable>
+
+                {isExpanded && result ? (
+                  <View style={styles.livePanelExpanded}>
+                    <View style={styles.livePanelCompRow}>
+                      <Ionicons color={colors.textMuted} name="flag-outline" size={12} />
+                      <Text style={styles.livePanelCompName} numberOfLines={1}>{result.competitionName}</Text>
+                      <Pressable
+                        onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${result.competitionId}`)}
+                        style={({ pressed }) => [styles.liveCompLink, pressed ? { opacity: 0.6 } : null]}
+                      >
+                        <Ionicons color={liveOrange} name="open-outline" size={13} />
+                        <Text style={styles.liveCompLinkText}>Till Liveresultat</Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.livePanelBodyRow}>
+                      <View style={styles.livePanelBodyCard}>
+                        {/* Left: splits table */}
+                        <View style={styles.liveSplitsTable}>
+                          {result.splitresults && result.splitresults.length > 0 ? (
+                            result.splitresults.map((s, i) => {
+                              const displayName = s.splitname === 'STARTTIME' ? 'Starttid' : s.splitname === 'RESULT' ? 'Resultat' : s.splitname;
+                              const iconName = s.splitname === 'STARTTIME' ? 'play-circle-outline' : s.splitname === 'RESULT' ? 'flag-outline' : 'radio-outline';
+                              const isLast = i === result.splitresults.length - 1;
+                              return (
+                                <React.Fragment key={i}>
+                                  <View style={styles.liveSplitRow}>
+                                    <Ionicons color={liveOrange} name={iconName as any} size={12} style={styles.liveSplitIcon} />
+                                    <Text style={styles.liveSplitName} numberOfLines={1}>{displayName}</Text>
+                                    {s.splitname === 'STARTTIME' ? (
+                                      <Text style={styles.liveSplitResultWide}>{result.start > 0 ? s.splitresult : 'Starttid saknas'}</Text>
+                                    ) : (
+                                      <>
+                                        <Text style={styles.liveSplitResult}>{s.splitresult}</Text>
+                                        <Text style={styles.liveSplitPlace}>{s.splitplace}</Text>
+                                        <Text style={styles.liveSplitTimeplus}>{s.splittimeplus}</Text>
+                                      </>
+                                    )}
+                                  </View>
+                                  {!isLast ? <View style={styles.liveSplitDivider} /> : null}
+                                </React.Fragment>
+                              );
+                            })
+                          ) : (
+                            <Text style={styles.liveSubtext}>Inga sträcktider</Text>
+                          )}
+                          {isRunning(result.status) && result.start > 0 && result.splitresults && result.splitresults.length > 0 && result.splitresults[result.splitresults.length - 1].splitname !== 'RESULT' ? (
+                            <>
+                              <View style={styles.liveSplitDivider} />
+                              <View style={styles.liveSplitRow}>
+                                <Ionicons color={liveOrange} name="navigate-outline" size={12} style={styles.liveSplitIcon} />
+                                <Text style={[styles.liveSplitName, { color: liveOrange }]} numberOfLines={1}>...</Text>
+                                <Text style={[styles.liveSplitResultWide, { color: liveOrange }]}>{getRunningTime(result.start)}</Text>
+                              </View>
+                            </>
+                          ) : null}
+                        </View>
+
+                        {/* Vertical divider */}
+                        <View style={styles.liveVerticalDivider} />
+
+                        {/* Right: stats */}
+                        <View style={styles.liveStatsSection}>
+                          <View style={styles.liveStatsRow}>
+                            <Ionicons color={liveOrange} name="people-outline" size={13} />
+                            <Text style={styles.liveStatsLabel}>Antal i klassen</Text>
+                            <Text style={styles.liveStatsValue}>{result.inClass ?? '-'}</Text>
+                          </View>
+                          <View style={styles.liveStatsDivider} />
+                          <View style={styles.liveStatsRow}>
+                            <Ionicons color={liveOrange} name="leaf-outline" size={13} />
+                            <Text style={styles.liveStatsLabel}>Kvar i skogen</Text>
+                            <Text style={styles.liveStatsValue}>{result.inForest ?? '-'}</Text>
+                          </View>
+                          <View style={styles.liveStatsDivider} />
+                          <View style={styles.liveStatsRow}>
+                            <Ionicons color={liveOrange} name="podium-outline" size={13} />
+                            <Text style={styles.liveStatsLabel}>Möjl. slutplac.</Text>
+                            <Text style={styles.liveStatsValue}>{result.worseCasePlace ?? '-'}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                ) : isExpanded ? (
+                  <View style={styles.livePanelExpanded}>
+                    <Text style={styles.liveSubtext}>
+                                    Väntar på resultat från 'liveresultat.orientering.se'.                                    
+                    </Text>
+                    <Pressable
+                      onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${item.favorite.competitionId}`)}
+                      style={({ pressed }) => [styles.liveLinkButton, pressed ? { opacity: 0.7 } : null]}
+                    >
+                      <Ionicons color="#fff" name="open-outline" size={14} />
+                      <Text style={styles.liveLinkButtonText}>Nya Liveresultat</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }}
+        />
+      )}
+
+      <Text style={styles.liveFooter}>Uppdateras om {countdown} sekunder</Text>
+    </View>
   );
 }
 
@@ -747,7 +1371,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       opacity: 0.85,
     },
     searchResultItemSelected: {
-      backgroundColor: isSoft ? '#E0ECF8' : isDark ? colors.surfaceMuted : '#E7F4D8',
+      backgroundColor: isSoft && isDark ? colors.surfaceMuted : isSoft ? '#E0ECF8' : isDark ? colors.surfaceMuted : '#E7F4D8',
       borderColor: colors.primary,
     },
     searchResultContent: {
@@ -803,6 +1427,363 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.caption,
       color: colors.textSecondary,
     },
+    // Live badge
+    liveBadge: {
+      alignItems: 'center',
+      backgroundColor: isDark ? '#C48800' : '#F6A60A',
+      borderRadius: 999,
+      flexDirection: 'row',
+      gap: 5,
+      marginLeft: spacing.sm,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    liveBadgeText: {
+      ...typography.captionStrong,
+      color: '#fff',
+      fontSize: 12,
+    },
+    // Live modal styles
+    liveHeader: {
+      alignItems: 'center',
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: 8,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    liveFooter: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
+      paddingBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    liveSubtext: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 12,
+    },
+    livePanelItem: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      marginTop: spacing.sm,
+      overflow: 'hidden',
+      ...(isDark ? {} : {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
+      }),
+    },
+    livePanelHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 10,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 14,
+    },
+    liveDotPulse: {
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(196, 136, 0, 0.15)' : 'rgba(246, 166, 10, 0.15)',
+      borderRadius: 12,
+      height: 24,
+      justifyContent: 'center',
+      width: 24,
+    },
+    liveDotSmall: {
+      borderRadius: 5,
+      height: 10,
+      width: 10,
+    },
+    livePanelName: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 14,
+    },
+    livePanelMeta: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 11,
+    },
+    livePanelSummary: {
+      alignItems: 'flex-end',
+    },
+    livePanelPlace: {
+      ...typography.bodyStrong,
+      color: colors.primaryDeep,
+      fontSize: 16,
+    },
+    livePanelTime: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 11,
+    },
+    liveSummaryFinishedRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      justifyContent: 'flex-end',
+    },
+    liveSummaryTimeCol: {
+      alignItems: 'flex-end',
+    },
+    liveSummaryMetaCol: {
+      alignItems: 'flex-end',
+      gap: 2,
+    },
+    liveSummaryTime: {
+      ...typography.bodyStrong,
+      color: colors.primaryDeep,
+      fontSize: 15,
+    },
+    livePlaceChip: {
+      alignItems: 'center',
+      borderRadius: 6,
+      flexDirection: 'row',
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    livePlaceChipFinal: {
+      backgroundColor: isDark ? 'rgba(76, 139, 71, 0.20)' : 'rgba(76, 139, 71, 0.12)',
+    },
+    livePlaceChipPrelim: {
+      backgroundColor: isDark ? 'rgba(124, 134, 121, 0.20)' : 'rgba(124, 134, 121, 0.12)',
+    },
+    livePlaceChipText: {
+      ...typography.captionStrong,
+      fontSize: 13,
+    },
+    livePlaceChipTextFinal: {
+      color: colors.primary,
+    },
+    livePlaceChipTextPrelim: {
+      color: colors.textMuted,
+      fontStyle: 'italic',
+    },
+    liveSummaryTimeplus: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 12,
+    },
+    liveSummaryClass: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 11,
+    },
+    livePanelExpanded: {
+      backgroundColor: isDark ? 'rgba(246, 166, 10, 0.06)' : 'rgba(246, 166, 10, 0.03)',
+      borderTopColor: isDark ? 'rgba(246, 166, 10, 0.2)' : 'rgba(246, 166, 10, 0.15)',
+      borderTopWidth: 1,
+      gap: 10,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 14,
+    },
+    livePanelCompRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    livePanelBodyRow: {
+      flexDirection: 'row',
+      gap: 0,
+    },
+    livePanelBodyCard: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 10,
+      borderWidth: 1,
+      flex: 1,
+      flexDirection: 'row',
+      overflow: 'hidden',
+    },
+    liveSplitsTable: {
+      flex: 1,
+      gap: 0,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    liveSplitRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 4,
+      paddingHorizontal: 4,
+      borderRadius: 4,
+    },
+    liveSplitIcon: {
+      width: 14,
+    },
+    liveSplitDivider: {
+      backgroundColor: colors.border,
+      height: 1,
+      marginHorizontal: 4,
+      opacity: 0.4,
+    },
+    liveSplitName: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+      fontSize: 10,
+      flex: 1,
+    },
+    liveSplitResult: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      flexShrink: 0,
+      fontSize: 13,
+      fontWeight: '400',
+      width: 44,
+      textAlign: 'right',
+    },
+    liveSplitPlace: {
+      ...typography.caption,
+      color: colors.textMuted,
+      flexShrink: 0,
+      fontSize: 13,
+      fontWeight: '400',
+      width: 24,
+      textAlign: 'right',
+    },
+    liveSplitTimeplus: {
+      ...typography.caption,
+      color: colors.textMuted,
+      flexShrink: 0,
+      fontSize: 13,
+      fontWeight: '400',
+      width: 50,
+      textAlign: 'right',
+    },
+    liveSplitResultWide: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontWeight: '400',
+      flex: 1,
+      textAlign: 'right',
+    },
+    liveVerticalDivider: {
+      backgroundColor: colors.border,
+      opacity: 0.6,
+      width: 1,
+    },
+    liveStatsSection: {
+      flexShrink: 0,
+      gap: 0,
+      justifyContent: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+    },
+    liveStatsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 5,
+    },
+    liveStatsDivider: {
+      backgroundColor: colors.border,
+      height: 1,
+      opacity: 0.6,
+    },
+    liveStatsLabel: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+      fontSize: 10,
+    },
+    liveStatsValue: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontWeight: '400',
+      marginLeft: 'auto',
+    },
+    livePanelCompName: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      flex: 1,
+      fontSize: 13,
+    },
+    livePanelStatsRow: {
+      flexDirection: 'row',
+      gap: 4,
+    },
+    livePanelStat: {
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 8,
+      flex: 1,
+      paddingVertical: 6,
+    },
+    livePanelStatLabel: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 9,
+    },
+    livePanelStatValue: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 13,
+    },
+    livePanelRunningRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    livePanelRunningText: {
+      ...typography.captionStrong,
+      fontSize: 11,
+    },
+    livePanelSplitRow: {
+      gap: 2,
+    },
+    livePanelSplitLabel: {
+      ...typography.captionStrong,
+      color: colors.textMuted,
+      fontSize: 10,
+    },
+    livePanelSplitValue: {
+      ...typography.caption,
+      color: colors.textPrimary,
+      fontSize: 12,
+    },
+    livePanelStatus: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
+    },
+    liveLinkButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: isDark ? '#C48800' : '#F6A60A',
+      borderRadius: 8,
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    liveLinkButtonText: {
+      ...typography.captionStrong,
+      color: '#fff',
+      fontSize: 12,
+    },
+    liveCompLink: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      gap: 5,
+      paddingVertical: 4,
+    },
+    liveCompLinkText: {
+      ...typography.captionStrong,
+      color: isDark ? '#C48800' : '#F6A60A',
+      fontSize: 12,
+      textDecorationLine: 'underline',
+    },
   });
 }
 
@@ -813,14 +1794,14 @@ function formatLocalIsoDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, { today: number; future: number; todayEventNames: string[] }>> {
+async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const fromDate = `${todayIso} 00:00:00`;
   const futureDate = new Date();
   futureDate.setMonth(futureDate.getMonth() + 9);
   const toDate = `${formatLocalIsoDate(futureDate)} 23:59:59`;
 
-  const result: Record<string, { today: number; future: number; todayEventNames: string[] }> = {};
+  const result: Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }> = {};
 
   await Promise.all(
     friends.map(async (friend) => {
@@ -835,6 +1816,7 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
         let todayCount = 0;
         let futureCount = 0;
         const todayEventNames: string[] = [];
+        const todayEvents: { eventId: string; eventName: string }[] = [];
         for (const entry of entryArray) {
           const event = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>).Event : null;
           const eventIdNode = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).EventId : null;
@@ -846,7 +1828,10 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
             if (dateStr === todayIso) {
               todayCount++;
               const eventName = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).Name : null;
-              if (typeof eventName === 'string') todayEventNames.push(eventName);
+              if (typeof eventName === 'string') {
+                todayEventNames.push(eventName);
+                todayEvents.push({ eventId, eventName });
+              }
             } else {
               futureCount++;
             }
@@ -854,7 +1839,7 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
         }
 
         if (todayCount > 0 || futureCount > 0) {
-          result[String(friend.personId)] = { today: todayCount, future: futureCount, todayEventNames };
+          result[String(friend.personId)] = { today: todayCount, future: futureCount, todayEventNames, todayEvents };
         }
       } catch {
         // Silently skip on error
@@ -888,12 +1873,12 @@ function hasStartTimePassed(startTime: string | null): boolean {
  * Fetches today's starts for each friend directly from Eventor /starts/person.
  * Returns a map of friendId → { eventName } for friends that have a start today.
  */
-async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null }>> {
+async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null; remainingStages: number }>> {
   const todayIso = formatLocalIsoDate(new Date());
   const from = `${todayIso} 00:00:00`;
   const to = `${todayIso} 23:59:59`;
 
-  const result: Record<string, { eventName: string; startTime: string | null }> = {};
+  const result: Record<string, { eventName: string; startTime: string | null; className: string | null; organiserName: string | null; remainingStages: number }> = {};
 
   const BATCH_SIZE = 5;
   for (let i = 0; i < friends.length; i += BATCH_SIZE) {
@@ -916,7 +1901,27 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
                 startTime = `${stMatch2[1].trim()}T${stMatch2[2].trim()}`;
               }
             }
-            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime };
+            // Extract class name
+            const classMatch = xml.match(/<EventClass\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
+            const className = classMatch ? classMatch[1] : null;
+            // Extract organiser name — scoped to the <Organiser> element so we never
+            // pick up the runner's own club (<PersonStart><Organisation><Name>).
+            const orgBlock = xml.match(/<Organiser\b[\s\S]*?<\/Organiser>/)?.[0];
+            const organiserName = orgBlock?.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? null;
+            // Count remaining stages of a multi-stage (multi-day) event so the
+            // friends view can represent each stage as its own "event" via the
+            // multi-stage dots icon. A multi-day event lists one <EventRace> per
+            // stage with its own <RaceDate>; stages dated strictly after today are
+            // still to come (today's stage is shown as the active dot). Scoped to
+            // the first <StartList> block (the event we extracted above).
+            const firstEventBlock = xml.split(/<StartList\b/)[1] ?? xml;
+            let remainingStages = 0;
+            const eventRaceBlocks = firstEventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g) ?? [];
+            for (const block of eventRaceBlocks) {
+              const raceDate = block.match(/<RaceDate>[\s\S]*?<Date>([^<]+)<\/Date>/)?.[1]?.trim();
+              if (raceDate && raceDate > todayIso) remainingStages++;
+            }
+            result[String(friend.personId)] = { eventName: eventNameMatch[1], startTime, className, organiserName, remainingStages };
           }
         } catch {
           // Silently skip on error
@@ -926,6 +1931,68 @@ async function fetchFriendTodayStarts(friends: Friend[]): Promise<Record<string,
   }
 
   return result;
+}
+
+// A completed (or terminal) result status. Excludes NotCompeting/NotYetStarted/
+// Inactive which are not real results.
+const FINISHING_STATUS_RE =
+  /<CompetitorStatus\s+value="(OK|MisPunch|MissingPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)"|<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish|DidNotStart)<\/Status>/;
+
+/**
+ * True if the person has a completed result for a stage taking place TODAY.
+ *
+ * Multi-stage (multi-day) events return the WHOLE event's <ResultList>,
+ * including already-finished earlier stages — so a naive "any finishing status"
+ * check wrongly marks a friend as finished today when only yesterday's stage is
+ * done (which then shows green instead of the orange "live" status for today's
+ * stage). We therefore attribute each <RaceResult> to its own stage date (from
+ * the <EventRace> metadata, else the <Result> block's own <Date>) and only count
+ * a result whose stage date is today. Single-day events (no <RaceResult>) are
+ * already date-filtered by the Eventor query.
+ */
+function hasFinishingResultToday(xml: string, todayIso: string): boolean {
+  // Each <ResultList> is one event. Split to get per-event context.
+  const eventBlocks = xml.split(/<ResultList\b/);
+  for (let i = 1; i < eventBlocks.length; i++) {
+    const eventBlock = eventBlocks[i];
+
+    // Map EventRaceId → stage date (YYYY-MM-DD) from the <EventRace> metadata.
+    const raceDateById = new Map<string, string>();
+    const eventRaceBlocks = eventBlock.match(/<EventRace\b[\s\S]*?<\/EventRace>/g) ?? [];
+    for (const block of eventRaceBlocks) {
+      const idMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+      const dateMatch = block.match(/<RaceDate>[\s\S]*?<Date>([^<]+)<\/Date>/);
+      if (idMatch && dateMatch) raceDateById.set(idMatch[1], dateMatch[1].trim());
+    }
+
+    // Multi-day: one <RaceResult> per stage, each with <EventRaceId> + <Result>.
+    const raceResultBlocks = eventBlock.match(/<RaceResult\b[\s\S]*?<\/RaceResult>/g);
+    if (raceResultBlocks && raceResultBlocks.length > 0) {
+      for (const block of raceResultBlocks) {
+        if (!FINISHING_STATUS_RE.test(block)) continue;
+        const idMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
+        // Scope the date to <Result> so we never read a Person <BirthDate>.
+        const resultBlock = block.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
+        const stageDate =
+          (idMatch ? raceDateById.get(idMatch[1]) : undefined) ??
+          resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ??
+          null;
+        if (stageDate === todayIso) return true;
+      }
+      continue;
+    }
+
+    // Single-day: <PersonResult>…<Result> directly. The Eventor query already
+    // restricts to today, so any finishing status here is today's.
+    const personResult = eventBlock.match(/<PersonResult\b[\s\S]*?<\/PersonResult>/)?.[0] ?? eventBlock;
+    if (FINISHING_STATUS_RE.test(personResult)) {
+      const resultBlock = personResult.match(/<Result\b[\s\S]*?<\/Result>/)?.[0] ?? '';
+      const stageDate = resultBlock.match(/<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
+      // No date found → trust the query's date filter (single-day = today).
+      if (stageDate === null || stageDate === todayIso) return true;
+    }
+  }
+  return false;
 }
 
 async function fetchFriendTodayResults(friends: Friend[]): Promise<Set<string>> {
@@ -942,11 +2009,9 @@ async function fetchFriendTodayResults(friends: Friend[]): Promise<Set<string>> 
       batch.map(async (friend) => {
         try {
           const xml = await fetchPersonResultsXml(String(friend.personId), from, to);
-          // Check if there's any result with a valid status or time
-          const hasResult = /<CompetitorStatus\s+value="/.test(xml) ||
-            /<Status>(OK|MisPunch|Overtime|Disqualified|DidNotFinish)<\/Status>/.test(xml) ||
-            /<Time>[^<]+<\/Time>/.test(xml);
-          if (hasResult) {
+          // Only count a result for a stage taking place TODAY — multi-day events
+          // return earlier (already-finished) stages too.
+          if (hasFinishingResultToday(xml, todayIso)) {
             result.add(String(friend.personId));
           }
         } catch {

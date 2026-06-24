@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
@@ -66,7 +67,12 @@ export function FavoritesAndResultsPanel({
   };
 
   return (
-    <View style={styles.panel}>
+    <LinearGradient
+      colors={[colors.heroBottom, colors.heroTop, colors.primary]}
+      end={{ x: 0, y: 1 }}
+      start={{ x: 0, y: 0 }}
+      style={styles.panel}
+    >
       <View style={styles.tabBar}>
         <Pressable onPress={() => setSelectedTab('favorites')} style={[styles.tabButton, selectedTab === 'favorites' ? styles.tabButtonActive : null]}>
           <Text style={[styles.tabButtonText, selectedTab === 'favorites' ? styles.tabButtonTextActive : null]}>Favoriter</Text>
@@ -80,8 +86,8 @@ export function FavoritesAndResultsPanel({
         <>
           <View style={styles.panelHeaderRow}>
             <View style={styles.titleRow}>
-              <Ionicons color={colors.textMuted} name="star-outline" size={16} />
-              <Text style={styles.title}>Favoriter</Text>
+              <Ionicons color={colors.heroText} name="star-outline" size={16} />
+              <Text style={[styles.title, { color: colors.heroText }]}>Favoriter</Text>
             </View>
             {favoriteEvents.length > 0 ? (
               <Pressable onPress={confirmClearFavorites} style={styles.deleteButton}>
@@ -92,7 +98,7 @@ export function FavoritesAndResultsPanel({
           </View>
 
           {favoriteEvents.length === 0 ? (
-            <Text style={styles.helperText}>Du har inte favoritmarkerat någon tävling ännu.</Text>
+            <Text style={[styles.helperText, { color: colors.heroTextMuted }]}>Du har inte favoritmarkerat någon tävling ännu.</Text>
           ) : (
             <View style={styles.favoriteList}>
               {favoriteEvents.map((event) => (
@@ -126,8 +132,8 @@ export function FavoritesAndResultsPanel({
         <>
           <View style={styles.resultsHeaderRow}>
             <View style={styles.titleRow}>
-              <Ionicons color={colors.textMuted} name="ribbon-outline" size={16} />
-              <Text style={styles.title}>Mina resultat</Text>
+              <Ionicons color={colors.heroText} name="ribbon-outline" size={16} />
+              <Text style={[styles.title, { color: colors.heroText }]}>Mina resultat</Text>
             </View>
             <View style={styles.resultsFilterPills}>
               {(['national', 'district'] as const).map((filter) => (
@@ -169,7 +175,7 @@ export function FavoritesAndResultsPanel({
           />
         </>
       )}
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -264,11 +270,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 20,
   },
   panel: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.primaryDeep,
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: spacing.md,
+    overflow: 'hidden',
     padding: spacing.md,
   },
   panelHeaderRow: {

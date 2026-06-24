@@ -24,6 +24,8 @@ type SyncPayload = {
     gender: string;
     name: string;
     personId: number;
+    pushOnEntry?: boolean;
+    pushOnLive?: boolean;
     pushOnResult: boolean;
     pushOnStart: boolean;
   }>;
@@ -110,7 +112,7 @@ Deno.serve(async (request) => {
             .maybeSingle(),
           supabase
             .from('friend_watches')
-            .select('friend_person_id, friend_name, friend_club, friend_gender, friend_birth_year, push_on_entry, push_on_result, push_on_start')
+            .select('friend_person_id, friend_name, friend_club, friend_gender, friend_birth_year, push_on_entry, push_on_result, push_on_start, push_on_live')
             .eq('person_id', personId),
         ]);
 
@@ -140,6 +142,7 @@ Deno.serve(async (request) => {
             name: row.friend_name ?? '',
             personId: Number(row.friend_person_id),
             pushOnEntry: Boolean(row.push_on_entry),
+            pushOnLive: Boolean(row.push_on_live),
             pushOnResult: Boolean(row.push_on_result),
             pushOnStart: Boolean(row.push_on_start),
           })),
@@ -271,6 +274,7 @@ Deno.serve(async (request) => {
         friend_person_id: String(f.personId),
         person_id: personId,
         push_on_entry: f.pushOnEntry ?? false,
+        push_on_live: f.pushOnLive ?? false,
         push_on_result: f.pushOnResult ?? true,
         push_on_start: f.pushOnStart ?? true,
       }));

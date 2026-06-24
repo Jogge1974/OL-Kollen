@@ -219,9 +219,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   return StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.primary,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 1.5,
     justifyContent: 'center',
     overflow: 'hidden',
     position: 'relative',

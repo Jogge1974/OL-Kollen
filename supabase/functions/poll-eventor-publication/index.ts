@@ -92,7 +92,10 @@ Deno.serve(async (request) => {
     let checkedEvents = 0;
     let pushCount = 0;
 
-    // Group watches by event_id so we fetch each event only once
+    // Group watches by event_id so we fetch each event only once. For
+    // multi-stage events each stage is favorited as its own watch with a
+    // composite event_id ("<eventId>::<eventRaceId>"), so each stage forms its
+    // own group and is evaluated independently.
     const watchesByEventId = new Map<string, WatchRow[]>();
 
     for (const watch of (watches as WatchRow[] | null | undefined) ?? []) {
@@ -101,9 +104,21 @@ Deno.serve(async (request) => {
       watchesByEventId.set(watch.event_id, existing);
     }
 
+    // Cache the Eventor XML per base event id so multiple stages of the same
+    // event don't trigger duplicate fetches within a single run.
+    const xmlByBaseEventId = new Map<string, string>();
+
     for (const [eventId, eventWatches] of watchesByEventId) {
-      const eventXml = await fetchEventDetailXml(eventId);
-      const flags = extractPublicationFlags(eventXml);
+      const baseEventId = eventId.split('::')[0] ?? eventId;
+      const eventRaceId = eventId.includes('::') ? eventId.split('::')[1] || null : null;
+
+      let eventXml = xmlByBaseEventId.get(baseEventId);
+      if (eventXml === undefined) {
+        eventXml = await fetchEventDetailXml(eventId);
+        xmlByBaseEventId.set(baseEventId, eventXml);
+      }
+
+      const flags = extractPublicationFlags(eventXml, eventRaceId);
       const messages: Array<{ body: string; title: string; to: string }> = [];
 
       for (const watch of eventWatches) {

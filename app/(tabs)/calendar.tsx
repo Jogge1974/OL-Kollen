@@ -44,7 +44,12 @@ export default function CalendarScreen() {
             topRightText={`${events.length} tävlingar`}
           />
 
-          <View style={styles.headerCard}>
+          <LinearGradient
+            colors={[colors.heroBottom, colors.heroTop, colors.primary]}
+            end={{ x: 0, y: 1 }}
+            start={{ x: 0, y: 0 }}
+            style={styles.headerCard}
+          >
             <View style={styles.controlsRow}>
               <View style={styles.modeSwitch}>
                 <Pressable onPress={() => setViewMode('list')} style={[styles.modeButton, viewMode === 'list' ? styles.modeButtonActive : null]}>
@@ -66,7 +71,7 @@ export default function CalendarScreen() {
                 <Text style={styles.filterButtonText}>Filter</Text>
               </Pressable>
             </View>
-          </View>
+          </LinearGradient>
         </View>
 
         {isLoading ? <LoadingState label="Hämtar tävlingar från Eventor..." /> : null}
@@ -244,11 +249,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     gap: spacing.sm,
   },
   headerCard: {
-    backgroundColor: colors.surfaceOverlay,
-    borderColor: colors.border,
-    borderRadius: 24,
-    borderWidth: 1,
+    borderColor: colors.primaryDeep,
+    borderRadius: 18,
+    borderWidth: 1.5,
     gap: spacing.md,
+    overflow: 'hidden',
     padding: spacing.lg,
   },
   summaryRow: {

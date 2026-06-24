@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -225,28 +226,34 @@ export default function ProfileScreen() {
                 ? undefined
                 : () => setShowSverigelistanTrend((value) => !value)
             }
-            style={styles.panel}
+            style={styles.sverigelistanPanel}
           >
+            <LinearGradient
+              colors={[colors.heroBottom, colors.heroTop, colors.primary]}
+              end={{ x: 0, y: 1 }}
+              start={{ x: 0, y: 0 }}
+              style={StyleSheet.absoluteFill}
+            />
             <View style={styles.sverigelistanHeader}>
               <View style={styles.titleRow}>
-                <Ionicons color={colors.textMuted} name="trophy-outline" size={16} />
-                <Text style={styles.panelTitle}>Sverigelistan</Text>
+                <Ionicons color={colors.heroText} name="trophy-outline" size={16} />
+                <Text style={[styles.panelTitle, { color: colors.heroText }]}>Sverigelistan</Text>
               </View>
               {!user.personId || isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry ? null : (
-                <Text style={styles.sverigelistanUpdated}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
+                <Text style={[styles.sverigelistanUpdated, { color: colors.heroTextMuted }]}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
               )}
             </View>
 
             {!user.personId ? (
-              <Text style={styles.helperText}>PersonId är fel eller saknas, så Sverigelistan kan inte hämtas.</Text>
+              <Text style={[styles.helperText, { color: colors.heroTextMuted }]}>PersonId är fel eller saknas, så Sverigelistan kan inte hämtas.</Text>
             ) : isSverigelistanLoading ? (
-              <Text style={styles.helperText}>Hämtar Sverigelistan...</Text>
+              <Text style={[styles.helperText, { color: colors.heroTextMuted }]}>Hämtar Sverigelistan...</Text>
             ) : sverigelistanError ? (
               <Text style={styles.errorText}>{sverigelistanError}</Text>
             ) : !hasSupabase ? (
-              <Text style={styles.helperText}>Sverigelistan kan inte visas just nu.</Text>
+              <Text style={[styles.helperText, { color: colors.heroTextMuted }]}>Sverigelistan kan inte visas just nu.</Text>
             ) : !currentEntry ? (
-              <Text style={styles.helperText}>Det finns ännu ingen Sverigelistan-post för den här löparen.</Text>
+              <Text style={[styles.helperText, { color: colors.heroTextMuted }]}>Det finns ännu ingen Sverigelistan-post för den här löparen.</Text>
             ) : (
               <>
                 <View style={styles.rankSummaryGrid}>
@@ -280,14 +287,14 @@ export default function ProfileScreen() {
                 {showSverigelistanTrend ? (
                   <>
                     <View style={styles.trendHeaderRow}>
-                      <Text style={styles.trendHeaderTitle}>Placering senaste månaderna</Text>
-                      <Text style={styles.trendToggleLink}>&lt; Visa mindre</Text>
+                      <Text style={[styles.trendHeaderTitle, { color: colors.heroText }]}>Placering senaste månaderna</Text>
+                      <Text style={[styles.trendToggleLink, { color: colors.heroText }]}>&lt; Visa mindre</Text>
                     </View>
                     <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
                     <TrendTable classTrend={classTrend} monthlyTrend={monthlyTrend} />
                   </>
                 ) : (
-                  <Text style={styles.trendToggleLink}>Visa mer &gt;</Text>
+                  <Text style={[styles.trendToggleLink, { color: colors.heroText }]}>Visa mer &gt;</Text>
                 )}
               </>
             )}
@@ -478,6 +485,14 @@ function createStyles(colors: ColorPalette) {
     borderRadius: 24,
     borderWidth: 1,
     gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  sverigelistanPanel: {
+    borderColor: colors.primaryDeep,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    gap: spacing.sm,
+    overflow: 'hidden',
     padding: spacing.sm,
   },
   profileHeader: {
@@ -723,7 +738,11 @@ function createStyles(colors: ColorPalette) {
     paddingVertical: 2,
   },
   trendTable: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
     marginTop: spacing.sm,
+    overflow: 'hidden',
+    padding: spacing.xs,
   },
   trendTableRow: {
     flexDirection: 'row',

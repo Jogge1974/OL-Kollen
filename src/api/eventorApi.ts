@@ -63,7 +63,16 @@ export async function fetchEventorEvents(filters: EventFilterValues): Promise<Ev
     mappedEvents = hydrateEventOrganisers(mappedEvents, directory.organisationNameById);
   }
 
-  return filterEvents(mappedEvents, filters);
+  return filterEvents(mappedEvents, filters).sort(sortEventsByDateThenName);
+}
+
+function sortEventsByDateThenName(left: EventItem, right: EventItem) {
+  const byDate = left.startDate.localeCompare(right.startDate);
+  if (byDate !== 0) {
+    return byDate;
+  }
+
+  return left.name.localeCompare(right.name, 'sv');
 }
 
 function filterEvents(events: EventItem[], filters: EventFilterValues) {

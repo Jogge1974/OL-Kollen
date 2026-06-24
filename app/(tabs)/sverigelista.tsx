@@ -2,7 +2,8 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Animated, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Animated, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
@@ -44,7 +45,7 @@ export default function SverigelistaScreen() {
   const [clubRankingListGender, setClubRankingListGender] = React.useState<'H' | 'D' | null>(null);
   const [clubRankingListSearch, setClubRankingListSearch] = React.useState('');
   const [clubDetailClub, setClubDetailClub] = React.useState<string | null>(null);
-  const [clubRankingExpanded, setClubRankingExpanded] = React.useState(false);
+  const [clubRankingOverviewVisible, setClubRankingOverviewVisible] = React.useState(false);
 
   React.useEffect(() => {
     if (user?.gender === 'D' || user?.gender === 'H') {
@@ -311,7 +312,12 @@ export default function SverigelistaScreen() {
             />
 
             <Animated.View style={{ maxHeight: collapseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 800] }), opacity: collapseAnim, overflow: 'hidden' }}>
-            <View style={styles.controlsCard}>
+            <LinearGradient
+              colors={[colors.heroBottom, colors.heroTop, colors.primary]}
+              end={{ x: 0, y: 1 }}
+              start={{ x: 0, y: 0 }}
+              style={styles.controlsCard}
+            >
                   {/* Row 1: Min sida + Min klubb (left), Reset filter (right) */}
                   <View style={styles.topBadgeRow}>
                     <View style={styles.topBadgeLeft}>
@@ -339,6 +345,7 @@ export default function SverigelistaScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     label="Sök namn, klubb eller klass"
+                    labelColor={colors.heroText}
                     onClearText={() => setSearchText('')}
                     onChangeText={setSearchText}
                     placeholder="Skriv för att filtrera listan"
@@ -382,50 +389,20 @@ export default function SverigelistaScreen() {
                   </View>
 
                   {error ? <Text style={styles.errorText}>{error}</Text> : null}
-                  {!hasSupabase ? <Text style={styles.helperText}>Sverigelistan kan inte visas.</Text> : null}
-            </View>
+                  {!hasSupabase ? <Text style={[styles.helperText, { color: colors.heroTextMuted }]}>Sverigelistan kan inte visas.</Text> : null}
+            </LinearGradient>
 
-            {/* Club Ranking Card — collapsible panel */}
+            {/* Club Ranking Card — opens overview modal */}
             {(clubRankings.H.length > 0 || clubRankings.D.length > 0) ? (
               <View style={styles.clubRankingSplitCard}>
                 <Pressable
-                  onPress={() => setClubRankingExpanded((v) => !v)}
+                  onPress={() => setClubRankingOverviewVisible(true)}
                   style={styles.clubRankingPanelHeader}
                 >
                   <Ionicons color={colors.primaryDeep} name="trophy-outline" size={18} />
                   <Text style={styles.clubRankingPanelTitle}>Klubbranking</Text>
-                  <Ionicons color={colors.textMuted} name={clubRankingExpanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+                  <Ionicons color={colors.textMuted} name="chevron-forward" size={16} />
                 </Pressable>
-
-                {clubRankingExpanded ? (
-                  <View style={styles.clubRankingPanelContent}>
-                    {/* Herr side */}
-                    <Pressable onPress={() => { setClubRankingListGender('H'); setClubRankingListSearch(''); }} style={styles.clubRankingHalf}>
-                      <Text style={styles.clubRankingHalfTitle}>Herr</Text>
-                      {clubRankings.H.slice(0, 3).map((entry, i) => (
-                        <View key={entry.current.club} style={styles.clubRankingMiniRow}>
-                          <Text style={styles.clubRankingMiniMedal}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</Text>
-                          <Text numberOfLines={1} style={styles.clubRankingMiniClub}>{entry.current.club}</Text>
-                          <Text style={styles.clubRankingMiniPoints}>{entry.current.avgPoints.toFixed(2)}</Text>
-                        </View>
-                      ))}
-                    </Pressable>
-
-                    <View style={styles.clubRankingDivider} />
-
-                    {/* Dam side */}
-                    <Pressable onPress={() => { setClubRankingListGender('D'); setClubRankingListSearch(''); }} style={styles.clubRankingHalf}>
-                      <Text style={styles.clubRankingHalfTitle}>Dam</Text>
-                      {clubRankings.D.slice(0, 3).map((entry, i) => (
-                        <View key={entry.current.club} style={styles.clubRankingMiniRow}>
-                          <Text style={styles.clubRankingMiniMedal}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</Text>
-                          <Text numberOfLines={1} style={styles.clubRankingMiniClub}>{entry.current.club}</Text>
-                          <Text style={styles.clubRankingMiniPoints}>{entry.current.avgPoints.toFixed(2)}</Text>
-                        </View>
-                      ))}
-                    </Pressable>
-                  </View>
-                ) : null}
               </View>
             ) : null}
 
@@ -558,14 +535,67 @@ export default function SverigelistaScreen() {
       </Modal>
       <RunnerRankingModal comparisonRows={genderRows} onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
 
+      {/* Club Ranking Overview Modal — Top 10 Herr + Top 10 Dam */}
+      <Modal animationType="fade" transparent visible={clubRankingOverviewVisible}>
+        <View style={styles.searchOverlay}>
+          <Pressable style={styles.searchBackdrop} onPress={() => setClubRankingOverviewVisible(false)} />
+          <View style={styles.clubRankingSheet}>
+            <View style={styles.searchHeader}>
+              <Text style={styles.searchTitle}>Klubbranking</Text>
+              <Pressable onPress={() => setClubRankingOverviewVisible(false)} style={styles.searchCloseButton}>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+                <Text style={styles.searchCloseText}>Stäng</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.clubRankingOverviewContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {(['H', 'D'] as const).map((gender) => (
+                <View key={gender} style={styles.clubRankingOverviewSection}>
+                  <View style={styles.clubRankingOverviewSectionHeader}>
+                    <Ionicons color={gender === 'H' ? '#2F6FB0' : '#C0568A'} name={gender === 'H' ? 'male' : 'female'} size={14} />
+                    <Text style={[styles.clubRankingOverviewSectionTitle, { color: gender === 'H' ? '#2F6FB0' : '#C0568A' }]}>{gender === 'H' ? 'Herr' : 'Dam'}</Text>
+                  </View>
+                  {clubRankings[gender].slice(0, 10).map((entry, i) => (
+                    <View
+                      key={entry.current.club}
+                      style={[
+                        styles.clubRankingOverviewRow,
+                        i % 2 === 1 ? styles.clubRankingOverviewRowAlt : null,
+                      ]}
+                    >
+                      <Text style={styles.clubRankingOverviewRank}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</Text>
+                      <Text numberOfLines={1} style={styles.clubRankingOverviewClub}>{entry.current.club}</Text>
+                      <View style={styles.clubRankingOverviewPointsBadge}>
+                        <Text style={styles.clubRankingOverviewPoints}>{entry.current.avgPoints.toFixed(2)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                  <Pressable
+                    onPress={() => {
+                      setClubRankingOverviewVisible(false);
+                      setClubRankingListSearch('');
+                      setClubRankingListGender(gender);
+                    }}
+                    style={styles.clubRankingShowAllLink}
+                  >
+                    <Text style={styles.clubRankingShowAllText}>Visa hela listan</Text>
+                    <Ionicons color={colors.primary} name="chevron-forward" size={14} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Club Ranking Full List Modal */}
       <Modal animationType="fade" transparent visible={clubRankingListGender !== null}>
         <View style={styles.searchOverlay}>
-          <Pressable style={styles.searchBackdrop} onPress={() => setClubRankingListGender(null)} />
+          <Pressable style={styles.searchBackdrop} onPress={() => { setClubRankingListGender(null); setClubRankingOverviewVisible(true); }} />
           <View style={styles.clubRankingSheet}>
             <View style={styles.searchHeader}>
               <Text style={styles.searchTitle}>Klubbranking {clubRankingListGender === 'H' ? 'Herr' : 'Dam'}</Text>
-              <Pressable onPress={() => setClubRankingListGender(null)} style={styles.searchCloseButton}>
+              <Pressable onPress={() => { setClubRankingListGender(null); setClubRankingOverviewVisible(true); }} style={styles.searchCloseButton}>
                 <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
                 <Text style={styles.searchCloseText}>Stäng</Text>
               </Pressable>
@@ -948,20 +978,20 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     gap: spacing.sm,
   },
   controlsCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.primaryDeep,
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: spacing.md,
     alignSelf: 'stretch',
+    overflow: 'hidden',
     padding: spacing.lg,
     width: '100%',
   },
   clubRankingSplitCard: {
     backgroundColor: colors.surface,
     borderColor: isSoft
-      ? (isDark ? '#1E3058' : '#A0B8D8')
-      : (isDark ? '#2E5A2A' : '#8FBF8A'),
+      ? (isDark ? '#3E5C8C' : '#5E7FB0')
+      : (isDark ? '#4C8B47' : colors.primaryDeep),
     borderRadius: 16,
     borderWidth: 1.5,
     marginTop: spacing.sm,
@@ -969,6 +999,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   },
   clubRankingPanelHeader: {
     alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: spacing.md,
@@ -978,47 +1009,76 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     ...typography.bodyStrong,
     color: colors.primaryDeep,
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
-  clubRankingPanelContent: {
-    borderTopColor: isDark ? '#3A3520' : '#F0E6A0',
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    overflow: 'hidden',
+  clubRankingOverviewContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
   },
-  clubRankingHalf: {
-    flex: 1,
-    gap: 6,
-    padding: spacing.sm,
+  clubRankingOverviewSection: {
+    gap: 0,
   },
-  clubRankingDivider: {
-    backgroundColor: isDark ? '#3A3520' : '#F0E6A0',
-    width: 1,
-  },
-  clubRankingHalfTitle: {
-    ...typography.captionStrong,
-    color: colors.textPrimary,
-    fontSize: 11,
-    marginBottom: 2,
-  },
-  clubRankingMiniRow: {
+  clubRankingOverviewSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 5,
+    marginBottom: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
   },
-  clubRankingMiniMedal: {
+  clubRankingOverviewSectionTitle: {
+    ...typography.bodyStrong,
+    fontSize: 14,
+  },
+  clubRankingOverviewRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  clubRankingOverviewRowAlt: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  clubRankingOverviewRank: {
+    ...typography.bodyStrong,
+    color: colors.primaryDeep,
     fontSize: 12,
+    minWidth: 26,
+    textAlign: 'center',
   },
-  clubRankingMiniClub: {
+  clubRankingOverviewClub: {
     ...typography.caption,
     color: colors.textPrimary,
     flex: 1,
+    fontWeight: '600',
+  },
+  clubRankingOverviewPointsBadge: {
+    backgroundColor: isSoft
+      ? (isDark ? 'rgba(105, 191, 235, 0.18)' : 'rgba(15, 52, 124, 0.10)')
+      : (isDark ? 'rgba(126, 196, 122, 0.18)' : 'rgba(76, 139, 71, 0.12)'),
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  clubRankingOverviewPoints: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
     fontSize: 11,
   },
-  clubRankingMiniPoints: {
+  clubRankingShowAllLink: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: 2,
+    marginTop: 4,
+    paddingVertical: 2,
+  },
+  clubRankingShowAllText: {
     ...typography.captionStrong,
-    color: colors.textMuted,
-    fontSize: 10,
+    color: colors.primary,
   },
   clubRankingSheet: {
     backgroundColor: colors.surface,

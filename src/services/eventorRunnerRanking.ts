@@ -185,6 +185,7 @@ function buildOverview(competitions: RunnerRankingCompetitionRow[]): RunnerRanki
   const replacementRow = soonestExpiryRow
     ? competitions
         .filter((row) => !row.countsForRanking)
+        .filter((row) => !isSprintDistance(row.distance))
         .filter((row) => compareIsoDate(row.dateISO, soonestExpiryRow.dateISO) > 0)
         .filter((row) => Number.isFinite(row.score))
         .slice()
@@ -450,5 +451,9 @@ function formatISODate(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function isSprintDistance(distance: string): boolean {
+  return distance.toLowerCase().trim() === 'sp' || distance.toLowerCase().trim() === 'sprint';
 }
 

@@ -110,7 +110,6 @@ export function PublishedListModal({
   const scrollToAnchorKey = React.useCallback(
     (anchorKey: string, retries = 20) => {
       if (Platform.OS === 'android') {
-        // Android: filtering handled via visibleSections, no scroll needed
         return;
       }
 
@@ -151,10 +150,8 @@ export function PublishedListModal({
   const handleAnchorPress = React.useCallback(
     (anchorKey: string) => {
       setSelectedAnchorKey(anchorKey);
-      if (Platform.OS === 'android') {
-        // Android: scroll to top when filtering to new section
-        scrollRef.current?.scrollTo({ y: 0, animated: false });
-      }
+      // Scroll to top when switching section (only one is rendered at a time)
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
     },
     [],
   );
@@ -263,8 +260,9 @@ export function PublishedListModal({
             {!currentState?.isLoading && !currentState?.error && currentState
               ? currentState.sections
                   .filter((section) => {
-                    // Android: show only the selected section (public scope with picker only)
-                    if (Platform.OS !== 'android' || !selectedAnchorKey || currentState.scope === 'organisation') return true;
+                    // Show only the selected section (public scope with picker) to
+                    // avoid rendering thousands of rows for large events (e.g. Tiomila).
+                    if (!selectedAnchorKey || currentState.scope === 'organisation') return true;
                     return `section:${section.title}` === selectedAnchorKey;
                   })
                   .map((section) => (
@@ -393,6 +391,21 @@ function PublishedTableSection({
   const isOrganisationResults = scope === 'organisation' && kind === 'results';
   const hasBibColumn = kind === 'starts' && section.rows.some((row) => Boolean(row.bibNumber));
   const relayLabel = scope === 'organisation' ? 'Klass' : 'Klubb';
+
+  // Progressive rendering: cap the number of rendered rows to avoid freezing on
+  // large result sets (e.g. Tiomila relay classes with 500+ teams).
+  const INITIAL_ROW_LIMIT = isRelaySection ? 50 : 100;
+  const ROW_BATCH_SIZE = isRelaySection ? 50 : 100;
+  const [visibleRowCount, setVisibleRowCount] = React.useState(INITIAL_ROW_LIMIT);
+  // Reset visible count when section changes
+  React.useEffect(() => { setVisibleRowCount(INITIAL_ROW_LIMIT); }, [section.title]);
+  const totalRows = section.rows.length;
+  const visibleRows = React.useMemo(
+    () => totalRows <= INITIAL_ROW_LIMIT ? section.rows : section.rows.slice(0, visibleRowCount),
+    [section.rows, visibleRowCount, totalRows, INITIAL_ROW_LIMIT],
+  );
+  const hasMoreRows = visibleRowCount < totalRows;
+
   const relayStartWidths = React.useMemo(() => {
     if (kind !== 'starts' || !isRelaySection) {
       return null;
@@ -789,7 +802,7 @@ function PublishedTableSection({
         )}
       </View>
 
-      {section.rows.map((row, rowIndex) => {
+      {visibleRows.map((row, rowIndex) => {
         const classAnchorKey = row.classLabel ? `class:${row.classLabel}` : null;
         const shouldAttachClassAnchor = scope === 'organisation' && classAnchorKey && !seenClassAnchors.current.has(classAnchorKey);
         const resultStatus = kind === 'results' && row.status && row.status !== 'OK' ? formatResultStatus(row.status) : null;
@@ -1244,6 +1257,17 @@ function PublishedTableSection({
           </RowContainer>
         );
       })}
+
+      {hasMoreRows ? (
+        <Pressable
+          onPress={() => setVisibleRowCount((prev) => prev + ROW_BATCH_SIZE)}
+          style={styles.showMoreButton}
+        >
+          <Text style={styles.showMoreText}>
+            Visa fler ({totalRows - visibleRowCount} kvar av {totalRows})
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -1672,6 +1696,17 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     borderWidth: 1,
     marginHorizontal: -spacing.lg,
     overflow: 'hidden',
+  },
+  showMoreButton: {
+    alignItems: 'center',
+    backgroundColor: isDark ? colors.surfaceAlt : colors.background,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.md,
+  },
+  showMoreText: {
+    ...typography.buttonSmall,
+    color: colors.primaryDeep,
   },
   tableClassHeader: {
     backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,

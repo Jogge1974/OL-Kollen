@@ -96,7 +96,7 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
         <View style={styles.labelsRow}>
           {primaryChartPoints.map((point, index) => (
             <Text key={`${point.label}-label`} style={styles.monthLabel}>
-              {index % 2 === 0 ? point.label : ''}
+              {(primaryChartPoints.length - 1 - index) % 2 === 0 ? point.label : ''}
             </Text>
           ))}
         </View>
