@@ -59,24 +59,24 @@ export function PushSyncController() {
 
     const runSync = async () => {
       try {
-        const wantsPush = notificationSettings.pushOnResultList || notificationSettings.pushOnStartList;
         let device: ReturnType<typeof createPushSyncPayload>['device'] = null;
 
-        if (wantsPush) {
-          try {
-            const registration = await registerForPushNotificationsAsync();
-            console.log('[PushSync] Token registrerat:', registration.pushToken, 'Device:', registration.deviceId, 'Platform:', registration.platform);
+        // Always try to register a push token for every signed-in device, even when
+        // no push settings are enabled, so we have a token on file the moment the
+        // user opts into anything later.
+        try {
+          const registration = await registerForPushNotificationsAsync();
+          console.log('[PushSync] Token registrerat:', registration.pushToken, 'Device:', registration.deviceId, 'Platform:', registration.platform);
 
-            device = {
-              deviceId: registration.deviceId,
-              platform: registration.platform,
-              pushToken: registration.pushToken,
-            };
-          } catch (registrationError) {
-            console.warn('[PushSync] Kunde inte registrera Expo push-token.', {
-              message: registrationError instanceof Error ? registrationError.message : 'Okant fel',
-            });
-          }
+          device = {
+            deviceId: registration.deviceId,
+            platform: registration.platform,
+            pushToken: registration.pushToken,
+          };
+        } catch (registrationError) {
+          console.warn('[PushSync] Kunde inte registrera Expo push-token.', {
+            message: registrationError instanceof Error ? registrationError.message : 'Okant fel',
+          });
         }
 
         const payload = createPushSyncPayload({
