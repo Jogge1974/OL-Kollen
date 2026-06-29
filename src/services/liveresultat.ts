@@ -1,4 +1,4 @@
-const BASE_URL = 'https://liveresultatbackend.azurewebsites.net/api/Competition';
+const BASE_URL = 'https://liveresultbackend-c2embudkd9bse9er.westeurope-01.azurewebsites.net/api/Competition';
 
 type LiveCompetition = {
   id: number;

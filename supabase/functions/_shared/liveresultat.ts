@@ -6,7 +6,7 @@
 // ngrok tunnel or an Azure web service) without a code change. Falls back to
 // the real backend when the secret is unset. NOTE: no trailing slash.
 const BASE_URL = Deno.env.get('LIVERESULTAT_BASE_URL')?.replace(/\/$/, '') ||
-  'https://liveresultatbackend.azurewebsites.net/api/Competition';
+  'https://liveresultbackend-c2embudkd9bse9er.westeurope-01.azurewebsites.net/api/Competition';
 
 type LiveCompetition = {
   id: number;
