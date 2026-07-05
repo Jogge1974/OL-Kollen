@@ -271,9 +271,19 @@ function parsePersonStartsXml(xml: string): ParsedStart[] {
       continue;
     }
 
-    // Multi-day event with NO RaceStart blocks at all (all stages are free-start):
-    // emit one entry per stage from the EventRace metadata.
-    if (raceDateMap.size > 0) {
+    // Genuine MULTI-STAGE event with NO RaceStart blocks at all (every stage is
+    // free-start): emit one entry per stage from the EventRace metadata.
+    //
+    // Guard on size > 1: Eventor lists an <EventRace> (with the real EventRaceId)
+    // even for SINGLE-day events, so raceDateMap has exactly one entry there. If
+    // we keyed those by that EventRaceId, the starts source would use e.g. 55490
+    // while the results source (PersonResult>Result, no RaceResult) and the
+    // entries source both key single-day rows by event_id (53675). That mismatch
+    // creates TWO friend_activity_state rows for the same race, and once one is
+    // marked finished the shadow row replays the split + finish live pushes.
+    // Single-day (size <= 1) must fall through to the event_id fallback below so
+    // all three sources agree on the key.
+    if (raceDateMap.size > 1) {
       for (const [raceId, dateStr] of raceDateMap) {
         const stageName = composeStageName(eventName, raceNameMap.get(raceId));
         results.push({ eventId, eventRaceId: raceId, eventName: stageName, organiserName, startTime: null, raceDateStr: dateStr, className });

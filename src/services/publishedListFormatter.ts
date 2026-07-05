@@ -187,9 +187,24 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
   const classStarts = toArray<Record<string, unknown>>(parsed.StartList?.ClassStart).map((classStart) => {
     const eventClass = getRecord(classStart.Class);
     const classLabel = getString(eventClass?.Name) ?? 'Klass';
-    const course = getRecord(classStart.Course);
-    const courseLengthMeters = toNumber(course?.Length);
-    const courseLengthLabel = formatCourseLength(courseLengthMeters);
+    // Course length must be resolved per race, exactly like start times.
+    // For multi-stage events the class-level <Course> only describes a single
+    // race (typically race 1), so using it for every row would show the wrong
+    // length for the other stages. The authoritative per-race length lives on
+    // each <PersonStart><Start> element; fall back to the class-level course
+    // keyed by race number for single-stage lists that omit the nested course.
+    const courseLengthByRace = new Map<string, number>();
+    let fallbackCourseLengthMeters = 0;
+    toArray<Record<string, unknown>>(classStart.Course).forEach((courseNode) => {
+      const courseRecord = getRecord(courseNode);
+      const lengthMeters = toNumber(courseRecord?.Length);
+      const courseRaceNumber = getRaceNumberValue(courseRecord?.raceNumber ?? courseRecord?.RaceNumber);
+      if (courseRaceNumber) {
+        courseLengthByRace.set(courseRaceNumber, lengthMeters);
+      } else if (!fallbackCourseLengthMeters) {
+        fallbackCourseLengthMeters = lengthMeters;
+      }
+    });
     const personStarts = toArray<Record<string, unknown>>(classStart.PersonStart)
       .map((personStart) => {
         const person = getRecord(personStart.Person);
@@ -201,6 +216,15 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
         const organisationId = getIdValue(organisation?.Id);
         const startRaceNumber = getRaceNumberValue(start?.raceNumber ?? start?.RaceNumber);
         const startTime = getEventorClockValue(start?.StartTime) ?? '-';
+        const startCourse = getRecord(start?.Course);
+        let courseLengthMeters = toNumber(startCourse?.Length);
+        if (!courseLengthMeters) {
+          courseLengthMeters = startRaceNumber
+            ? courseLengthByRace.get(startRaceNumber) ?? 0
+            : fallbackCourseLengthMeters ||
+              (courseLengthByRace.size === 1 ? [...courseLengthByRace.values()][0] : 0);
+        }
+        const courseLengthLabel = formatCourseLength(courseLengthMeters);
 
         return {
           bibNumber,
@@ -218,6 +242,10 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
         };
       })
       .filter((row) => rowMatchesSelectedRace(row.startRaceNumber, undefined, options.selectedEventRaceId, selectedRaceNumber));
+
+    // Reflect the length of the race actually shown (after race filtering)
+    // instead of the shared class-level course.
+    const courseLengthLabel = personStarts.find((row) => row.courseLengthLabel)?.courseLengthLabel ?? null;
 
     return {
       classLabel,

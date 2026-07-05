@@ -86,8 +86,8 @@ export default function EventDetailScreen() {
   );
   const showResultActions = event?.hasPublishedResults ?? false;
   const secondaryKind: EventPublishedListKind = event?.hasPublishedStarts ? 'starts' : 'entries';
-  const resultCount = isRelayEvent ? counts.totalEntries : counts.totalStarts;
-  const clubResultCount = counts.organisationStarts;
+  const resultCount = isRelayEvent ? counts.totalEntries : resolveResultCount(counts.totalStarts, counts.totalEntries);
+  const clubResultCount = resolveResultCount(counts.organisationStarts, counts.organisationEntries);
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
   }, []);
@@ -496,6 +496,10 @@ function MapShortcutButton({ icon, label, onPress }: { icon: keyof typeof Ionico
 
 function formatCountSuffix(value: number | null) {
   return typeof value === 'number' && Number.isFinite(value) ? ` (${value})` : '';
+}
+
+function resolveResultCount(starts: number | null, entries: number | null) {
+  return typeof starts === 'number' && starts > 0 ? starts : entries;
 }
 
 function normalizeDocumentName(name: string) {

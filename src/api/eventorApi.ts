@@ -159,9 +159,10 @@ export async function fetchEventPublishedListXml(
   scope: EventPublishedListScope,
   eventId: string,
   organisationId?: string,
+  eventRaceId?: string | null,
 ) {
   const normalizedEventId = normalizeEventId(eventId);
-  const request = buildPublishedListRequest(kind, scope, normalizedEventId, organisationId);
+  const request = buildPublishedListRequest(kind, scope, normalizedEventId, organisationId, eventRaceId);
 
   const response = await fetch(request.endpoint, {
     headers: {
@@ -448,6 +449,7 @@ function buildPublishedListRequest(
   scope: EventPublishedListScope,
   eventId: string,
   organisationId?: string,
+  eventRaceId?: string | null,
 ) {
   if (kind === 'entries') {
     const params = new URLSearchParams({
@@ -469,6 +471,12 @@ function buildPublishedListRequest(
   if (kind === 'starts') {
     const params = new URLSearchParams({ eventId });
 
+    // For multi-stage events the per-race course length is only included when
+    // the specific race is requested, so pass eventRaceId when we have it.
+    if (eventRaceId) {
+      params.set('eventRaceId', eventRaceId);
+    }
+
     return {
       endpoint: buildEventorUrl(`/starts/event/iofxml?${params.toString()}`),
       params: Object.fromEntries(params.entries()),
@@ -476,6 +484,10 @@ function buildPublishedListRequest(
   }
 
   const params = new URLSearchParams({ eventId });
+
+  if (eventRaceId) {
+    params.set('eventRaceId', eventRaceId);
+  }
 
   return {
     endpoint: buildEventorUrl(`/results/event/iofxml?${params.toString()}`),

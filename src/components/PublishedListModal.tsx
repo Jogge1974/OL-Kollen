@@ -1334,7 +1334,7 @@ export async function openPublishedListModal(
 
   try {
     const [rawXml, eventClassNameById, eventDetail] = await Promise.all([
-      fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined),
+      fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined, selectedEventRaceId),
       kind === 'entries' ? fetchEventClassNameMap(eventId).catch(() => ({})) : Promise.resolve<Record<string, string>>({}),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
