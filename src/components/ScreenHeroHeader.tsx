@@ -47,11 +47,11 @@ export function ScreenHeroHeader({ badge, chips, eyebrow, eyebrowContent, subtit
 
       <View style={styles.heroTitleRow}>
         <View style={styles.heroTitleWrap}>
-          <Text numberOfLines={1} style={styles.heroTitle}>
+          <Text adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1} style={styles.heroTitle}>
             {title}
           </Text>
           {subtitle ? (
-            <Text numberOfLines={1} style={styles.heroSubtitle}>
+            <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={styles.heroSubtitle}>
               {subtitle}
             </Text>
           ) : null}
@@ -84,8 +84,8 @@ function HeroChipView({ icon, label, value, flex }: HeroChip) {
     <View style={[styles.heroChip, flex ? { flex } : null]}>
       <Ionicons color={colors.heroText} name={icon} size={14} />
       <View style={styles.heroChipTextWrap}>
-        <Text style={styles.heroChipLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.heroChipValue}>
+        <Text numberOfLines={1} style={styles.heroChipLabel}>{label}</Text>
+        <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={styles.heroChipValue}>
           {value}
         </Text>
       </View>

@@ -139,9 +139,9 @@ export default function HomeScreen() {
 
           <View style={styles.heroTopRow}>
             <View style={styles.heroCopy}>
-              <Text style={styles.heroEyebrow}>{user ? `Hej ${greetingName}` : 'Orientering'}</Text>
-              <Text style={styles.heroTitle}>Kontrollen</Text>
-              <Text style={styles.heroDescription}>
+              <Text numberOfLines={1} style={styles.heroEyebrow}>{user ? `Hej ${greetingName}` : 'Orientering'}</Text>
+              <Text adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1} style={styles.heroTitle}>Kontrollen</Text>
+              <Text adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={styles.heroDescription}>
                 Ett komplement till Eventor.
               </Text>
             </View>
@@ -241,7 +241,7 @@ function ShortcutCard({ icon, label, onPress }: { icon: keyof typeof Ionicons.gl
       <View style={styles.shortcutIconWrap}>
         <Ionicons color={colors.primaryDeep} name={icon} size={18} />
       </View>
-      <Text style={styles.shortcutLabel}>{label}</Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={styles.shortcutLabel}>{label}</Text>
     </Pressable>
   );
 }
@@ -471,6 +471,7 @@ function createStyles(colors: ColorPalette) {
   },
   shortcutLabel: {
     ...typography.captionStrong,
+    alignSelf: 'stretch',
     color: colors.textPrimary,
     textAlign: 'center',
   },
