@@ -59,11 +59,22 @@ export function mapEventDetailXml(xml: string, selectedEventRaceId?: string | nu
   };
 
   const eventItems = mapEventItems(parsed.Event ?? {});
-  const event = selectedEventRaceId ? eventItems.find((item) => item.eventRaceId === selectedEventRaceId) ?? eventItems[0] : eventItems[0];
+  const event = (selectedEventRaceId ? eventItems.find((item) => item.eventRaceId === selectedEventRaceId) : null) ?? eventItems[0];
 
   if (!event) {
     throw new Error('Eventor returnerade en ofullständig tävlingsdetalj.');
   }
+
+  // The Livelox configurations (one id per stage) are ordered by stage, i.e.
+  // chronologically — but Eventor does NOT list the <EventRace> elements in that
+  // order, so the stage index must be derived from the race dates (tie-broken by
+  // EventRaceId), not from the position in the XML.
+  const stageOrder = [...eventItems].sort((left, right) => {
+    const dateCmp = (left.eventRaceDate ?? '').localeCompare(right.eventRaceDate ?? '');
+    return dateCmp !== 0 ? dateCmp : Number(left.eventRaceId) - Number(right.eventRaceId);
+  });
+  const stageIndex = stageOrder.findIndex((item) => item.eventRaceId === event.eventRaceId);
+  const liveloxStageIndex = stageIndex >= 0 ? stageIndex : 0;
 
   const rawEvent = parsed.Event ?? {};
   const hashEntries = toArray<Record<string, unknown>>(rawEvent.HashTableEntry);
@@ -75,7 +86,7 @@ export function mapEventDetailXml(xml: string, selectedEventRaceId?: string | nu
     finishDate: extractDate(rawEvent.FinishDate),
     hasPublishedResults: raceHasPublishedList(hashKeys, ['officialResult', 'preliminaryResult'], event.eventRaceId),
     hasPublishedStarts: raceHasPublishedList(hashKeys, ['officialStart', 'startList'], event.eventRaceId),
-    liveloxEventId: extractLiveloxEventId(hashEntries),
+    liveloxEventId: extractLiveloxEventId(hashEntries, liveloxStageIndex),
     modifyDate: extractDate(rawEvent.ModifyDate),
     organiserNames: extractOrganisationNames(rawEvent),
     webUrl: getString(rawEvent.WebURL),
@@ -357,7 +368,7 @@ function raceHasPublishedList(keys: string[], prefixes: string[], eventRaceId: s
   return keys.some((key) => prefixes.some((prefix) => key === prefix || key === `${prefix}_${eventRaceId}`));
 }
 
-function extractLiveloxEventId(hashEntries: Record<string, unknown>[]) {
+function extractLiveloxEventId(hashEntries: Record<string, unknown>[], raceIndex = 0) {
   const entry = hashEntries.find((e) => getString(e.Key) === 'Eventor_LiveloxEventConfigurations');
   const value = getString(entry?.Value);
 
@@ -365,7 +376,13 @@ function extractLiveloxEventId(hashEntries: Record<string, unknown>[]) {
     return null;
   }
 
-  const id = value.split(',')[0]?.trim();
+  // Multi-stage events list one "<liveloxEventId>,<flag>" per stage, separated by
+  // ";" in the order the stages occur (e.g. "193998,1;193999,1;194000,1"). Pick
+  // the entry matching the selected stage; fall back to the first for single-day
+  // events or when the index is out of range.
+  const configs = value.split(';').map((part) => part.trim()).filter((part) => part.length > 0);
+  const selected = configs[raceIndex] ?? configs[0];
+  const id = selected?.split(',')[0]?.trim();
   return id && id.length > 0 ? id : null;
 }
 
