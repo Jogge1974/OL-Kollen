@@ -24,8 +24,7 @@ export function parseEventSplitTimesXml(xml: string, options: EventSplitTimesPar
   classNodes.forEach((classNode, classIndex) => {
     const classInfo = getRecord(classNode.Class) ?? getRecord(classNode);
     const classRaceInfo = getRecord(classNode.ClassRaceInfo) ?? getRecord(classInfo?.ClassRaceInfo);
-    const course = getRecord(classNode.Course);
-    const courseLengthMeters = toNumber(course?.Length);
+    const courseLengthMeters = resolveClassCourseLengthMeters(classNode, options.selectedEventRaceId ?? null, selectedRaceNumber, raceLookup);
     const classLabel = getString(classInfo?.Name) ?? getString(classInfo?.ShortName) ?? getString(classNode.Name) ?? `Klass ${classIndex + 1}`;
     const classEntriesCount = toNullableNumber(classRaceInfo?.noOfStarts) ?? toNullableNumber(classRaceInfo?.numberOfStarts) ?? toNullableNumber(classInfo?.numberOfCompetitors);
     const classLengthLabel = formatCourseLength(courseLengthMeters);
@@ -41,8 +40,18 @@ export function parseEventSplitTimesXml(xml: string, options: EventSplitTimesPar
       return;
     }
 
+    // For multi-stage events the class-level competitor count is event-wide
+    // (all stages summed), so use the number of rows actually shown for the
+    // selected stage instead.
+    const resolvedEntriesCount = options.selectedEventRaceId ? rows.length : classEntriesCount;
+    if (resolvedEntriesCount !== classEntriesCount) {
+      rows.forEach((row) => {
+        row.classEntriesCount = resolvedEntriesCount;
+      });
+    }
+
     sections.push({
-      classEntriesCount,
+      classEntriesCount: resolvedEntriesCount,
       classLabel,
       classLengthLabel: classLengthLabel ?? undefined,
       classLengthMeters: courseLengthMeters || undefined,
@@ -479,6 +488,55 @@ function matchesSelectedRace(
   }
 
   return false;
+}
+
+// Multi-stage results nest <Course> inside each per-race <Result>, and Eventor
+// only attaches it to the stage requested via eventRaceId (never at class
+// level). Read the course length off a Result belonging to the selected race so
+// the km-time can be computed. Single-stage lists that expose the class-level
+// <Course> short-circuit on the first check.
+function resolveClassCourseLengthMeters(
+  classNode: Record<string, unknown>,
+  selectedEventRaceId: string | null,
+  selectedRaceNumber: string | null,
+  raceLookup: RaceLookup,
+): number {
+  const classLevel = toNumber(getRecord(classNode.Course)?.Length);
+  if (classLevel > 0) {
+    return classLevel;
+  }
+
+  for (const personNode of toArray<Record<string, unknown>>(classNode.PersonResult)) {
+    const raceResults = toArray<Record<string, unknown>>(personNode.RaceResult);
+    const entries = raceResults.length > 0
+      ? raceResults.map((raceResult) => {
+          const result = getRecord(raceResult.Result);
+          const raceId = getNodeText(raceResult.EventRaceId) ?? getNodeText(result?.EventRaceId) ?? undefined;
+          const raceNumber = getRaceNumberValue(raceResult.raceNumber ?? raceResult.RaceNumber) ?? null;
+          return { raceId, raceNumber, result };
+        })
+      : toArray<Record<string, unknown>>(personNode.Result).map((result) => {
+          const raceId = getNodeText(personNode.EventRaceId) ?? getNodeText(result.EventRaceId) ?? undefined;
+          const raceNumber = getRaceNumberValue(result.raceNumber ?? result.RaceNumber ?? personNode.raceNumber ?? personNode.RaceNumber) ?? null;
+          return { raceId, raceNumber, result };
+        });
+
+    for (const entry of entries) {
+      if (!entry.result) {
+        continue;
+      }
+      const raceNumber = entry.raceNumber ?? (entry.raceId ? raceLookup.raceNumberById.get(entry.raceId) ?? null : null);
+      if (selectedEventRaceId && !matchesSelectedRace(entry.raceId, raceNumber, selectedEventRaceId, selectedRaceNumber)) {
+        continue;
+      }
+      const length = toNumber(getRecord(entry.result.Course)?.Length);
+      if (length > 0) {
+        return length;
+      }
+    }
+  }
+
+  return 0;
 }
 
 const STATUS_SORT_ORDER: Record<string, number> = {

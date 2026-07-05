@@ -187,7 +187,7 @@ export async function fetchEventPublishedListXml(
   return xml;
 }
 
-export async function fetchEventSplitTimesXml(eventId: string) {
+export async function fetchEventSplitTimesXml(eventId: string, eventRaceId?: string | null) {
   const normalizedEventId = normalizeEventId(eventId);
   const searchParams = new URLSearchParams({
     eventId: normalizedEventId,
@@ -195,6 +195,12 @@ export async function fetchEventSplitTimesXml(eventId: string) {
     includePersonElement: 'true',
     includeSplitTimes: 'true',
   });
+  // For multi-stage events Eventor only attaches the per-race <Course> (course
+  // length) to the stage named by eventRaceId; without it the nested course is
+  // only present on race 1, so other stages get no length (and no km-time).
+  if (eventRaceId) {
+    searchParams.set('eventRaceId', eventRaceId);
+  }
   const requestUrl = buildEventorUrl(`/results/event/iofxml?${searchParams.toString()}`);
 
   const response = await fetch(requestUrl, {

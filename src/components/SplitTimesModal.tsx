@@ -1055,7 +1055,7 @@ export async function openEventSplitTimesModal(
 
   try {
     const [rawXml, eventDetail] = await Promise.all([
-      fetchEventSplitTimesXml(eventId),
+      fetchEventSplitTimesXml(eventId, selectedEventRaceId),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
     const sections = parseEventSplitTimesXml(rawXml, { selectedEventRaceId });

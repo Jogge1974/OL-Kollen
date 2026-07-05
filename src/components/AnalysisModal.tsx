@@ -469,7 +469,7 @@ export async function openEventAnalysisModal(
 
   try {
     const [rawXml, eventDetail] = await Promise.all([
-      fetchEventSplitTimesXml(eventId),
+      fetchEventSplitTimesXml(eventId, selectedEventRaceId),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
     const sections = parseEventSplitTimesXml(rawXml, { selectedEventRaceId });

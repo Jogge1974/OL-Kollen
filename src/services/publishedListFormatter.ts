@@ -251,7 +251,9 @@ function formatStartsXml(xml: string, options: PublishedListFormatOptions): Publ
       classLabel,
       courseLengthLabel,
       rows: personStarts,
-      startCount: getString(eventClass?.numberOfCompetitors) ?? `${personStarts.length}`,
+      // numberOfCompetitors is event-wide (all stages summed) for multi-stage
+      // events, so when a stage is selected use the race-filtered row count.
+      startCount: options.selectedEventRaceId ? `${personStarts.length}` : (getString(eventClass?.numberOfCompetitors) ?? `${personStarts.length}`),
     };
   });
 
@@ -344,7 +346,9 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
       classLabel,
       courseLengthLabel,
       rows: personResults,
-      startCount: getString(eventClass?.numberOfCompetitors) ?? `${personResults.length}`,
+      // numberOfCompetitors is event-wide (all stages summed) for multi-stage
+      // events, so when a stage is selected use the race-filtered row count.
+      startCount: options.selectedEventRaceId ? `${personResults.length}` : (getString(eventClass?.numberOfCompetitors) ?? `${personResults.length}`),
     };
   });
 
