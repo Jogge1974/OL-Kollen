@@ -33,6 +33,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
   const [legTab, setLegTab] = React.useState<'splits' | 'h2h'>('splits');
   const [h2hOpponentId, setH2hOpponentId] = React.useState<string | null>(null);
   const [h2hPickerExpanded, setH2hPickerExpanded] = React.useState(false);
+  const [thirdInfoVisible, setThirdInfoVisible] = React.useState(false);
 
   const selectedSection = React.useMemo(
     () => currentState?.sections.find((section) => section.classLabel === currentState?.initialClassLabel) ?? currentState?.sections[0] ?? null,
@@ -170,7 +171,12 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
 
               <View style={styles.thirdCard}>
                 <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionHeaderTitle}>Banan i tre delar</Text>
+                  <View style={styles.sectionHeaderTitleWrap}>
+                    <Text style={styles.sectionHeaderTitle}>Banan i tre delar</Text>
+                    <Pressable hitSlop={8} onPress={() => setThirdInfoVisible(true)} style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}>
+                      <Ionicons color={colors.primary} name="information-circle-outline" size={18} />
+                    </Pressable>
+                  </View>
                   <Ionicons color={colors.primary} name="analytics-outline" size={18} />
                 </View>
                 {analysis.summary.thirdProgress.map((third) => (
@@ -194,6 +200,51 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   </View>
                 ))}
               </View>
+
+              <Modal animationType="fade" onRequestClose={() => setThirdInfoVisible(false)} transparent visible={thirdInfoVisible}>
+                <View style={styles.infoOverlay}>
+                  <Pressable style={styles.infoBackdrop} onPress={() => setThirdInfoVisible(false)} />
+                  <View style={styles.infoCard}>
+                    <View style={styles.infoCardHeader}>
+                      <View style={styles.infoHeaderLeft}>
+                        <LinearGradient colors={[colors.heroTop, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.infoIconBadge}>
+                          <Ionicons color="#fff" name="podium-outline" size={20} />
+                        </LinearGradient>
+                        <Text style={styles.infoCardTitle}>Banan i tre delar</Text>
+                      </View>
+                      <Pressable hitSlop={8} onPress={() => setThirdInfoVisible(false)} style={styles.infoCloseChip}>
+                        <Ionicons color={colors.primaryDeep} name="close" size={16} />
+                      </Pressable>
+                    </View>
+
+                    <Text style={styles.infoCardBody}>
+                      Banan delas in i tre tidsmässigt lika stora delar. Indelningen görs efter förväntad tid, inte efter sträckans längd:
+                    </Text>
+
+                    <View style={styles.infoList}>
+                      <View style={styles.infoListItem}>
+                        <View style={styles.infoListIcon}><Ionicons color={colors.primaryDeep} name="rocket-outline" size={15} /></View>
+                        <Text style={styles.infoListText}><Text style={styles.infoListStrong}>Början</Text> – loppets första del</Text>
+                      </View>
+                      <View style={styles.infoListItem}>
+                        <View style={styles.infoListIcon}><Ionicons color={colors.primaryDeep} name="flash-outline" size={15} /></View>
+                        <Text style={styles.infoListText}><Text style={styles.infoListStrong}>Mitten</Text> – loppets mittdel</Text>
+                      </View>
+                      <View style={styles.infoListItem}>
+                        <View style={styles.infoListIcon}><Ionicons color={colors.primaryDeep} name="flag-outline" size={15} /></View>
+                        <Text style={styles.infoListText}><Text style={styles.infoListStrong}>Slutet</Text> – loppets sista del</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.infoCardBody}>
+                      För varje del jämförs din tid med din förväntade tid, som bygger på fältets referensfart uppräknad till din egen nivå.
+                    </Text>
+                    <Text style={styles.infoCardBody}>
+                      Procenten visar avvikelsen: +% betyder att du var långsammare än förväntat i den delen, medan −% betyder att du var snabbare än förväntat.
+                    </Text>
+                  </View>
+                </View>
+              </Modal>
 
               {/* === BANAN STRÄCKINDELAD === */}
               {analysis.legCategories.length > 0 ? (
@@ -793,6 +844,97 @@ function createStyles(colors: ColorPalette) {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  sectionHeaderTitleWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  infoOverlay: {
+    alignItems: 'center',
+    backgroundColor: colors.overlay,
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  infoBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  infoCard: {
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: spacing.sm,
+    maxWidth: 460,
+    padding: spacing.lg,
+    width: '100%',
+  },
+  infoCardHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  infoCardTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 20,
+    minWidth: 0,
+  },
+  infoCardBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    lineHeight: 21,
+  },
+  infoHeaderLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minWidth: 0,
+  },
+  infoIconBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  infoCloseChip: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 999,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  infoList: {
+    gap: 10,
+    paddingVertical: 2,
+  },
+  infoListItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  infoListIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.accentSoft,
+    borderRadius: 999,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  infoListText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    flex: 1,
+    minWidth: 0,
+  },
+  infoListStrong: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
   },
   sectionHeaderTitle: {
     ...typography.bodyStrong,
