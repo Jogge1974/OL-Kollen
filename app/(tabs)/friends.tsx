@@ -56,6 +56,7 @@ export default function FriendsScreen() {
 
   const [searchVisible, setSearchVisible] = React.useState(false);
   const [legendVisible, setLegendVisible] = React.useState(false);
+  const [editMode, setEditMode] = React.useState(false);
   const [searchName, setSearchName] = React.useState('');
   const [searchClub, setSearchClub] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<PersonSearchResult[]>([]);
@@ -454,6 +455,10 @@ export default function FriendsScreen() {
           </Pressable>
         ) : null}
         <View style={{ flex: 1 }} />
+        <Pressable onPress={() => setEditMode((current) => !current)} style={({ pressed }) => [styles.editBadge, editMode ? styles.editBadgeActive : null, pressed ? styles.searchBadgePressed : null]}>
+          <Ionicons color={editMode ? '#fff' : colors.error} name="pencil" size={14} />
+          <Text style={[styles.editBadgeText, editMode ? styles.editBadgeTextActive : null]}>Ändra</Text>
+        </Pressable>
         <Pressable onPress={() => setLegendVisible(true)} style={({ pressed }) => [styles.legendInfoBadge, pressed ? { opacity: 0.7 } : null]}>
           <Ionicons color={colors.primaryDeep} name="information-circle-outline" size={20} />
         </Pressable>
@@ -573,13 +578,15 @@ export default function FriendsScreen() {
                   {item.birthYear ? `f. ${item.birthYear} \u2022 ` : ''}{item.club}
                 </Text>
               </View>
-              <Pressable
-                hitSlop={8}
-                onPress={() => handleRemoveFriend(item.personId)}
-                style={({ pressed }) => [styles.removeButton, pressed ? styles.removeButtonPressed : null]}
-              >
-                <Ionicons color={colors.error} name="close-circle-outline" size={20} />
-              </Pressable>
+              {editMode ? (
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => handleRemoveFriend(item.personId)}
+                  style={({ pressed }) => [styles.removeButton, pressed ? styles.removeButtonPressed : null]}
+                >
+                  <Ionicons color={colors.error} name="trash-outline" size={20} />
+                </Pressable>
+              ) : null}
               <Ionicons color={colors.textMuted} name="chevron-forward" size={18} />
             </Pressable>
             );
@@ -1225,6 +1232,28 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       height: 36,
       justifyContent: 'center',
       width: 36,
+    },
+    editBadge: {
+      alignItems: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.error,
+      borderRadius: 999,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 6,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+    },
+    editBadgeActive: {
+      backgroundColor: colors.error,
+      borderColor: colors.error,
+    },
+    editBadgeText: {
+      ...typography.captionStrong,
+      color: colors.error,
+    },
+    editBadgeTextActive: {
+      color: '#fff',
     },
     emptyContainer: {
       alignItems: 'center',
