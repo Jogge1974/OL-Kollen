@@ -570,14 +570,12 @@ function formatStatus(status?: string | null) {
 
 // --- Leg categories by winning time ---
 
-type LegCategoryBucket = 'Kort' | 'Medelkort' | 'Medel' | 'Medellång' | 'Lång';
+type LegCategoryBucket = 'Kort' | 'Medel' | 'Lång';
 
 function classifyLegByWinnerTime(winnerTimeSeconds: number | null): LegCategoryBucket | null {
   if (winnerTimeSeconds === null || winnerTimeSeconds <= 0) return null;
-  if (winnerTimeSeconds < 70) return 'Kort';
-  if (winnerTimeSeconds < 150) return 'Medelkort';
-  if (winnerTimeSeconds < 250) return 'Medel';
-  if (winnerTimeSeconds < 390) return 'Medellång';
+  if (winnerTimeSeconds <= 80) return 'Kort';
+  if (winnerTimeSeconds <= 210) return 'Medel';
   return 'Lång';
 }
 
@@ -592,9 +590,7 @@ function buildLegCategories(
   const referenceSplitTimes = getReferenceSplitTimesLocal(okRows, splitCount);
   const buckets: Record<LegCategoryBucket, { indices: number[]; percents: number[]; places: number[]; wins: number }> = {
     Kort: { indices: [], percents: [], places: [], wins: 0 },
-    Medelkort: { indices: [], percents: [], places: [], wins: 0 },
     Medel: { indices: [], percents: [], places: [], wins: 0 },
-    Medellång: { indices: [], percents: [], places: [], wins: 0 },
     Lång: { indices: [], percents: [], places: [], wins: 0 },
   };
 
@@ -621,7 +617,7 @@ function buildLegCategories(
     if (place === 1) buckets[category].wins += 1;
   }
 
-  const order: LegCategoryBucket[] = ['Kort', 'Medelkort', 'Medel', 'Medellång', 'Lång'];
+  const order: LegCategoryBucket[] = ['Kort', 'Medel', 'Lång'];
   const result: EventAnalysisLegCategory[] = [];
 
   for (const cat of order) {

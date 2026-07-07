@@ -34,6 +34,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
   const [h2hOpponentId, setH2hOpponentId] = React.useState<string | null>(null);
   const [h2hPickerExpanded, setH2hPickerExpanded] = React.useState(false);
   const [thirdInfoVisible, setThirdInfoVisible] = React.useState(false);
+  const [legInfoVisible, setLegInfoVisible] = React.useState(false);
 
   const selectedSection = React.useMemo(
     () => currentState?.sections.find((section) => section.classLabel === currentState?.initialClassLabel) ?? currentState?.sections[0] ?? null,
@@ -208,7 +209,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     <View style={styles.infoCardHeader}>
                       <View style={styles.infoHeaderLeft}>
                         <LinearGradient colors={[colors.heroTop, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.infoIconBadge}>
-                          <Ionicons color="#fff" name="podium-outline" size={20} />
+                          <Ionicons color="#fff" name="analytics-outline" size={20} />
                         </LinearGradient>
                         <Text style={styles.infoCardTitle}>Banan i tre delar</Text>
                       </View>
@@ -258,10 +259,14 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
               {analysis.legCategories.length > 0 ? (
                 <View style={styles.thirdCard}>
                   <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionHeaderTitle}>Sträcklängdsanalys</Text>
+                    <View style={styles.sectionHeaderTitleWrap}>
+                      <Text style={styles.sectionHeaderTitle}>Sträcklängdsanalys</Text>
+                      <Pressable hitSlop={8} onPress={() => setLegInfoVisible(true)} style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}>
+                        <Ionicons color={colors.primary} name="information-circle-outline" size={18} />
+                      </Pressable>
+                    </View>
                     <Ionicons color={colors.primary} name="bar-chart-outline" size={18} />
                   </View>
-                  <Text style={styles.legCategoryHint}>Relativt din förväntade fart (topp 25% × din nivå)</Text>
                   {analysis.legCategories.map((cat) => (
                     <View key={cat.categoryLabel} style={styles.thirdRow}>
                       <View style={styles.thirdLabelWrap}>
@@ -284,6 +289,60 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   ))}
                 </View>
               ) : null}
+
+              <Modal animationType="fade" onRequestClose={() => setLegInfoVisible(false)} transparent visible={legInfoVisible}>
+                <View style={styles.infoOverlay}>
+                  <Pressable style={styles.infoBackdrop} onPress={() => setLegInfoVisible(false)} />
+                  <View style={styles.infoCard}>
+                    <View style={styles.infoCardHeader}>
+                      <View style={styles.infoHeaderLeft}>
+                        <LinearGradient colors={[colors.heroTop, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.infoIconBadge}>
+                          <Ionicons color="#fff" name="bar-chart-outline" size={20} />
+                        </LinearGradient>
+                        <Text style={styles.infoCardTitle}>Sträcklängdsanalys</Text>
+                      </View>
+                      <Pressable hitSlop={8} onPress={() => setLegInfoVisible(false)} style={styles.infoCloseChip}>
+                        <Ionicons color={colors.primaryDeep} name="close" size={16} />
+                      </Pressable>
+                    </View>
+
+                    <Text style={styles.infoCardBody}>
+                      Sträckorna grupperas efter längd – utifrån segrartiden på varje sträcka:
+                    </Text>
+
+                    <View style={styles.infoList}>
+                      <View style={styles.infoListItem}>
+                        <View style={styles.infoListIcon}><Ionicons color={colors.primaryDeep} name="flash-outline" size={15} /></View>
+                        <Text style={styles.infoListText}><Text style={styles.infoListStrong}>Kort str.</Text> &lt; 1.20 min</Text>
+                      </View>
+                      <View style={styles.infoListItem}>
+                        <View style={styles.infoListIcon}><Ionicons color={colors.primaryDeep} name="pulse-outline" size={15} /></View>
+                        <Text style={styles.infoListText}><Text style={styles.infoListStrong}>Medel str.</Text> 1:20 – 3:30 min</Text>
+                      </View>
+                      <View style={styles.infoListItem}>
+                        <View style={styles.infoListIcon}><Ionicons color={colors.primaryDeep} name="trending-up-outline" size={15} /></View>
+                        <Text style={styles.infoListText}><Text style={styles.infoListStrong}>Lång str.</Text> &gt; 3:30 min</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.infoCardBody}>
+                      För varje grupp jämförs din fart med din förväntade fart, som bygger på fältets bästa löpare uppräknad till din egen nivå.
+                    </Text>
+
+                    <Text style={styles.infoCardBody}>Procenten visar avvikelsen:</Text>
+                    <View style={styles.infoBadgeStack}>
+                      <View style={[styles.infoPctBadge, { borderColor: colors.error }]}>
+                        <Text style={[styles.infoPctBadgeSymbol, { color: colors.error }]}>+%</Text>
+                        <Text style={styles.infoPctBadgeText}>Långsammare än förväntat</Text>
+                      </View>
+                      <View style={[styles.infoPctBadge, { borderColor: colors.primary }]}>
+                        <Text style={[styles.infoPctBadgeSymbol, { color: colors.primary }]}>−%</Text>
+                        <Text style={styles.infoPctBadgeText}>Snabbare än förväntat</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </Modal>
 
               {/* === STRÄCKA FÖR STRÄCKA / HEAD-TO-HEAD TABS === */}
               <View style={styles.tableCard}>
