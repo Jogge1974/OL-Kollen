@@ -35,6 +35,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
   const [h2hPickerExpanded, setH2hPickerExpanded] = React.useState(false);
   const [thirdInfoVisible, setThirdInfoVisible] = React.useState(false);
   const [legInfoVisible, setLegInfoVisible] = React.useState(false);
+  const [banaInfoVisible, setBanaInfoVisible] = React.useState(false);
 
   const selectedSection = React.useMemo(
     () => currentState?.sections.find((section) => section.classLabel === currentState?.initialClassLabel) ?? currentState?.sections[0] ?? null,
@@ -163,14 +164,45 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   <MetricLine label="Km-tid bomfri" value={analysis.summary.pacePerKmWithoutLossLabel} />
                 </MetricSection>
 
-                <MetricSection title="Bana" icon="map-outline">
+                <MetricSection title="Bana" icon="map-outline" onInfoPress={() => setBanaInfoVisible(true)}>
                   <MetricLine label="Referens" value={analysis.summary.referencePercentLabel} />
                   <MetricLine label="Idealtid" value={analysis.summary.optimalRaceTimeLabel ?? '-'} />
                   <MetricLine label="Tid efter idealtid" value={analysis.summary.optimalRaceTimeDeltaLabel ?? '-'} />
                 </MetricSection>
               </View>
 
-                      <Text style={styles.infoCardBody}>Din nivå mot fältets snabbaste. Referensfarten bygger på de 25 % snabbaste på varje sträcka – värdet visar hur många procent långsammare (+) eller snabbare (−) du var.</Text>
+              <Modal animationType="fade" onRequestClose={() => setBanaInfoVisible(false)} transparent visible={banaInfoVisible}>
+                <View style={styles.infoOverlay}>
+                  <Pressable style={styles.infoBackdrop} onPress={() => setBanaInfoVisible(false)} />
+                  <View style={styles.infoCard}>
+                    <View style={styles.infoCardHeader}>
+                      <View style={styles.infoHeaderLeft}>
+                        <LinearGradient colors={[colors.heroTop, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.infoIconBadge}>
+                          <Ionicons color="#fff" name="map-outline" size={20} />
+                        </LinearGradient>
+                        <Text style={styles.infoCardTitle}>Bana</Text>
+                      </View>
+                      <Pressable hitSlop={8} onPress={() => setBanaInfoVisible(false)} style={styles.infoCloseChip}>
+                        <Ionicons color={colors.primaryDeep} name="close" size={16} />
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.infoDefItem}>
+                      <Text style={styles.infoDefTerm}>Referens</Text>
+                      <Text style={styles.infoCardBody}>Din nivå mot fältets referensfart. Referensfarten bygger på de 25 % snabbaste på varje sträcka – värdet visar hur många procent långsammare (+) eller snabbare (−) du var.</Text>
+                    </View>
+                    <View style={styles.infoDefItem}>
+                      <Text style={styles.infoDefTerm}>Idealtid</Text>
+                      <Text style={styles.infoCardBody}>Den teoretiskt snabbaste tiden på banan – summan av den snabbaste tiden på varje enskild sträcka. Drömloppet.</Text>
+                    </View>
+                    <View style={styles.infoDefItem}>
+                      <Text style={styles.infoDefTerm}>Tid efter idealtid</Text>
+                      <Text style={styles.infoCardBody}>Hur långt efter idealtiden ditt lopp var.</Text>
+                    </View>
+                  </View>
+                </View>
+              </Modal>
+
               <View style={styles.thirdCard}>
                 <View style={styles.sectionHeaderRow}>
                   <View style={styles.sectionHeaderTitleWrap}>
@@ -517,16 +549,28 @@ function HeroStatusChip({ label }: { label: string }) {
   );
 }
 
-function MetricSection({ title, icon, children }: { children: React.ReactNode; icon: keyof typeof Ionicons.glyphMap; title: string }) {
+function MetricSection({ title, icon, children, onInfoPress }: { children: React.ReactNode; icon: keyof typeof Ionicons.glyphMap; title: string; onInfoPress?: () => void }) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.metricSection}>
       <View style={styles.sectionHeaderRow}>
-        <View style={styles.metricSectionTitleWrap}>
-          <Ionicons color={colors.primaryDeep} name={icon} size={18} />
-          <Text style={styles.metricSectionTitle}>{title}</Text>
-        </View>
+        {onInfoPress ? (
+          <>
+            <View style={styles.sectionHeaderTitleWrap}>
+              <Text style={styles.metricSectionTitle}>{title}</Text>
+              <Pressable hitSlop={8} onPress={onInfoPress} style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}>
+                <Ionicons color={colors.primary} name="information-circle-outline" size={18} />
+              </Pressable>
+            </View>
+            <Ionicons color={colors.primary} name={icon} size={18} />
+          </>
+        ) : (
+          <View style={styles.metricSectionTitleWrap}>
+            <Ionicons color={colors.primaryDeep} name={icon} size={18} />
+            <Text style={styles.metricSectionTitle}>{title}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.metricLines}>{children}</View>
     </View>
@@ -1003,6 +1047,14 @@ function createStyles(colors: ColorPalette) {
   infoListStrong: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
+  },
+  infoDefItem: {
+    gap: 2,
+  },
+  infoDefTerm: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 15,
   },
   infoPctGood: {
     ...typography.bodyStrong,
