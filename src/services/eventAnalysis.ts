@@ -169,7 +169,7 @@ export function buildEventAnalysis(section: EventSplitTimesSection, targetPerson
       legPodiumCountLabel: `${legPodiumCount}`,
       legWinCountLabel: `${legWinCount}`,
       optimalRaceTimeLabel: optimalRaceTimeSeconds > 0 ? formatTime(optimalRaceTimeSeconds) : null,
-      optimalRaceTimeDeltaLabel: optimalRaceTimeDeltaSeconds !== null ? formatTimeDelta(optimalRaceTimeDeltaSeconds) : null,
+      optimalRaceTimeDeltaLabel: optimalRaceTimeDeltaSeconds !== null ? formatIdealDelta(optimalRaceTimeDeltaSeconds) : null,
       pacePerKmLabel: formatPacePerKm(target.totalTimeSeconds, section.classLengthMeters ?? null),
       pacePerKmWithoutLossLabel,
       placingLabel,
@@ -549,6 +549,17 @@ function formatTimeDelta(totalSeconds: number) {
   }
 
   return `-${formatTime(totalSeconds)}`;
+}
+
+// "Tid efter idealtid" = din totaltid − idealtiden. Idealtiden är summan av
+// fältets snabbaste sträcktid, så din tid är alltid minst lika stor →
+// differensen är aldrig negativ och visas alltid med +.
+function formatIdealDelta(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return '0:00';
+  }
+
+  return `+${formatTime(totalSeconds)}`;
 }
 
 function formatStatus(status?: string | null) {
