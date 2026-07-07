@@ -170,6 +170,7 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                 </MetricSection>
               </View>
 
+                      <Text style={styles.infoCardBody}>Din nivå mot fältets snabbaste. Referensfarten bygger på de 25 % snabbaste på varje sträcka – värdet visar hur många procent långsammare (+) eller snabbare (−) du var.</Text>
               <View style={styles.thirdCard}>
                 <View style={styles.sectionHeaderRow}>
                   <View style={styles.sectionHeaderTitleWrap}>
