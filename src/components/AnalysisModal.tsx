@@ -239,9 +239,17 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     <Text style={styles.infoCardBody}>
                       För varje del jämförs din tid med din förväntade tid, som bygger på fältets referensfart uppräknad till din egen nivå.
                     </Text>
-                    <Text style={styles.infoCardBody}>
-                      Procenten visar avvikelsen: +% betyder att du var långsammare än förväntat i den delen, medan −% betyder att du var snabbare än förväntat.
-                    </Text>
+                    <Text style={styles.infoCardBody}>Procenten visar avvikelsen:</Text>
+                    <View style={styles.infoBadgeStack}>
+                      <View style={[styles.infoPctBadge, { borderColor: colors.error }]}>
+                        <Text style={[styles.infoPctBadgeSymbol, { color: colors.error }]}>+%</Text>
+                        <Text style={styles.infoPctBadgeText}>Långsammare än förväntat</Text>
+                      </View>
+                      <View style={[styles.infoPctBadge, { borderColor: colors.primary }]}>
+                        <Text style={[styles.infoPctBadgeSymbol, { color: colors.primary }]}>−%</Text>
+                        <Text style={styles.infoPctBadgeText}>Snabbare än förväntat</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
               </Modal>
@@ -935,6 +943,39 @@ function createStyles(colors: ColorPalette) {
   infoListStrong: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
+  },
+  infoPctGood: {
+    ...typography.bodyStrong,
+    color: colors.primary,
+  },
+  infoPctLoss: {
+    ...typography.bodyStrong,
+    color: colors.error,
+  },
+  infoBadgeStack: {
+    gap: spacing.xs,
+  },
+  infoPctBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  infoPctBadgeSymbol: {
+    ...typography.sectionTitle,
+    fontSize: 22,
+    minWidth: 44,
+    textAlign: 'center',
+  },
+  infoPctBadgeText: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    flex: 1,
+    minWidth: 0,
   },
   sectionHeaderTitle: {
     ...typography.bodyStrong,
