@@ -177,6 +177,19 @@ export default function CalendarScreen() {
                   <Text style={styles.legendDesc}>Lördag och söndag</Text>
                 </View>
               </View>
+
+              <View style={styles.legendRow}>
+                <View style={[styles.legendCard, styles.legendCardCentered]}>
+                  <View style={styles.legendEntryBadge}>
+                    <Ionicons color={colors.textSecondary} name="people-outline" size={11} />
+                    <Text style={styles.legendEntryBadgeText}>12 (3)</Text>
+                  </View>
+                </View>
+                <View style={styles.legendTextWrap}>
+                  <Text style={styles.legendLabel}>Antal anmälda</Text>
+                  <Text style={styles.legendDesc}>Totalt antal anmälda i tävlingen. Siffran inom parentes är antalet anmälda från din klubb.</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -425,6 +438,26 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   legendDesc: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  legendCardCentered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legendEntryBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  legendEntryBadgeText: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    fontSize: 11,
   },
 });
 }
