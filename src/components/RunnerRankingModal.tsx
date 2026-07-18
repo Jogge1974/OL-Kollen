@@ -1,13 +1,16 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
 import { AppTextField } from '@/src/components/AppTextField';
 import { LoadingState } from '@/src/components/LoadingState';
-import { fetchRunnerRankingTable, RunnerRankingTableResult } from '@/src/services/eventorRunnerRanking';
+import { fetchEventorEvents } from '@/src/api/eventorApi';
+import { openPublishedListModal, PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
+import { fetchRunnerRankingTable, RunnerRankingCompetitionRow, RunnerRankingTableResult } from '@/src/services/eventorRunnerRanking';
 import { refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { EventItem } from '@/src/types/eventor';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -51,6 +54,9 @@ export function RunnerRankingModal({
   const [manualPassword, setManualPassword] = React.useState('');
   const [manualUsername, setManualUsername] = React.useState('');
   const [manualLoginError, setManualLoginError] = React.useState<string | null>(null);
+  const [publishedState, setPublishedState] = React.useState<PublishedListModalState | null>(null);
+  const [resolvingKey, setResolvingKey] = React.useState<string | null>(null);
+  const [resolveError, setResolveError] = React.useState<string | null>(null);
   const authUser = useAuthStore((store) => store.user);
   const rememberedUsername = useAuthStore((store) => store.rememberedUsername);
 
@@ -166,6 +172,35 @@ export function RunnerRankingModal({
     setReloadKey((value) => value + 1);
   }, [manualPassword, manualUsername]);
 
+  // The Sverigelistan ranking table gives us only the competition name + date
+  // (no eventId/eventRaceId). Resolve them by querying the events calendar for
+  // that day and matching on name, then open the class result list.
+  const handleOpenCompetitionResults = React.useCallback(async (row: RunnerRankingCompetitionRow) => {
+    const rowKey = `${row.dateISO}-${row.eventName}`;
+    setResolveError(null);
+    setResolvingKey(rowKey);
+    try {
+      const events = await fetchEventorEvents({
+        classificationIds: [],
+        districtIds: [],
+        fromDate: row.dateISO,
+        showEntryCountsInList: false,
+        toDate: row.dateISO,
+      });
+      const match = findEventItemForCompetition(events, row.eventName, row.dateISO);
+      if (!match) {
+        setResolveError(`Kunde inte hitta ”${row.eventName}” i Eventor.`);
+        return;
+      }
+      void openPublishedListModal('results', 'public', match.id, null, null, setPublishedState, row.className, match.eventRaceId);
+    } catch (error) {
+      console.error('[RunnerRankingModal] failed to open competition results', error);
+      setResolveError('Kunde inte öppna resultatlistan.');
+    } finally {
+      setResolvingKey(null);
+    }
+  }, []);
+
   return (
     <Modal animationType="slide" transparent visible={Boolean(selection)}>
       <View style={styles.overlay}>
@@ -215,10 +250,14 @@ export function RunnerRankingModal({
                   {(state.overview?.selectedRows ?? []).map((row, index) => {
                     const isExpiringSoon = row.daysUntilExpiry < 30;
                     return (
-                      <View
+                      <Pressable
                         key={`${row.dateISO}-${row.eventName}-${row.position ?? index}`}
-                        style={[styles.rowCard, isExpiringSoon ? styles.rowCardEmphasis : null]}
+                        onPress={() => void handleOpenCompetitionResults(row)}
+                        style={({ pressed }) => [styles.rowCard, isExpiringSoon ? styles.rowCardEmphasis : null, pressed ? styles.rowCardPressed : null]}
                       >
+                        {resolvingKey === `${row.dateISO}-${row.eventName}` ? (
+                          <View style={styles.rowSpinner}><ActivityIndicator color={colors.primaryDeep} size="small" /></View>
+                        ) : null}
                         <View style={styles.rankBadge}>
                           <Text style={styles.rankBadgeText}>#{index + 1}</Text>
                         </View>
@@ -246,7 +285,7 @@ export function RunnerRankingModal({
                             </View>
                           </View>
                         </View>
-                      </View>
+                      </Pressable>
                     );
                   })}
                 </View>
@@ -261,7 +300,13 @@ export function RunnerRankingModal({
                 {state.overview?.replacementRow ? (
                   <View style={styles.nextCard}>
                     <Text style={styles.nextCardTitle}>Tävling näst i tur</Text>
-                    <View style={styles.rowCardCompact}>
+                    <Pressable
+                      onPress={() => { const replacement = state.overview?.replacementRow; if (replacement) void handleOpenCompetitionResults(replacement); }}
+                      style={({ pressed }) => [styles.rowCardCompact, pressed ? styles.rowCardPressed : null]}
+                    >
+                      {resolvingKey === `${state.overview.replacementRow.dateISO}-${state.overview.replacementRow.eventName}` ? (
+                        <View style={styles.rowSpinner}><ActivityIndicator color={colors.primaryDeep} size="small" /></View>
+                      ) : null}
                       <View style={styles.rowBody}>
                         <View style={styles.rowTopLine}>
                           <Text numberOfLines={1} style={styles.rowTitle}>
@@ -289,7 +334,7 @@ export function RunnerRankingModal({
                           </View>
                         </View>
                       </View>
-                    </View>
+                    </Pressable>
                   </View>
                 ) : (
                   <View style={styles.nextCard}>
@@ -361,8 +406,53 @@ export function RunnerRankingModal({
           </View>
         </View>
       </Modal>
+
+      {resolveError ? (
+        <Pressable onPress={() => setResolveError(null)} style={styles.resolveErrorBanner}>
+          <Ionicons color="#fff" name="alert-circle-outline" size={16} />
+          <Text style={styles.resolveErrorText}>{resolveError}</Text>
+        </Pressable>
+      ) : null}
+
+      <PublishedListModal onClose={() => setPublishedState(null)} onOpenAnalysis={() => undefined} state={publishedState} />
     </Modal>
   );
+}
+
+function normalizeCompetitionName(value: string) {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function stripStageSuffix(name: string) {
+  return name.split(' - ')[0];
+}
+
+// Match a Sverigelistan competition (name + race date) against the events
+// calendar for that day to recover its eventId + eventRaceId (EventItem.id is
+// the composite `${eventId}::${eventRaceId}`). Filtering by date first isolates
+// the right stage of a multi-day event; then we score by name similarity.
+function findEventItemForCompetition(events: EventItem[], eventName: string, dateISO: string): EventItem | null {
+  const target = normalizeCompetitionName(eventName);
+  const targetBase = normalizeCompetitionName(stripStageSuffix(eventName));
+  const sameDay = events.filter((event) => event.eventRaceDate === dateISO || event.startDate === dateISO);
+  const pool = sameDay.length > 0 ? sameDay : events;
+
+  const scored = pool
+    .map((event) => {
+      const full = normalizeCompetitionName(event.name);
+      const base = normalizeCompetitionName(stripStageSuffix(event.name));
+      let score = 0;
+      if (full === target) score = 100;
+      else if (base === targetBase) score = 90;
+      else if (base === target || full === targetBase) score = 80;
+      else if (full.includes(target) || target.includes(base)) score = 60;
+      else if (base.includes(targetBase) || targetBase.includes(base)) score = 50;
+      return { event, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  return scored[0]?.event ?? null;
 }
 
 function SummaryChip({
@@ -692,6 +782,32 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   rowCardEmphasis: {
     backgroundColor: isDark ? '#301717' : '#FFF3F3',
     borderColor: isDark ? '#5A2E2E' : '#E7B5B5',
+  },
+  rowCardPressed: {
+    opacity: 0.6,
+  },
+  rowSpinner: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    zIndex: 2,
+  },
+  resolveErrorBanner: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: colors.error,
+    borderRadius: 999,
+    bottom: spacing.xl,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    position: 'absolute',
+    zIndex: 20,
+  },
+  resolveErrorText: {
+    ...typography.captionStrong,
+    color: '#fff',
   },
   rowDate: {
     ...typography.captionStrong,
