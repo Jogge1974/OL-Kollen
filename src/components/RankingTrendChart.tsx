@@ -55,15 +55,15 @@ export function RankingTrendChart({ classPoints = [], points, showTitle = true }
 
       <View onLayout={onLayout} style={styles.chartFrame}>
         <View style={styles.axisLeft}>
-          <Text style={styles.axisTitle}>Plac.</Text>
-          <Text style={styles.axisValueTop}>{primaryScale.worst}</Text>
-          <Text style={styles.axisValueBottom}>{primaryScale.best}</Text>
+          <Text style={[styles.axisTitle, styles.axisLeftText]}>Plac.</Text>
+          <Text style={[styles.axisValueTop, styles.axisLeftText]}>{primaryScale.worst}</Text>
+          <Text style={[styles.axisValueBottom, styles.axisLeftText]}>{primaryScale.best}</Text>
         </View>
 
         <View style={styles.axisRight}>
           <Text style={styles.axisSpacer}> </Text>
-          <Text style={styles.axisValueTop}>{secondaryScale.worst}</Text>
-          <Text style={styles.axisValueBottom}>{secondaryScale.best}</Text>
+          <Text style={[styles.axisValueTop, styles.axisRightText]}>{secondaryScale.worst}</Text>
+          <Text style={[styles.axisValueBottom, styles.axisRightText]}>{secondaryScale.best}</Text>
         </View>
 
         <View style={styles.guideTop} />
@@ -224,6 +224,14 @@ function createStyles(colors: ColorPalette) {
   axisTitle: {
     ...typography.captionStrong,
     color: colors.textMuted,
+  },
+  axisLeftText: {
+    color: '#C9A400',
+    fontFamily: typography.captionStrong.fontFamily,
+  },
+  axisRightText: {
+    color: '#5F9957',
+    fontFamily: typography.captionStrong.fontFamily,
   },
   axisValueBottom: {
     ...typography.caption,
