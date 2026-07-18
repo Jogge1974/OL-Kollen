@@ -11,6 +11,7 @@ import { AppTextField } from '@/src/components/AppTextField';
 import { FavoritesAndResultsPanel } from '@/src/components/FavoritesAndResultsPanel';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
+import { SverigelistanTrendBadge, SverigelistanTrendTable } from '@/src/components/SverigelistanTrendSection';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
@@ -342,20 +343,7 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
 }
 
 function TrendBadge({ direction }: { direction: SverigelistanTrendDirection }) {
-  const colors = useColors();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-  if (direction === 'unknown') {
-    return null;
-  }
-
-  const iconName = direction === 'better' ? 'arrow-up' : direction === 'worse' ? 'arrow-down' : 'arrow-forward';
-  const iconColor = direction === 'better' ? colors.primary : direction === 'worse' ? colors.error : colors.textSecondary;
-
-  return (
-    <View style={styles.trendBadge}>
-      <Ionicons color={iconColor} name={iconName} size={22} />
-    </View>
-  );
+  return <SverigelistanTrendBadge direction={direction} />;
 }
 
 function formatPoints(points: number) {
@@ -407,48 +395,7 @@ function buildClassColumnHeader(classTrend: SverigelistanTrendPoint[]) {
 }
 
 function TrendTable({ classTrend, monthlyTrend }: { classTrend: SverigelistanTrendPoint[]; monthlyTrend: SverigelistanTrendPoint[] }) {
-  const colors = useColors();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-
-  const classHeader = React.useMemo(() => buildClassColumnHeader(classTrend), [classTrend]);
-  const classLookup = React.useMemo(() => {
-    const map = new Map<string, number | null>();
-    for (const point of classTrend) {
-      if (point.monthKey) {
-        map.set(point.monthKey, point.rank);
-      }
-    }
-    return map;
-  }, [classTrend]);
-
-  const hasAnyData = monthlyTrend.some((p) => p.rank !== null);
-  if (!hasAnyData) {
-    return null;
-  }
-
-  const dataRows = monthlyTrend.filter((p) => p.rank !== null || classLookup.get(p.monthKey ?? '') !== undefined);
-
-  return (
-    <View style={styles.trendTable}>
-      <View style={[styles.trendTableRow, styles.trendTableHeaderRow]}>
-        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellMonth]}>Månad</Text>
-        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellRank]}>Riks</Text>
-        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellRank]}>{classHeader}</Text>
-        <Text style={[styles.trendTableCell, styles.trendTableHeaderCell, styles.trendTableCellPoints]}>Po.</Text>
-      </View>
-      {dataRows.map((point, index) => {
-        const classRank = classLookup.get(point.monthKey ?? '') ?? null;
-        return (
-          <View key={point.monthKey ?? index} style={[styles.trendTableRow, index % 2 === 0 ? styles.trendTableRowEven : null]}>
-            <Text style={[styles.trendTableCell, styles.trendTableCellMonth]}>{formatMonthLabel(point.monthKey)}</Text>
-            <Text style={[styles.trendTableCell, styles.trendTableCellRank]}>{point.rank ?? '-'}</Text>
-            <Text style={[styles.trendTableCell, styles.trendTableCellRank]}>{classRank ?? '-'}</Text>
-            <Text style={[styles.trendTableCell, styles.trendTableCellPoints]}>{point.points != null ? formatPoints(point.points) : '-'}</Text>
-          </View>
-        );
-      })}
-    </View>
-  );
+  return <SverigelistanTrendTable classTrend={classTrend} monthlyTrend={monthlyTrend} />;
 }
 
 function createStyles(colors: ColorPalette) {

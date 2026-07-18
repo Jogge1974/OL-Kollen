@@ -8,6 +8,9 @@ import { AppTextField } from '@/src/components/AppTextField';
 import { LoadingState } from '@/src/components/LoadingState';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
 import { openPublishedListModal, PublishedListModal, PublishedListModalState } from '@/src/components/PublishedListModal';
+import { RankingTrendChart } from '@/src/components/RankingTrendChart';
+import { SverigelistanTrendBadge, SverigelistanTrendTable } from '@/src/components/SverigelistanTrendSection';
+import { useSverigelistan } from '@/src/hooks/useSverigelistan';
 import { fetchRunnerRankingTable, RunnerRankingCompetitionRow, RunnerRankingTableResult } from '@/src/services/eventorRunnerRanking';
 import { refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
 import { EventItem } from '@/src/types/eventor';
@@ -57,6 +60,17 @@ export function RunnerRankingModal({
   const [publishedState, setPublishedState] = React.useState<PublishedListModalState | null>(null);
   const [resolvingKey, setResolvingKey] = React.useState<string | null>(null);
   const [resolveError, setResolveError] = React.useState<string | null>(null);
+  const [trendExpanded, setTrendExpanded] = React.useState(false);
+
+  const sverigelistan = useSverigelistan({
+    birthDate: selection?.birthYear != null ? String(selection.birthYear) : null,
+    gender: selection?.gender ?? null,
+    runnerId: selection ? String(selection.personId) : null,
+  });
+
+  React.useEffect(() => {
+    setTrendExpanded(false);
+  }, [selection]);
   const authUser = useAuthStore((store) => store.user);
   const rememberedUsername = useAuthStore((store) => store.rememberedUsername);
 
@@ -229,17 +243,62 @@ export function RunnerRankingModal({
 
             {state && state.success ? (
               <>
-                <View style={styles.summaryCard}>
-                  <View style={styles.summaryTopRow}>
-                    <SummaryChip
-                      icon="person-outline"
-                      label="Placering"
-                      value={`#${state.runnerCurrentRank}`}
-                    />
-                    <SummaryChip icon="speedometer-outline" label="Poäng" value={formatPoints(state.runnerCurrentPoints)} />
-                    <SummaryChip icon="add-circle-outline" label="Tillägg" value={formatPoints(state.addition)} />
+                <Pressable
+                  onPress={() => setTrendExpanded((value) => !value)}
+                  style={({ pressed }) => [styles.summaryCard, pressed ? styles.summaryCardPressed : null]}
+                >
+                  <View style={styles.rankSummaryGrid}>
+                    <View style={[styles.rankSummaryCard, styles.rankSummaryCardWide]}>
+                      <Text style={styles.rankSummaryLabel}>Plac. (förra mån.)</Text>
+                      <View style={styles.rankSummaryValueRow}>
+                        <View style={styles.rankSummaryValueWrap}>
+                          <Text style={styles.rankSummaryValue}>{sverigelistan.currentEntry?.Rank ?? '—'}</Text>
+                          {sverigelistan.currentEntry ? (
+                            <Text style={styles.rankSummaryComparison}>({sverigelistan.previousEntry ? sverigelistan.previousEntry.Rank : '-'})</Text>
+                          ) : null}
+                        </View>
+                        <SverigelistanTrendBadge direction={sverigelistan.trendDirection} />
+                      </View>
+                    </View>
+
+                    <View style={[styles.rankSummaryCard, styles.rankSummaryCardWide]}>
+                      <Text style={styles.rankSummaryLabel}>{sverigelistan.className ? `Plac. ${sverigelistan.className}` : 'Plac. klass'}</Text>
+                      <View style={styles.rankSummaryValueWrap}>
+                        <Text style={styles.rankSummaryValue}>{sverigelistan.currentClassRank ?? '—'}</Text>
+                        {sverigelistan.previousClassRank ? <Text style={styles.rankSummaryComparison}>({sverigelistan.previousClassRank})</Text> : null}
+                      </View>
+                    </View>
+
+                    <View style={[styles.rankSummaryCard, styles.rankSummaryCardNarrow]}>
+                      <Text style={styles.rankSummaryLabel}>Poäng</Text>
+                      <View style={styles.rankSummaryValueWrap}>
+                        <Text style={styles.rankSummaryValue}>{sverigelistan.currentEntry ? formatPoints(sverigelistan.currentEntry.Points) : formatPoints(state.runnerCurrentPoints)}</Text>
+                      </View>
+                    </View>
                   </View>
-                </View>
+
+                  <View style={styles.trendFooterRow}>
+                    <View style={styles.trendFooterSide} />
+                    <View style={styles.trendToggleRow}>
+                      <Ionicons color={colors.textMuted} name={trendExpanded ? 'chevron-up' : 'chevron-down'} size={16} />
+                      <Text style={styles.trendToggleText}>{trendExpanded ? 'Dölj historik' : 'Visa historik'}</Text>
+                    </View>
+                    <Text numberOfLines={1} style={[styles.additionInfo, styles.trendFooterSide, styles.trendFooterRight]}>Tillägg: {formatPoints(state.addition)}</Text>
+                  </View>
+
+                  {trendExpanded ? (
+                    sverigelistan.isLoading ? (
+                      <Text style={styles.additionInfo}>Hämtar Sverigelistan-historik...</Text>
+                    ) : !sverigelistan.currentEntry ? (
+                      <Text style={styles.additionInfo}>Ingen Sverigelistan-historik för den här löparen.</Text>
+                    ) : (
+                      <>
+                        <RankingTrendChart classPoints={sverigelistan.classTrend} points={sverigelistan.monthlyTrend} showTitle={false} />
+                        <SverigelistanTrendTable classTrend={sverigelistan.classTrend} monthlyTrend={sverigelistan.monthlyTrend} />
+                      </>
+                    )
+                  ) : null}
+                </Pressable>
 
                 <View style={styles.listHeaderRow}>
                   <Text style={styles.sectionTitle}>6 bästa tävlingarna</Text>
@@ -894,6 +953,95 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     borderWidth: 1,
     gap: spacing.sm,
     padding: spacing.md,
+  },
+  summaryCardPressed: {
+    opacity: 0.85,
+  },
+  rankSummaryGrid: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  rankSummaryCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    gap: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 6,
+  },
+  rankSummaryCardNarrow: {
+    flex: 0.82,
+  },
+  rankSummaryCardWide: {
+    flex: 1.08,
+  },
+  rankSummaryLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'center',
+    width: '100%',
+  },
+  rankSummaryValue: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  rankSummaryComparison: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  rankSummaryValueRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  rankSummaryValueWrap: {
+    alignItems: 'baseline',
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: 4,
+    justifyContent: 'center',
+  },
+  additionInfo: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  trendToggleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+  },
+  trendToggleText: {
+    ...typography.captionStrong,
+    color: colors.textMuted,
+  },
+  trendFooterRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  trendFooterSide: {
+    flex: 1,
+    minWidth: 0,
+  },
+  trendFooterRight: {
+    textAlign: 'right',
   },
   summaryChip: {
     backgroundColor: colors.surface,
