@@ -608,6 +608,21 @@ function PublishedTableSection({
         return;
       }
 
+      if ((kind === 'starts' || kind === 'entries') && scope === 'organisation' && row.classLabel) {
+        console.log('[PublishedListModal] opening class list from organisation starts/entries');
+        void openPublishedListModal(
+          kind,
+          'public',
+          eventId,
+          null,
+          null,
+          onOpenOrganisation,
+          row.classLabel,
+          selectedEventRaceId,
+        );
+        return;
+      }
+
       if (!row.organisationId) {
         console.log('[PublishedListModal] row press ignored: missing organisationId');
         return;
@@ -1207,7 +1222,15 @@ function PublishedTableSection({
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
               </Pressable>
             ) : (
-              <Pressable disabled={!row.organisationId} onPress={() => handleRowPress(row)} style={styles.tableNameColumn}>
+              <Pressable
+                disabled={
+                  scope === 'organisation' && !isOrganisationResults
+                    ? !row.classLabel
+                    : !row.organisationId
+                }
+                onPress={() => handleRowPress(row)}
+                style={styles.tableNameColumn}
+              >
                 <PersonNameText familyName={row.familyName} givenName={row.givenName} primary={row.primary} style={styles.tableMainText} />
                 {isOrganisationResults ? (
                   <View pointerEvents="none" style={styles.nameMetaRow}>
@@ -1235,9 +1258,11 @@ function PublishedTableSection({
             ) : null}
 
             {scope === 'organisation' && !isOrganisationResults ? (
-              <Text numberOfLines={1} style={[styles.tableCellText, styles.tableClassColumn, { width: columnWidths.class }]}>
-                {row.classLabel ?? '-'}
-              </Text>
+              <Pressable disabled={!row.classLabel} onPress={() => handleRowPress(row)} style={styles.tableClassColumn}>
+                <Text numberOfLines={1} style={[styles.tableCellText, row.classLabel ? styles.tableClubLinkText : null, { width: columnWidths.class }]}>
+                  {row.classLabel ?? '-'}
+                </Text>
+              </Pressable>
             ) : null}
 
             {scope === 'organisation' && !isEntries && !isOrganisationResults ? (
