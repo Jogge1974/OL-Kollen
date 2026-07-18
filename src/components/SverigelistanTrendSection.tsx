@@ -98,7 +98,7 @@ export function SverigelistanTrendTable({
       {dataRows.map((point, index) => {
         const classRank = classLookup.get(point.monthKey ?? '') ?? null;
         return (
-          <View key={point.monthKey ?? index} style={[styles.trendTableRow, index % 2 === 0 ? styles.trendTableRowEven : null]}>
+          <View key={point.monthKey ?? index} style={[styles.trendTableRow, index % 2 === 0 ? styles.trendTableRowEven : styles.trendTableRowOdd]}>
             <Text style={[styles.trendTableCell, styles.trendTableCellMonth]}>{formatMonthLabel(point.monthKey)}</Text>
             <Text style={[styles.trendTableCell, styles.trendTableCellRank]}>{point.rank ?? '-'}</Text>
             <Text style={[styles.trendTableCell, styles.trendTableCellRank]}>{classRank ?? '-'}</Text>
@@ -309,7 +309,10 @@ function createStyles(colors: ColorPalette, _isDark: boolean, _isSoft: boolean) 
       color: colors.textPrimary,
     },
     trendTable: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
       marginTop: spacing.sm,
+      overflow: 'hidden',
     },
     trendTableRow: {
       flexDirection: 'row',
@@ -321,7 +324,10 @@ function createStyles(colors: ColorPalette, _isDark: boolean, _isSoft: boolean) 
       borderBottomWidth: 1,
     },
     trendTableRowEven: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
+    },
+    trendTableRowOdd: {
+      backgroundColor: colors.surfaceMuted,
     },
     trendTableCell: {
       ...typography.caption,
