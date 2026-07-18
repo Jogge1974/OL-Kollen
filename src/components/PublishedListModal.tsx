@@ -42,6 +42,7 @@ type OpenAnalysisHandler = (eventId: string, classLabel: string, personId?: stri
 type PendingChoice = {
   classLabel: string;
   eventId: string;
+  mode: 'club' | 'class';
   organisationId: string;
   organisationLabel: string | null;
   personId: string;
@@ -289,36 +290,60 @@ export function PublishedListModal({
             <View style={styles.choiceOverlay}>
               <Pressable style={styles.choiceBackdrop} onPress={() => setPendingChoice(null)} />
               <View style={styles.choiceCard}>
-                <Text style={styles.choiceTitle}>Klubbresultat eller Analys</Text>
+                <Text style={styles.choiceTitle}>{pendingChoice.mode === 'class' ? 'Klassresultat eller Analys' : 'Klubbresultat eller Analys'}</Text>
 
                 <View style={styles.choiceButtons}>
-                  <Pressable
-                    onPress={() => {
-                      setPendingChoice(null);
-                      void openPublishedListModal(
-                        'results',
-                        'organisation',
-                        pendingChoice.eventId,
-                        pendingChoice.organisationId,
-                        pendingChoice.organisationLabel,
-                        setNestedState,
-                        null,
-                        currentState?.selectedEventRaceId ?? null,
-                      );
-                    }}
-                    style={[styles.choiceButton, styles.choiceButtonSecondary]}
-                  >
-                    <View style={styles.choiceButtonStack}>
-                      <Text style={[styles.choiceButtonLabel, styles.choiceButtonSecondaryLabel]}>Klubbresultat</Text>
-                      <OrganisationLabel
-                        label={pendingChoice.organisationLabel}
-                        logoSize={19}
-                        organisationId={pendingChoice.organisationId}
-                        textStyle={styles.choiceButtonClubText}
-                        viewStyle={styles.choiceButtonClubRow}
-                      />
-                    </View>
-                  </Pressable>
+                  {pendingChoice.mode === 'class' ? (
+                    <Pressable
+                      onPress={() => {
+                        setPendingChoice(null);
+                        void openPublishedListModal(
+                          'results',
+                          'public',
+                          pendingChoice.eventId,
+                          null,
+                          null,
+                          setNestedState,
+                          pendingChoice.classLabel,
+                          currentState?.selectedEventRaceId ?? null,
+                        );
+                      }}
+                      style={[styles.choiceButton, styles.choiceButtonSecondary]}
+                    >
+                      <View style={styles.choiceButtonStack}>
+                        <Text style={[styles.choiceButtonLabel, styles.choiceButtonSecondaryLabel]}>Klassresultat</Text>
+                        <Text numberOfLines={1} style={styles.choiceButtonClubText}>{pendingChoice.classLabel}</Text>
+                      </View>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => {
+                        setPendingChoice(null);
+                        void openPublishedListModal(
+                          'results',
+                          'organisation',
+                          pendingChoice.eventId,
+                          pendingChoice.organisationId,
+                          pendingChoice.organisationLabel,
+                          setNestedState,
+                          null,
+                          currentState?.selectedEventRaceId ?? null,
+                        );
+                      }}
+                      style={[styles.choiceButton, styles.choiceButtonSecondary]}
+                    >
+                      <View style={styles.choiceButtonStack}>
+                        <Text style={[styles.choiceButtonLabel, styles.choiceButtonSecondaryLabel]}>Klubbresultat</Text>
+                        <OrganisationLabel
+                          label={pendingChoice.organisationLabel}
+                          logoSize={19}
+                          organisationId={pendingChoice.organisationId}
+                          textStyle={styles.choiceButtonClubText}
+                          viewStyle={styles.choiceButtonClubRow}
+                        />
+                      </View>
+                    </Pressable>
+                  )}
                   <Pressable
                     onPress={() => {
                       setPendingChoice(null);
@@ -570,8 +595,16 @@ function PublishedTableSection({
       });
 
       if (kind === 'results' && scope === 'organisation' && row.personId) {
-        console.log('[PublishedListModal] opening nested analysis from organisation results');
-        onOpenNestedAnalysis(eventId, row.classLabel ?? section.title, row.personId);
+        console.log('[PublishedListModal] opening choice overlay for organisation results');
+        onOpenAnalysisChoice({
+          classLabel: row.classLabel ?? section.title,
+          eventId,
+          mode: 'class',
+          organisationId: row.organisationId ?? '',
+          organisationLabel: row.organisation ?? null,
+          personId: row.personId,
+          personLabel: row.primary,
+        });
         return;
       }
 
@@ -585,6 +618,7 @@ function PublishedTableSection({
         onOpenAnalysisChoice({
           classLabel: row.classLabel ?? section.title,
           eventId,
+          mode: 'club',
           organisationId: row.organisationId,
           organisationLabel: row.organisation ?? null,
           personId: row.personId,

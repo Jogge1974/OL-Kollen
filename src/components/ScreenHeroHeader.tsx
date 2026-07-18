@@ -47,11 +47,11 @@ export function ScreenHeroHeader({ badge, chips, eyebrow, eyebrowContent, subtit
 
       <View style={styles.heroTitleRow}>
         <View style={styles.heroTitleWrap}>
-          <Text adjustsFontSizeToFit minimumFontScale={0.6} numberOfLines={1} style={styles.heroTitle}>
+          <Text numberOfLines={1} style={styles.heroTitle}>
             {title}
           </Text>
           {subtitle ? (
-            <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={styles.heroSubtitle}>
+            <Text numberOfLines={1} style={styles.heroSubtitle}>
               {subtitle}
             </Text>
           ) : null}
