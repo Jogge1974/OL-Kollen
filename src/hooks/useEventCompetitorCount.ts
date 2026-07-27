@@ -15,8 +15,11 @@ export function useEventCompetitorCount(eventId: string | null, organisationId: 
   const [counts, setCounts] = React.useState<EventCompetitorCount>(emptyCounts);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const requestIdRef = React.useRef(0);
 
   const loadCounts = React.useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+
     if (!normalizedId) {
       setCounts(emptyCounts);
       setError(null);
@@ -29,16 +32,25 @@ export function useEventCompetitorCount(eventId: string | null, organisationId: 
 
     try {
       const nextCounts = await fetchEventCompetitorCount(normalizedId, organisationId, eventForm, eventRaceId);
-      setCounts(nextCounts);
+      if (requestIdRef.current === requestId) {
+        setCounts(nextCounts);
+      }
     } catch (loadError) {
-      setCounts(emptyCounts);
-      setError(loadError instanceof Error ? loadError.message : 'Okant fel vid hamtning av antal deltagare.');
+      if (requestIdRef.current === requestId) {
+        setCounts(emptyCounts);
+        setError(loadError instanceof Error ? loadError.message : 'Okant fel vid hamtning av antal deltagare.');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [normalizedId, organisationId, eventForm, eventRaceId]);
 
   React.useEffect(() => {
+    // Reset immediately when the target event changes so a previous event's
+    // count is never shown while the new one is loading.
+    setCounts(emptyCounts);
     void loadCounts();
   }, [loadCounts]);
 

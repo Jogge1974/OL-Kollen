@@ -19,8 +19,11 @@ export function useEventorEventDetail(eventId: string | string[] | undefined) {
   const [event, setEvent] = React.useState<EventDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const requestIdRef = React.useRef(0);
 
   const loadEvent = React.useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+
     if (!normalizedId) {
       setError('Ingen tävling vald.');
       setIsLoading(false);
@@ -32,15 +35,25 @@ export function useEventorEventDetail(eventId: string | string[] | undefined) {
 
     try {
       const nextEvent = await fetchEventorEventById(normalizedId, selectedEventRaceId);
-      setEvent(nextEvent);
+      if (requestIdRef.current === requestId) {
+        setEvent(nextEvent);
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Okänt fel vid hämtning av tävlingsdetaljer.');
+      if (requestIdRef.current === requestId) {
+        setError(loadError instanceof Error ? loadError.message : 'Okänt fel vid hämtning av tävlingsdetaljer.');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [normalizedId, selectedEventRaceId]);
 
   React.useEffect(() => {
+    // Reset immediately when the target event changes so a previous event's
+    // details are never shown (and never fed into dependent hooks) while the
+    // new one is loading.
+    setEvent(null);
     void loadEvent();
   }, [loadEvent]);
 
