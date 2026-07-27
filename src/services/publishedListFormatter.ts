@@ -344,7 +344,9 @@ function formatResultsXml(xml: string, options: PublishedListFormatOptions): Pub
 
     return {
       classLabel,
-      courseLengthLabel,
+      // Fall back to the per-result course length (from the rows) when Eventor
+      // did not attach a class-level <Course> for this stage.
+      courseLengthLabel: courseLengthLabel ?? personResults.find((row) => row.courseLengthLabel)?.courseLengthLabel ?? null,
       rows: personResults,
       // numberOfCompetitors is event-wide (all stages summed) for multi-stage
       // events, so when a stage is selected use the race-filtered row count.
@@ -1209,16 +1211,25 @@ function buildPublishedResultRow({
   const position = getNodeText(result?.Position) ?? getNodeText(result?.ResultPosition);
   const status = getString(result?.Status) ?? getString(getRecord(result?.CompetitorStatus)?.value) ?? getString(getRecord(result?.CompetitorStatus)?.Value);
 
+  // Prefer the per-result <Result><Course><Length>, which Eventor includes for
+  // every stage. The class-level <ClassResult><Course> is only attached for
+  // some stages of a multi-stage event, so relying on it alone leaves other
+  // stages without a course length (and therefore without a km-time). Fall back
+  // to the class-level course when the per-result one is missing.
+  const resultCourseLengthMeters = toNumber(getRecord(result?.Course)?.Length);
+  const effectiveCourseLengthMeters = resultCourseLengthMeters || courseLengthMeters;
+  const effectiveCourseLengthLabel = resultCourseLengthMeters ? formatCourseLength(resultCourseLengthMeters) : courseLengthLabel;
+
   return {
     classLabel,
-    courseLengthLabel: courseLengthLabel ?? undefined,
+    courseLengthLabel: effectiveCourseLengthLabel ?? undefined,
     diff: position ? `+${formatSeconds(timeBehindSeconds)}` : formatResultStatus(status),
     familyName: personName.family ?? undefined,
     givenName: personName.given ?? undefined,
     organisation: getString(organisation?.Name) ?? '-',
     organisationId: organisationId ?? undefined,
     personId,
-    pace: calculatePace(timeSeconds, courseLengthMeters),
+    pace: calculatePace(timeSeconds, effectiveCourseLengthMeters),
     position: position ?? '-',
     positionSort: position ? Number(position) : Number.MAX_SAFE_INTEGER,
     primary: personName.fullName || 'Namn saknas',

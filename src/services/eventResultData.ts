@@ -16,6 +16,11 @@ import { EventSplitTimesSection } from '@/src/types/eventSplitTimes';
  * on every open. See {@link EVENT_RESULT_CACHE_TTL_MS} for the TTL.
  */
 
+// Bump when the parse/format output shape or logic changes so previously cached
+// (now stale) entries are ignored instead of served. e.g. v2 added per-result
+// course length so multi-stage stages show banlängd/km-tid.
+const PARSED_CACHE_VERSION = 'v2';
+
 function normalizeEventId(eventId: string) {
   return eventId.split('::')[0] ?? eventId;
 }
@@ -41,7 +46,7 @@ export async function loadEventSplitTimesSections(
   options: EventSplitTimesParseOptions = {},
   hooks: EventDataLoadHooks = {},
 ): Promise<EventSplitTimesSection[]> {
-  const cacheKey = `splits-parsed:${normalizeEventId(eventId)}:${eventRaceId ?? ''}`;
+  const cacheKey = `splits-parsed:${PARSED_CACHE_VERSION}:${normalizeEventId(eventId)}:${eventRaceId ?? ''}`;
 
   const cached = await getCachedJson<EventSplitTimesSection[]>(cacheKey, EVENT_RESULT_CACHE_TTL_MS);
   if (cached) {
@@ -70,7 +75,7 @@ export async function loadFormattedResults(
   eventRaceId: string | null,
   hooks: EventDataLoadHooks = {},
 ): Promise<PublishedListViewData> {
-  const cacheKey = `results-parsed:${normalizeEventId(eventId)}:${scope}:${organisationId ?? ''}:${eventRaceId ?? ''}`;
+  const cacheKey = `results-parsed:${PARSED_CACHE_VERSION}:${normalizeEventId(eventId)}:${scope}:${organisationId ?? ''}:${eventRaceId ?? ''}`;
 
   const cached = await getCachedJson<PublishedListViewData>(cacheKey, EVENT_RESULT_CACHE_TTL_MS);
   if (cached) {
