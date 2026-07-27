@@ -13,6 +13,8 @@ import {
 import { ThemeName } from '@/src/theme/ThemeContext';
 
 const PREFERENCES_STORAGE_KEY = 'olkollen.preferences';
+const DISMISSED_ANNOUNCEMENTS_STORAGE_KEY = 'olkollen.dismissedAnnouncements';
+const ANNOUNCEMENTS_BASELINE_STORAGE_KEY = 'olkollen.announcementsBaseline';
 
 export type ServerProfile = {
   favorites: FavoriteEventSummary[];
@@ -46,6 +48,10 @@ type PreferencesState = PreferencesData & {
   ) => Promise<{ ok: boolean; reason?: 'duplicate' | 'empty' }>;
   clearAllFavorites: () => Promise<void>;
   clearLogoutSensitivePreferences: () => Promise<void>;
+  dismissAnnouncement: (announcementId: string) => Promise<void>;
+  dismissedAnnouncementIds: string[];
+  announcementsBaselineInitialized: boolean;
+  syncAnnouncements: (activeAnnouncementIds: string[]) => Promise<void>;
   hydratePreferences: () => Promise<void>;
   isFavorite: (eventId: string) => boolean;
   isHydrated: boolean;
@@ -261,6 +267,50 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   favoriteClasses: [],
   favoriteEvents: [],
   themeName: 'light',
+  dismissedAnnouncementIds: [],
+  announcementsBaselineInitialized: false,
+  dismissAnnouncement: async (announcementId) => {
+    const current = get().dismissedAnnouncementIds;
+    if (current.includes(announcementId)) {
+      return;
+    }
+
+    const next = [...current, announcementId];
+    set({ dismissedAnnouncementIds: next });
+    await setStoredJson(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY, next);
+  },
+  syncAnnouncements: async (activeAnnouncementIds) => {
+    const { dismissedAnnouncementIds, announcementsBaselineInitialized } = get();
+
+    let nextDismissed = dismissedAnnouncementIds;
+    let baselineChanged = false;
+
+    if (!announcementsBaselineInitialized) {
+      // First launch after install: treat everything currently active as already
+      // seen so a fresh download doesn't banner historical messages. They stay
+      // visible in the message history, and any message created later banners.
+      nextDismissed = [...activeAnnouncementIds];
+      baselineChanged = true;
+    } else {
+      // Drop dismissed ids that no longer match an active announcement so the
+      // stored list doesn't accumulate ids for deleted messages.
+      const activeSet = new Set(activeAnnouncementIds);
+      const pruned = dismissedAnnouncementIds.filter((id) => activeSet.has(id));
+      if (pruned.length !== dismissedAnnouncementIds.length) {
+        nextDismissed = pruned;
+      }
+    }
+
+    if (nextDismissed === dismissedAnnouncementIds && !baselineChanged) {
+      return;
+    }
+
+    set({ dismissedAnnouncementIds: nextDismissed, announcementsBaselineInitialized: true });
+    await setStoredJson(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY, nextDismissed);
+    if (baselineChanged) {
+      await setStoredJson(ANNOUNCEMENTS_BASELINE_STORAGE_KEY, true);
+    }
+  },
   clearAllFavorites: async () => {
     const current = get();
     const favoriteEvents: FavoriteEventSummary[] = [];
@@ -302,10 +352,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       const calendarDefaultFilterTemplate = normalizeCalendarFilterTemplate(storedPreferences?.calendarDefaultFilterTemplate);
       const calendarFilterPresets = normalizeCalendarFilterPresets(storedPreferences?.calendarFilterPresets);
       const favoriteEvents = normalizeFavoriteEvents(storedPreferences?.favoriteEvents ?? defaultPreferences.favoriteEvents);
+      const dismissedAnnouncementIds = await getStoredJson<string[]>(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY);
+      const announcementsBaselineInitialized = await getStoredJson<boolean>(ANNOUNCEMENTS_BASELINE_STORAGE_KEY);
 
       set({
         calendarDefaultFilterTemplate,
         calendarFilterPresets,
+        dismissedAnnouncementIds: Array.isArray(dismissedAnnouncementIds) ? dismissedAnnouncementIds : [],
+        announcementsBaselineInitialized: announcementsBaselineInitialized === true,
         favoriteClasses: storedPreferences?.favoriteClasses ?? defaultPreferences.favoriteClasses,
         favoriteEvents,
         isHydrated: true,

@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -9,6 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/src/components/AppButton';
 import { EmptyState } from '@/src/components/EmptyState';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
+import { AnnouncementBanner } from '@/src/components/AnnouncementBanner';
+import { AnnouncementsModal } from '@/src/components/AnnouncementsModal';
 import { EventSummaryCard } from '@/src/components/EventSummaryCard';
 import { LoadingState } from '@/src/components/LoadingState';
 import { PersonActivitySectionList } from '@/src/components/PersonActivitySectionList';
@@ -16,6 +18,7 @@ import { PublishedListModal, PublishedListModalState, openPublishedListModal } f
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
+import { useAnnouncements } from '@/src/hooks/useAnnouncements';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useAuthStore } from '@/src/store/authStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
@@ -28,6 +31,8 @@ export default function HomeScreen() {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
+  const { allAnnouncements, announcements, dismiss: dismissAnnouncement } = useAnnouncements();
+  const [showAnnouncements, setShowAnnouncements] = React.useState(false);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
   const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
   const [isLoadingTodayEvents, setIsLoadingTodayEvents] = React.useState(true);
@@ -132,6 +137,10 @@ export default function HomeScreen() {
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl colors={[colors.primary]} refreshing={isLoadingTodayEvents} tintColor={colors.primary} onRefresh={() => void refreshAll()} />}
       >
+        {announcements.map((item) => (
+          <AnnouncementBanner key={item.id} announcement={item} onDismiss={dismissAnnouncement} />
+        ))}
+
         <LinearGradient colors={[colors.heroTop, colors.primary, colors.backgroundDeep]} style={styles.hero}>
           <View style={styles.sunGlow} />
           <View style={styles.leafGlowLeft} />
@@ -146,6 +155,16 @@ export default function HomeScreen() {
               </Text>
             </View>
             {user?.accessLevel ? <View style={styles.accessPill}><Text style={styles.accessPillText}>{formatAccessLevel(user.accessLevel)}</Text></View> : null}
+            {allAnnouncements.length > 0 ? (
+              <Pressable accessibilityLabel="Visa meddelanden" hitSlop={8} onPress={() => setShowAnnouncements(true)} style={styles.bellButton}>
+                <MaterialCommunityIcons color={colors.heroText} name="message-text-outline" size={22} />
+                {announcements.length > 0 ? (
+                  <View style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText}>{announcements.length}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            ) : null}
           </View>
         </LinearGradient>
 
@@ -228,6 +247,7 @@ export default function HomeScreen() {
       <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
       <SplitTimesModal onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeSplitTimesModal} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
+      <AnnouncementsModal announcements={allAnnouncements} onClose={() => setShowAnnouncements(false)} visible={showAnnouncements} />
     </SafeAreaView>
   );
 }
@@ -322,6 +342,27 @@ function createStyles(colors: ColorPalette) {
   accessPillText: {
     ...typography.captionStrong,
     color: colors.heroText,
+  },
+  bellButton: {
+    padding: spacing.xs,
+    position: 'relative',
+  },
+  bellBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    justifyContent: 'center',
+    minWidth: 16,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  bellBadgeText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 10,
   },
   container: {
     gap: spacing.md,
