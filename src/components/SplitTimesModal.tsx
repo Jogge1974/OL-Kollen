@@ -5,10 +5,10 @@ import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewSt
 
 import { fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
-import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
+import { ProgressSteps } from '@/src/components/ProgressSteps';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
-import { loadEventSplitTimesSections } from '@/src/services/eventResultData';
+import { EventDataLoadStage, loadEventSplitTimesSections } from '@/src/services/eventResultData';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -22,6 +22,8 @@ export type SplitTimesModalState = {
   eventSubtitle?: string | null;
   initialClassLabel?: string | null;
   isLoading: boolean;
+  loadingStage?: EventDataLoadStage | null;
+  loadingRetrying?: boolean;
   sections: EventSplitTimesSection[];
   title: string;
 };
@@ -313,7 +315,18 @@ export function SplitTimesModal({
           ) : null}
 
           <View style={styles.listModalContent}>
-            {currentState?.isLoading ? <LoadingState label="Hämtar sträcktider..." /> : null}
+            {currentState?.isLoading ? (
+              <ProgressSteps
+                activeIndex={currentState.loadingStage === 'parsing' ? 1 : 0}
+                steps={[
+                  {
+                    label: 'Hämtar sträcktider från Eventor',
+                    note: currentState.loadingRetrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
+                  },
+                  { label: 'Bearbetar sträcktider' },
+                ]}
+              />
+            ) : null}
             {currentState?.error ? <Text style={styles.documentsErrorText}>{currentState.error}</Text> : null}
             {!currentState?.isLoading && !currentState?.error && currentState?.sections.length === 0 ? (
               <Text style={styles.sectionText}>{currentState.emptyMessage}</Text>
@@ -1055,7 +1068,10 @@ export async function openEventSplitTimesModal(
 
   try {
     const [sections, eventDetail] = await Promise.all([
-      loadEventSplitTimesSections(eventId, selectedEventRaceId, { selectedEventRaceId }),
+      loadEventSplitTimesSections(eventId, selectedEventRaceId, { selectedEventRaceId }, {
+        onStage: (stage) => setState((prev) => (prev ? { ...prev, loadingStage: stage } : prev)),
+        onAttempt: (attempt) => setState((prev) => (prev ? { ...prev, loadingRetrying: attempt > 1 } : prev)),
+      }),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
 

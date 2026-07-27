@@ -5,9 +5,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fetchEventorEventById } from '@/src/api/eventorApi';
-import { LoadingState } from '@/src/components/LoadingState';
+import { ProgressSteps } from '@/src/components/ProgressSteps';
 import { buildEventAnalysis, buildHeadToHead, EventAnalysisHeadToHead } from '@/src/services/eventAnalysis';
-import { loadEventSplitTimesSections } from '@/src/services/eventResultData';
+import { EventDataLoadStage, loadEventSplitTimesSections } from '@/src/services/eventResultData';
 import { getClassificationTone } from '@/src/theme/colors';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -22,6 +22,8 @@ export type AnalysisModalState = {
   initialClassLabel?: string | null;
   initialPersonId?: string | null;
   isLoading: boolean;
+  loadingStage?: EventDataLoadStage | null;
+  loadingRetrying?: boolean;
   sections: EventSplitTimesSection[];
   title: string;
 };
@@ -96,7 +98,19 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
             </Pressable>
           </View>
 
-          {currentState.isLoading ? <LoadingState label="Hämtar analys..." fullScreen /> : null}
+          {currentState.isLoading ? (
+            <ProgressSteps
+              activeIndex={currentState.loadingStage === 'parsing' ? 1 : 0}
+              fullScreen
+              steps={[
+                {
+                  label: 'Hämtar resultat från Eventor',
+                  note: currentState.loadingRetrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
+                },
+                { label: 'Bearbetar och analyserar' },
+              ]}
+            />
+          ) : null}
           {!currentState.isLoading && currentState.error ? <Text style={styles.errorText}>{currentState.error}</Text> : null}
           {!currentState.isLoading && !currentState.error && currentState.sections.length === 0 ? <Text style={styles.helperText}>{currentState.emptyMessage}</Text> : null}
 
@@ -632,7 +646,10 @@ export async function openEventAnalysisModal(
 
   try {
     const [sections, eventDetail] = await Promise.all([
-      loadEventSplitTimesSections(eventId, selectedEventRaceId, { selectedEventRaceId }),
+      loadEventSplitTimesSections(eventId, selectedEventRaceId, { selectedEventRaceId }, {
+        onStage: (stage) => setState((prev) => (prev ? { ...prev, loadingStage: stage } : prev)),
+        onAttempt: (attempt) => setState((prev) => (prev ? { ...prev, loadingRetrying: attempt > 1 } : prev)),
+      }),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
 

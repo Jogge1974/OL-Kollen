@@ -5,9 +5,9 @@ import { ActivityIndicator, LayoutChangeEvent, Modal, Platform, Pressable, Scrol
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
-import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
-import { loadFormattedResults } from '@/src/services/eventResultData';
+import { ProgressStep, ProgressSteps } from '@/src/components/ProgressSteps';
+import { EventDataLoadStage, loadFormattedResults } from '@/src/services/eventResultData';
 import { PublishedListRow, PublishedListSection, PublishedListViewData, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
 import { calculateClassPoints, fetchSverigelistanForPoints } from '@/src/services/sverigelistanPointsCalculator';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
@@ -28,11 +28,31 @@ export type PublishedListModalState = {
   eventSubtitle?: string | null;
   initialAnchorKey?: string | null;
   isLoading: boolean;
+  loadingStage?: EventDataLoadStage | null;
+  loadingRetrying?: boolean;
   kind: EventPublishedListKind;
   scope: EventPublishedListScope;
   sections: PublishedListSection[];
   title: string;
 };
+
+const LIST_LOADING_LABELS: Record<EventPublishedListKind, { fetch: string; process: string }> = {
+  results: { fetch: 'Hämtar resultat från Eventor', process: 'Bearbetar resultat' },
+  entries: { fetch: 'Hämtar anmälningar från Eventor', process: 'Bearbetar anmälningar' },
+  starts: { fetch: 'Hämtar startlista från Eventor', process: 'Bearbetar startlista' },
+};
+
+function buildListLoadingSteps(kind: EventPublishedListKind, retrying: boolean): ProgressStep[] {
+  const labels = LIST_LOADING_LABELS[kind];
+
+  return [
+    {
+      label: labels.fetch,
+      note: retrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
+    },
+    { label: labels.process },
+  ];
+}
 
 type PickerAnchor = {
   key: string;
@@ -253,7 +273,12 @@ export function PublishedListModal({
           ) : null}
 
           <ScrollView ref={scrollRef} contentContainerStyle={styles.listModalContent}>
-            {currentState?.isLoading ? <LoadingState label="Hämtar listan..." /> : null}
+            {currentState?.isLoading ? (
+              <ProgressSteps
+                activeIndex={currentState.loadingStage === 'parsing' ? 1 : 0}
+                steps={buildListLoadingSteps(currentState.kind, currentState.loadingRetrying ?? false)}
+              />
+            ) : null}
             {currentState?.error ? <Text style={styles.documentsErrorText}>{currentState.error}</Text> : null}
             {!currentState?.isLoading && !currentState?.error && currentState?.sections.length === 0 ? (
               <Text style={styles.sectionText}>{currentState.emptyMessage}</Text>
@@ -1393,10 +1418,20 @@ export async function openPublishedListModal(
   });
 
   try {
+    const reportStage = (stage: EventDataLoadStage) =>
+      setState((prev) => (prev ? { ...prev, loadingStage: stage } : prev));
+    const reportAttempt = (attempt: number) =>
+      setState((prev) => (prev ? { ...prev, loadingRetrying: attempt > 1 } : prev));
+
     const [rawResult, eventClassNameById, eventDetail] = await Promise.all([
       kind === 'results'
-        ? loadFormattedResults(eventId, scope, organisationId, selectedEventRaceId ?? null)
-        : fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined, selectedEventRaceId),
+        ? loadFormattedResults(eventId, scope, organisationId, selectedEventRaceId ?? null, {
+            onStage: reportStage,
+            onAttempt: reportAttempt,
+          })
+        : fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined, selectedEventRaceId, {
+            onAttempt: reportAttempt,
+          }),
       kind === 'entries' ? fetchEventClassNameMap(eventId).catch(() => ({})) : Promise.resolve<Record<string, string>>({}),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
@@ -1404,12 +1439,15 @@ export async function openPublishedListModal(
     const formatted =
       kind === 'results'
         ? (rawResult as PublishedListViewData)
-        : formatPublishedListXml(kind, rawResult as string, {
-            eventClassNameById,
-            organisationId,
-            selectedEventRaceId,
-            scope,
-          });
+        : (() => {
+            reportStage('parsing');
+            return formatPublishedListXml(kind, rawResult as string, {
+              eventClassNameById,
+              organisationId,
+              selectedEventRaceId,
+              scope,
+            });
+          })();
 
     const sections =
       scope === 'organisation'

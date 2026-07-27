@@ -160,14 +160,21 @@ export async function fetchEventPublishedListXml(
   eventId: string,
   organisationId?: string,
   eventRaceId?: string | null,
+  options: { onAttempt?: (attempt: number) => void } = {},
 ) {
   const normalizedEventId = normalizeEventId(eventId);
   const request = buildPublishedListRequest(kind, scope, normalizedEventId, organisationId, eventRaceId);
 
-  return fetchEventorXmlWithRetry(request.endpoint, `Published list ${kind}/${scope}`);
+  return fetchEventorXmlWithRetry(request.endpoint, `Published list ${kind}/${scope}`, {
+    onAttempt: options.onAttempt,
+  });
 }
 
-export async function fetchEventSplitTimesXml(eventId: string, eventRaceId?: string | null) {
+export async function fetchEventSplitTimesXml(
+  eventId: string,
+  eventRaceId?: string | null,
+  options: { onAttempt?: (attempt: number) => void } = {},
+) {
   const normalizedEventId = normalizeEventId(eventId);
   const searchParams = new URLSearchParams({
     eventId: normalizedEventId,
@@ -183,7 +190,7 @@ export async function fetchEventSplitTimesXml(eventId: string, eventRaceId?: str
   }
   const requestUrl = buildEventorUrl(`/results/event/iofxml?${searchParams.toString()}`);
 
-  return fetchEventorXmlWithRetry(requestUrl, 'Split times');
+  return fetchEventorXmlWithRetry(requestUrl, 'Split times', { onAttempt: options.onAttempt });
 }
 
 export async function fetchEventClassNameMap(eventId: string) {
@@ -643,11 +650,12 @@ function delay(ms: number) {
 async function fetchEventorXmlWithRetry(
   url: string,
   logLabel: string,
-  { maxAttempts = 3, timeoutMs = 120000 }: { maxAttempts?: number; timeoutMs?: number } = {},
+  { maxAttempts = 3, timeoutMs = 120000, onAttempt }: { maxAttempts?: number; timeoutMs?: number; onAttempt?: (attempt: number) => void } = {},
 ): Promise<string> {
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    onAttempt?.(attempt);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
