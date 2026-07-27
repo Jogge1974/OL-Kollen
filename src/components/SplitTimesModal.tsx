@@ -875,12 +875,21 @@ function buildSplitMetrics(splitIndex: number, row: EventSplitTimesRow, allRows:
   };
 }
 
+function isClassifiedRow(row: EventSplitTimesRow) {
+  // Only approved runners are officially ranked. Non-OK statuses (e.g.
+  // MissingPunch, DidNotFinish) must be excluded from placements and the
+  // leader/behind maths – otherwise a mispunched runner with a fast (but
+  // invalid) time would be shown as the leader ahead of the real winner.
+  return !row.status || row.status === 'OK';
+}
+
 function getRankForValue(
   allRows: EventSplitTimesRow[],
   selector: (row: EventSplitTimesRow) => number | null,
   current: number,
 ) {
   const values = allRows
+    .filter(isClassifiedRow)
     .map(selector)
     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
     .sort((left, right) => left - right);
@@ -891,6 +900,7 @@ function getRankForValue(
 
 function getLeaderValue(allRows: EventSplitTimesRow[], selector: (row: EventSplitTimesRow) => number | null) {
   const values = allRows
+    .filter(isClassifiedRow)
     .map(selector)
     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
     .sort((left, right) => left - right);
@@ -900,6 +910,7 @@ function getLeaderValue(allRows: EventSplitTimesRow[], selector: (row: EventSpli
 
 function getNthValue(allRows: EventSplitTimesRow[], selector: (row: EventSplitTimesRow) => number | null, nth: number) {
   const values = allRows
+    .filter(isClassifiedRow)
     .map(selector)
     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
     .sort((left, right) => left - right);
