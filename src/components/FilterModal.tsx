@@ -5,7 +5,7 @@ import Checkbox from 'expo-checkbox';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/AppButton';
-import { CLASSIFICATION_OPTIONS, createDefaultCalendarFilters, resolveCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
+import { CLASSIFICATION_OPTIONS, DISCIPLINE_OPTIONS, createDefaultCalendarFilters, resolveCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
 import { formatApiDate, formatDisplayDate, isValidIsoDate } from '@/src/services/dateService';
 import { useAuthStore } from '@/src/store/authStore';
@@ -88,6 +88,15 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
     [],
   );
 
+  const disciplineRows = React.useMemo(
+    () => [
+      [DISCIPLINE_OPTIONS[0], DISCIPLINE_OPTIONS[3]],
+      [DISCIPLINE_OPTIONS[1], DISCIPLINE_OPTIONS[4]],
+      [DISCIPLINE_OPTIONS[2], DISCIPLINE_OPTIONS[5]],
+    ],
+    [],
+  );
+
   const activeDateValue = activeDateField ? parseIsoDate(draft[activeDateField]) : new Date();
 
   const toggleClassification = (id: number) => {
@@ -98,6 +107,18 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
     setDraft({
       ...draft,
       classificationIds: nextIds,
+    });
+  };
+
+  const toggleDiscipline = (id: number) => {
+    const current = draft.disciplineIds ?? [];
+    const nextIds = current.includes(id)
+      ? current.filter((currentId) => currentId !== id)
+      : [...current, id].sort((a, b) => a - b);
+
+    setDraft({
+      ...draft,
+      disciplineIds: nextIds,
     });
   };
 
@@ -159,13 +180,14 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
   const activePresetKey = React.useMemo(() => {
     const signature = JSON.stringify({
       classificationIds: [...draft.classificationIds].sort((a, b) => a - b),
+      disciplineIds: [...(draft.disciplineIds ?? [])].sort((a, b) => a - b),
       districtIds: [...draft.districtIds].sort((a, b) => a - b),
       fromDate: draft.fromDate,
       toDate: draft.toDate,
     });
 
     const makeSignature = (fv: EventFilterValues) =>
-      JSON.stringify({ classificationIds: fv.classificationIds, districtIds: fv.districtIds, fromDate: fv.fromDate, toDate: fv.toDate });
+      JSON.stringify({ classificationIds: fv.classificationIds, disciplineIds: fv.disciplineIds ?? [], districtIds: fv.districtIds, fromDate: fv.fromDate, toDate: fv.toDate });
 
     const defaultSignature = makeSignature(resolveCalendarFilterTemplate(calendarDefaultFilterTemplate));
     if (signature === defaultSignature) {
@@ -174,7 +196,7 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
 
     const foundPreset = calendarFilterPresets.find((preset) => makeSignature(resolveCalendarFilterTemplate(preset.template)) === signature);
     return foundPreset?.id ?? null;
-  }, [calendarDefaultFilterTemplate, calendarFilterPresets, draft.classificationIds, draft.districtIds, draft.fromDate, draft.toDate]);
+  }, [calendarDefaultFilterTemplate, calendarFilterPresets, draft.classificationIds, draft.disciplineIds, draft.districtIds, draft.fromDate, draft.toDate]);
 
   return (
     <Modal animationType="slide" transparent visible={visible}>
@@ -284,6 +306,34 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
                           id={rightOption.id}
                           label={rightOption.label}
                           onPress={() => toggleClassification(rightOption.id)}
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.filterCard}>
+                <Text style={styles.filterHeading}>Discipliner</Text>
+                <View style={styles.classificationRows}>
+                  {disciplineRows.map(([leftOption, rightOption]) => (
+                    <View key={leftOption.id} style={styles.classificationRow}>
+                      <View style={styles.classificationCell}>
+                        <ClassificationOption
+                          checked={(draft.disciplineIds ?? []).includes(leftOption.id)}
+                          id={leftOption.id}
+                          label={leftOption.label}
+                          onPress={() => toggleDiscipline(leftOption.id)}
+                        />
+                      </View>
+                      <View style={styles.classificationCell}>
+                        <ClassificationOption
+                          checked={(draft.disciplineIds ?? []).includes(rightOption.id)}
+                          id={rightOption.id}
+                          label={rightOption.label}
+                          onPress={() => toggleDiscipline(rightOption.id)}
                         />
                       </View>
                     </View>

@@ -11,8 +11,18 @@ export const CLASSIFICATION_OPTIONS = [
   { id: 6, label: 'Internationell tävling' },
 ];
 
+export const DISCIPLINE_OPTIONS = [
+  { id: 1, label: 'Orientering' },
+  { id: 2, label: 'MTB-O' },
+  { id: 3, label: 'Skid-O' },
+  { id: 4, label: 'Pre-O' },
+  { id: 7, label: 'O-Skytte' },
+  { id: 8, label: 'Indoor' },
+];
+
 export const DEFAULT_CALENDAR_FILTER_TEMPLATE: CalendarFilterTemplate = {
   classificationIds: [1, 2],
+  disciplineIds: [],
   districtIds: [],
   fromOffsetDays: -2,
   showEntryCountsInList: true,
@@ -22,6 +32,7 @@ export const DEFAULT_CALENDAR_FILTER_TEMPLATE: CalendarFilterTemplate = {
 export function createDefaultCalendarFilterTemplate(): CalendarFilterTemplate {
   return {
     classificationIds: [...DEFAULT_CALENDAR_FILTER_TEMPLATE.classificationIds],
+    disciplineIds: [...(DEFAULT_CALENDAR_FILTER_TEMPLATE.disciplineIds ?? [])],
     districtIds: [...DEFAULT_CALENDAR_FILTER_TEMPLATE.districtIds],
     fromOffsetDays: DEFAULT_CALENDAR_FILTER_TEMPLATE.fromOffsetDays,
     showEntryCountsInList: DEFAULT_CALENDAR_FILTER_TEMPLATE.showEntryCountsInList,
@@ -32,6 +43,7 @@ export function createDefaultCalendarFilterTemplate(): CalendarFilterTemplate {
 export function resolveCalendarFilterTemplate(template: CalendarFilterTemplate, now = new Date()): EventFilterValues {
   return {
     classificationIds: [...template.classificationIds].sort((a, b) => a - b),
+    disciplineIds: [...(template.disciplineIds ?? [])].sort((a, b) => a - b),
     districtIds: [...template.districtIds].sort((a, b) => a - b),
     fromDate: formatApiDate(getRelativeDate(now, template.fromOffsetDays)),
     showEntryCountsInList: template.showEntryCountsInList ?? true,

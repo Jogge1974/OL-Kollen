@@ -77,6 +77,7 @@ function sortEventsByDateThenName(left: EventItem, right: EventItem) {
 
 function filterEvents(events: EventItem[], filters: EventFilterValues) {
   const { classificationIds, districtIds } = filters;
+  const disciplineIds = filters.disciplineIds ?? [];
 
   return events.filter((event) => {
     const matchesClassification =
@@ -85,6 +86,12 @@ function filterEvents(events: EventItem[], filters: EventFilterValues) {
       (event.classificationId === 0 && classificationIds.includes(1));
 
     if (!matchesClassification) {
+      return false;
+    }
+
+    // No discipline selected means "all disciplines". Eventor has no server-side
+    // discipline filter, so filter the response on the event's DisciplineId.
+    if (disciplineIds.length > 0 && !disciplineIds.includes(event.disciplineId)) {
       return false;
     }
 

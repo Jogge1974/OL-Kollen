@@ -79,6 +79,7 @@ function normalizeCalendarFilterTemplate(template?: Partial<CalendarFilterTempla
 
   return {
     classificationIds: normalizeNumberArray(template?.classificationIds, fallback.classificationIds),
+    disciplineIds: normalizeNumberArray(template?.disciplineIds, fallback.disciplineIds ?? []),
     districtIds: normalizeNumberArray(template?.districtIds, fallback.districtIds),
     fromOffsetDays: normalizeOffset(template?.fromOffsetDays, fallback.fromOffsetDays),
     showEntryCountsInList: template?.showEntryCountsInList !== false,

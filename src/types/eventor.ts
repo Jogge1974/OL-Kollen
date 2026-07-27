@@ -1,5 +1,6 @@
 export type EventFilterValues = {
   classificationIds: number[];
+  disciplineIds?: number[];
   districtIds: number[];
   fromDate: string;
   showEntryCountsInList: boolean;

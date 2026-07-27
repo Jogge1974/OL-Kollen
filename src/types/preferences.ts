@@ -17,6 +17,7 @@ export type NotificationSettings = {
 
 export type CalendarFilterTemplate = {
   classificationIds: number[];
+  disciplineIds?: number[];
   districtIds: number[];
   fromOffsetDays: number;
   showEntryCountsInList?: boolean;

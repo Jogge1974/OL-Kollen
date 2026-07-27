@@ -3,7 +3,7 @@ import * as React from 'react';
 import Checkbox from 'expo-checkbox';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { CLASSIFICATION_OPTIONS } from '@/src/features/calendar/calendarFilters';
+import { CLASSIFICATION_OPTIONS, DISCIPLINE_OPTIONS } from '@/src/features/calendar/calendarFilters';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -43,6 +43,14 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
     [],
   );
 
+  const disciplineColumns = React.useMemo(
+    () => [
+      [DISCIPLINE_OPTIONS[0], DISCIPLINE_OPTIONS[1], DISCIPLINE_OPTIONS[2]],
+      [DISCIPLINE_OPTIONS[3], DISCIPLINE_OPTIONS[4], DISCIPLINE_OPTIONS[5]],
+    ],
+    [],
+  );
+
   const toggleDistrict = (id: number) => {
     const districtIds = template.districtIds.includes(id)
       ? template.districtIds.filter((currentId) => currentId !== id)
@@ -62,6 +70,18 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
     onChange({
       ...template,
       classificationIds,
+    });
+  };
+
+  const toggleDiscipline = (id: number) => {
+    const current = template.disciplineIds ?? [];
+    const disciplineIds = current.includes(id)
+      ? current.filter((currentId) => currentId !== id)
+      : [...current, id].sort((a, b) => a - b);
+
+    onChange({
+      ...template,
+      disciplineIds,
     });
   };
 
@@ -130,6 +150,25 @@ export function CalendarFilterTemplateEditor({ districtOptions, myDistrictOption
                   id={option.id}
                   label={option.label}
                   onPress={() => toggleClassification(option.id)}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.filterCard}>
+        <Text style={styles.filterHeading}>Discipliner</Text>
+        <View style={styles.classificationColumnsRow}>
+          {disciplineColumns.map((column, index) => (
+            <View key={`discipline-column-${index}`} style={styles.classificationColumn}>
+              {column.map((option) => (
+                <ClassificationOption
+                  key={option.id}
+                  checked={(template.disciplineIds ?? []).includes(option.id)}
+                  id={option.id}
+                  label={option.label}
+                  onPress={() => toggleDiscipline(option.id)}
                 />
               ))}
             </View>
