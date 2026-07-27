@@ -164,27 +164,7 @@ export async function fetchEventPublishedListXml(
   const normalizedEventId = normalizeEventId(eventId);
   const request = buildPublishedListRequest(kind, scope, normalizedEventId, organisationId, eventRaceId);
 
-  const response = await fetch(request.endpoint, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    console.error('[Eventor] Published list failed', {
-      endpoint: request.endpoint,
-      kind,
-      scope,
-      status: response.status,
-    });
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
-  return xml;
+  return fetchEventorXmlWithRetry(request.endpoint, `Published list ${kind}/${scope}`);
 }
 
 export async function fetchEventSplitTimesXml(eventId: string, eventRaceId?: string | null) {
@@ -203,26 +183,7 @@ export async function fetchEventSplitTimesXml(eventId: string, eventRaceId?: str
   }
   const requestUrl = buildEventorUrl(`/results/event/iofxml?${searchParams.toString()}`);
 
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    console.error('[Eventor] Split times failed', {
-      eventId: normalizedEventId,
-      status: response.status,
-      url: requestUrl,
-    });
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
-  return xml;
+  return fetchEventorXmlWithRetry(requestUrl, 'Split times');
 }
 
 export async function fetchEventClassNameMap(eventId: string) {
@@ -663,6 +624,76 @@ async function fetchRelayTeamCount(eventId: string) {
 
 function isRelayEventForm(eventForm?: string | null) {
   return eventForm === 'RelaySingleDay' || eventForm === 'Relay';
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Fetches XML from Eventor with a request timeout and automatic retries.
+ *
+ * Large events (e.g. O-ringen, ~36 MB result list / ~90 MB with split times)
+ * regularly make Eventor time out or return a 5xx HTML error page under load
+ * ("Eventor svarade med ett oväntat HTML-fel"). A couple of retries with
+ * exponential backoff clears the vast majority of those transient failures.
+ */
+async function fetchEventorXmlWithRetry(
+  url: string,
+  logLabel: string,
+  { maxAttempts = 3, timeoutMs = 120000 }: { maxAttempts?: number; timeoutMs?: number } = {},
+): Promise<string> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    let xml: string;
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: 'application/xml',
+          ApiKey: getEventorApiKey(),
+        },
+        method: 'GET',
+        signal: controller.signal,
+      });
+      xml = await response.text();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      const timedOut = normalized.name === 'AbortError';
+      lastError = timedOut ? new Error('Eventor svarade inte i tid. Försök igen om en stund.') : normalized;
+      console.error(`[Eventor] ${logLabel} network error`, { attempt, timedOut, message: normalized.message });
+      if (attempt === maxAttempts) {
+        throw lastError;
+      }
+      await delay(Math.min(1000 * 2 ** (attempt - 1), 5000));
+      continue;
+    }
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      return xml;
+    }
+
+    // 5xx and HTML error pages are transient server-side overload; retry them.
+    const retryable = response.status >= 500 || response.status === 429 || xml.includes('<html');
+    lastError = new Error(mapEventorError(response.status, xml));
+    console.error(`[Eventor] ${logLabel} failed`, { attempt, status: response.status, retryable });
+
+    if (!retryable || attempt === maxAttempts) {
+      throw lastError;
+    }
+
+    await delay(Math.min(1000 * 2 ** (attempt - 1), 5000));
+  }
+
+  throw lastError ?? new Error('Eventor-anropet misslyckades.');
 }
 
 function mapEventorError(status: number, body: string) {

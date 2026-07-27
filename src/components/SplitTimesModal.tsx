@@ -3,12 +3,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
-import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
+import { fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
 import { PublishedListModal, PublishedListModalState, openPublishedListModal } from '@/src/components/PublishedListModal';
-import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
+import { loadEventSplitTimesSections } from '@/src/services/eventResultData';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -1054,11 +1054,10 @@ export async function openEventSplitTimesModal(
   });
 
   try {
-    const [rawXml, eventDetail] = await Promise.all([
-      fetchEventSplitTimesXml(eventId, selectedEventRaceId),
+    const [sections, eventDetail] = await Promise.all([
+      loadEventSplitTimesSections(eventId, selectedEventRaceId, { selectedEventRaceId }),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
-    const sections = parseEventSplitTimesXml(rawXml, { selectedEventRaceId });
 
     setState({
       emptyMessage: 'Inga sträcktider hittades.',

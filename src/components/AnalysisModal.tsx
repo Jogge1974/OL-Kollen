@@ -4,10 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { fetchEventSplitTimesXml, fetchEventorEventById } from '@/src/api/eventorApi';
+import { fetchEventorEventById } from '@/src/api/eventorApi';
 import { LoadingState } from '@/src/components/LoadingState';
 import { buildEventAnalysis, buildHeadToHead, EventAnalysisHeadToHead } from '@/src/services/eventAnalysis';
-import { parseEventSplitTimesXml } from '@/src/services/eventSplitTimesParser';
+import { loadEventSplitTimesSections } from '@/src/services/eventResultData';
 import { getClassificationTone } from '@/src/theme/colors';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -631,11 +631,10 @@ export async function openEventAnalysisModal(
   });
 
   try {
-    const [rawXml, eventDetail] = await Promise.all([
-      fetchEventSplitTimesXml(eventId, selectedEventRaceId),
+    const [sections, eventDetail] = await Promise.all([
+      loadEventSplitTimesSections(eventId, selectedEventRaceId, { selectedEventRaceId }),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
-    const sections = parseEventSplitTimesXml(rawXml, { selectedEventRaceId });
 
     setState({
       emptyMessage: 'Ingen analys hittades.',

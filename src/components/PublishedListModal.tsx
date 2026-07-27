@@ -7,7 +7,8 @@ import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventBy
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { LoadingState } from '@/src/components/LoadingState';
 import { OrganisationLabel } from '@/src/components/OrganisationLabel';
-import { PublishedListRow, PublishedListSection, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
+import { loadFormattedResults } from '@/src/services/eventResultData';
+import { PublishedListRow, PublishedListSection, PublishedListViewData, formatPublishedListXml, formatResultStatus } from '@/src/services/publishedListFormatter';
 import { calculateClassPoints, fetchSverigelistanForPoints } from '@/src/services/sverigelistanPointsCalculator';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
@@ -1392,18 +1393,23 @@ export async function openPublishedListModal(
   });
 
   try {
-    const [rawXml, eventClassNameById, eventDetail] = await Promise.all([
-      fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined, selectedEventRaceId),
+    const [rawResult, eventClassNameById, eventDetail] = await Promise.all([
+      kind === 'results'
+        ? loadFormattedResults(eventId, scope, organisationId, selectedEventRaceId ?? null)
+        : fetchEventPublishedListXml(kind, scope, eventId, organisationId ?? undefined, selectedEventRaceId),
       kind === 'entries' ? fetchEventClassNameMap(eventId).catch(() => ({})) : Promise.resolve<Record<string, string>>({}),
       fetchEventorEventById(eventId, selectedEventRaceId).catch(() => null),
     ]);
 
-    const formatted = formatPublishedListXml(kind, rawXml, {
-      eventClassNameById,
-      organisationId,
-      selectedEventRaceId,
-      scope,
-    });
+    const formatted =
+      kind === 'results'
+        ? (rawResult as PublishedListViewData)
+        : formatPublishedListXml(kind, rawResult as string, {
+            eventClassNameById,
+            organisationId,
+            selectedEventRaceId,
+            scope,
+          });
 
     const sections =
       scope === 'organisation'
