@@ -27,6 +27,63 @@ function normalizeEventId(eventId: string) {
   return eventId.split('::')[0] ?? eventId;
 }
 
+/**
+ * Extracts the ordinary entry deadline (Swedish local wall-clock,
+ * "YYYY-MM-DDTHH:mm:ss") from an event's <EntryBreak> elements, mirroring the
+ * client logic in src/utils/mapEventorResponse.ts:
+ * - A single EntryBreak means only ordinary entry exists; its ValidToDate is
+ *   the deadline.
+ * - With several EntryBreaks the one with BOTH a ValidFromDate and ValidToDate
+ *   defines it: ordinary closes one minute before late entry opens
+ *   (ValidFromDate - 1 min).
+ */
+export function extractOrdinaryEntryDeadline(xml: string): string | null {
+  const blocks = xml.match(/<EntryBreak>[\s\S]*?<\/EntryBreak>/g) ?? [];
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  if (blocks.length === 1) {
+    return extractEntryDateTime(blocks[0], 'ValidToDate');
+  }
+
+  const relevant = blocks.find((block) => block.includes('<ValidFromDate>') && block.includes('<ValidToDate>'));
+  if (!relevant) {
+    return null;
+  }
+
+  const validFrom = extractEntryDateTime(relevant, 'ValidFromDate');
+  return validFrom ? subtractOneMinuteWallClock(validFrom) : null;
+}
+
+function extractEntryDateTime(block: string, tag: 'ValidFromDate' | 'ValidToDate'): string | null {
+  const inner = block.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))?.[1];
+  if (!inner) {
+    return null;
+  }
+
+  const date = inner.match(/<Date>\s*([^<]+?)\s*<\/Date>/)?.[1]?.trim();
+  if (!date) {
+    return null;
+  }
+
+  const clock = inner.match(/<Clock>\s*([^<]+?)\s*<\/Clock>/)?.[1]?.trim() ?? '00:00:00';
+  return `${date}T${clock}`;
+}
+
+function subtractOneMinuteWallClock(iso: string): string {
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  if (!match) {
+    return iso;
+  }
+
+  const ms = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6])) - 60000;
+  const date = new Date(ms);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+}
+
 export function extractPublicationFlags(xml: string, eventRaceId?: string | null) {
   const entries = extractHashEntries(xml);
   const startPublishedAt = findPublicationValue(entries, ['officialStart', 'startList'], eventRaceId);

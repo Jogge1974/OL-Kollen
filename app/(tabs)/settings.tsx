@@ -175,7 +175,7 @@ export default function SettingsScreen() {
         <ScreenHeroHeader
           chips={[
             { icon: 'funnel-outline', label: 'Filter', value: `${calendarFilterPresets.length} sparade` },
-            { icon: 'notifications-outline', label: 'Notiser', value: notificationSettings.pushOnStartList || notificationSettings.pushOnResultList ? 'Aktiva' : 'Av' },
+            { icon: 'notifications-outline', label: 'Notiser', value: notificationSettings.pushOnStartList || notificationSettings.pushOnResultList || notificationSettings.pushOnEntryDeadline ? 'Aktiva' : 'Av' },
             { icon: 'bookmark-outline', label: 'Favoritklasser', value: `${favoriteClasses.length}` },
           ]}
           eyebrow="Konton"
@@ -308,6 +308,15 @@ export default function SettingsScreen() {
                 onValueChange={(value) => void setNotificationSetting('pushOnResultList', value)}
               />
               <Text style={styles.compactSettingText}>Resultatlista publicerad</Text>
+            </View>
+            <View style={styles.compactSettingRow}>
+              <Checkbox
+                color={notificationSettings.pushOnEntryDeadline ? colors.primary : undefined}
+                style={styles.checkbox}
+                value={notificationSettings.pushOnEntryDeadline}
+                onValueChange={(value) => void setNotificationSetting('pushOnEntryDeadline', value)}
+              />
+              <Text style={styles.compactSettingText}>Anmälningstiden löper ut</Text>
             </View>
 
             {friends.length > 0 ? (

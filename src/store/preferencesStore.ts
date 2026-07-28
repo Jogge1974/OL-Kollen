@@ -18,7 +18,7 @@ const ANNOUNCEMENTS_BASELINE_STORAGE_KEY = 'olkollen.announcementsBaseline';
 
 export type ServerProfile = {
   favorites: FavoriteEventSummary[];
-  notificationSettings: NotificationSettings | null;
+  notificationSettings: Partial<NotificationSettings> | null;
   preferences: {
     calendarDefaultFilterTemplate?: unknown;
     calendarFilterPresets?: unknown;
@@ -29,6 +29,7 @@ export type ServerProfile = {
 const defaultNotificationSettings: NotificationSettings = {
   pushOnResultList: false,
   pushOnStartList: false,
+  pushOnEntryDeadline: true,
 };
 
 type PreferencesData = {
@@ -363,7 +364,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
         favoriteClasses: storedPreferences?.favoriteClasses ?? defaultPreferences.favoriteClasses,
         favoriteEvents,
         isHydrated: true,
-        notificationSettings: storedPreferences?.notificationSettings ?? defaultPreferences.notificationSettings,
+        notificationSettings: { ...defaultNotificationSettings, ...(storedPreferences?.notificationSettings ?? {}) },
         themeName: storedPreferences?.themeName ?? defaultPreferences.themeName,
       });
     } catch {
@@ -398,7 +399,9 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       ...profile.favorites,
     ]);
 
-    const notificationSettings = profile.notificationSettings ?? current.notificationSettings;
+    const notificationSettings = profile.notificationSettings
+      ? { ...defaultNotificationSettings, ...profile.notificationSettings }
+      : current.notificationSettings;
 
     const calendarDefaultFilterTemplate = serverPrefs?.calendarDefaultFilterTemplate
       ? normalizeCalendarFilterTemplate(serverPrefs.calendarDefaultFilterTemplate as Partial<CalendarFilterTemplate>)

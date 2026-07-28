@@ -32,6 +32,7 @@ type SyncPayload = {
   notificationSettings: {
     pushOnResultList: boolean;
     pushOnStartList: boolean;
+    pushOnEntryDeadline: boolean;
   };
   preferences?: {
     calendarDefaultFilterTemplate?: unknown;
@@ -107,7 +108,7 @@ Deno.serve(async (request) => {
             .maybeSingle(),
           supabase
             .from('notification_preferences')
-            .select('push_on_start_list, push_on_result_list')
+            .select('push_on_start_list, push_on_result_list, push_on_entry_deadline')
             .eq('person_id', personId)
             .maybeSingle(),
           supabase
@@ -151,6 +152,7 @@ Deno.serve(async (request) => {
             ? {
                 pushOnResultList: Boolean(notifRow.push_on_result_list),
                 pushOnStartList: Boolean(notifRow.push_on_start_list),
+                pushOnEntryDeadline: notifRow.push_on_entry_deadline !== false,
               }
             : null,
         }),
@@ -196,6 +198,7 @@ Deno.serve(async (request) => {
       person_id: personId,
       push_on_result_list: payload.notificationSettings.pushOnResultList,
       push_on_start_list: payload.notificationSettings.pushOnStartList,
+      push_on_entry_deadline: payload.notificationSettings.pushOnEntryDeadline,
       updated_at: new Date().toISOString(),
     });
 

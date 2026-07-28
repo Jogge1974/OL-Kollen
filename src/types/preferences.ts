@@ -13,6 +13,7 @@ export type FavoriteEventSummary = {
 export type NotificationSettings = {
   pushOnResultList: boolean;
   pushOnStartList: boolean;
+  pushOnEntryDeadline: boolean;
 };
 
 export type CalendarFilterTemplate = {

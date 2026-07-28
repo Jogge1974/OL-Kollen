@@ -126,6 +126,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             notificationSettings?: {
               pushOnResultList: boolean;
               pushOnStartList: boolean;
+              pushOnEntryDeadline?: boolean;
             } | null;
           }>('push-sync', createFetchProfilePayload(enrichedUser.personId));
 
