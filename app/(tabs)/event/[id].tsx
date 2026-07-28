@@ -26,7 +26,7 @@ import { getClassificationTone } from '@/src/theme/colors';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { EventDocument, EventPublishedListKind } from '@/src/types/eventor';
+import { EventDetail, EventDocument, EventPublishedListKind } from '@/src/types/eventor';
 import { normalizeEventId } from '@/src/utils/eventId';
 
 export default function EventDetailScreen() {
@@ -224,6 +224,8 @@ export default function EventDetailScreen() {
           {isInfoExpanded ? (
             <View style={styles.infoBody}>
               {event.message ? <InfoTextBlock label="Eventor-meddelande" value={event.message} /> : null}
+
+              <EntryDeadlineCard event={event} />
 
               <View style={styles.infoTopRow}>
                 <InfoMini label="Gren" value={event.disciplineLabel} />
@@ -431,6 +433,105 @@ export default function EventDetailScreen() {
       <SplitTimesModal state={activeSplitTimesModal} onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
     </SafeAreaView>
+  );
+}
+
+function localTodayIso(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+// Parenthetical suffix for an entry deadline:
+// - already passed, or more than a week away -> nothing
+// - today -> (idag), tomorrow -> (imorgon)
+// - within a week -> (weekday)
+function entryDaySuffix(date: Date): string {
+  const now = new Date();
+  if (date.getTime() < now.getTime()) {
+    return '';
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays === 0) {
+    return '(idag)';
+  }
+
+  if (diffDays === 1) {
+    return '(imorgon)';
+  }
+
+  if (diffDays >= 2 && diffDays < 7) {
+    return `(${new Intl.DateTimeFormat('sv-SE', { weekday: 'long' }).format(date)})`;
+  }
+
+  return '';
+}
+
+function formatEntryDeadline(iso: string | null): string {
+  if (!iso) {
+    return 'Ej angivet';
+  }
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return 'Ej angivet';
+  }
+
+  const base = `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+  const suffix = entryDaySuffix(date);
+  return suffix ? `${base} ${suffix}` : base;
+}
+
+function EntryDeadlineCard({ event }: { event: EventDetail }) {
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
+
+  // Hide the whole card once the competition date has passed.
+  if (event.eventRaceDate && event.eventRaceDate < localTodayIso()) {
+    return null;
+  }
+
+  if (!event.ordinaryEntryDate && !event.lateEntryDate) {
+    return null;
+  }
+
+  const now = Date.now();
+  const ordinaryPassed = event.ordinaryEntryDate ? new Date(event.ordinaryEntryDate).getTime() < now : false;
+  const latePassed = event.lateEntryDate ? new Date(event.lateEntryDate).getTime() < now : false;
+
+  // Both deadlines passed -> only show that entry is closed.
+  if (ordinaryPassed && latePassed) {
+    return (
+      <View style={styles.infoEntryCard}>
+        <View style={styles.infoEntryItem}>
+          <Text style={styles.infoLabel}>Anmälan</Text>
+          <Text style={styles.infoEntryValue}>Anmälningsstopp</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.infoEntryCard}>
+      <View style={styles.infoEntryItem}>
+        <Text style={styles.infoLabel}>Ordinarie anmälan</Text>
+        <Text style={[styles.infoEntryValue, ordinaryPassed ? styles.infoEntryValueExpired : null]}>
+          {formatEntryDeadline(event.ordinaryEntryDate)}
+        </Text>
+      </View>
+      {event.lateEntryDate ? (
+        <View style={styles.infoEntryItem}>
+          <Text style={styles.infoLabel}>Efteranmälan</Text>
+          <Text style={styles.infoEntryValue}>{formatEntryDeadline(event.lateEntryDate)}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -670,6 +771,26 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 10,
+  },
+  infoEntryCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    gap: spacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  infoEntryItem: {
+    gap: 2,
+  },
+  infoEntryValue: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  infoEntryValueExpired: {
+    color: colors.error,
+    textDecorationLine: 'line-through',
   },
   infoCardTitle: {
     ...typography.bodyStrong,

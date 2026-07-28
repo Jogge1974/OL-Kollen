@@ -90,6 +90,7 @@ export function mapEventDetailXml(xml: string, selectedEventRaceId?: string | nu
     modifyDate: extractDate(rawEvent.ModifyDate),
     organiserNames: extractOrganisationNames(rawEvent),
     webUrl: getString(rawEvent.WebURL),
+    ...extractEntryBreakDates(rawEvent.EntryBreak),
   };
 }
 
@@ -186,6 +187,69 @@ function mapEventItems(item: Record<string, unknown>): EventItem[] {
 function extractDate(value: unknown) {
   const record = getRecord(value);
   return getString(record?.Date) ?? getString(value) ?? null;
+}
+
+function combineEntryDateTime(value: unknown): string | null {
+  const record = getRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const date = getString(record.Date);
+  if (!date) {
+    return null;
+  }
+
+  const clock = getString(record.Clock) ?? '00:00:00';
+  return `${date}T${clock}`;
+}
+
+function subtractOneMinuteIso(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  date.setMinutes(date.getMinutes() - 1);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+// Eventor exposes entry deadlines as <EntryBreak> elements.
+// - A single EntryBreak means there is only ordinary entry (no late entry); its
+//   ValidToDate is when ordinary entry closes.
+// - With several EntryBreaks the relevant one has BOTH a ValidFromDate and a
+//   ValidToDate: ordinary entry closes one minute before late entry opens
+//   (ValidFromDate - 1 min), and late entry closes at ValidToDate.
+function extractEntryBreakDates(value: unknown): { ordinaryEntryDate: string | null; lateEntryDate: string | null } {
+  const entryBreaks = toArray<Record<string, unknown>>(value);
+
+  if (entryBreaks.length === 0) {
+    return { ordinaryEntryDate: null, lateEntryDate: null };
+  }
+
+  if (entryBreaks.length === 1) {
+    return {
+      ordinaryEntryDate: combineEntryDateTime(entryBreaks[0].ValidToDate),
+      lateEntryDate: null,
+    };
+  }
+
+  const relevant = entryBreaks.find(
+    (entryBreak) => getRecord(entryBreak.ValidFromDate) && getRecord(entryBreak.ValidToDate),
+  );
+
+  if (!relevant) {
+    return { ordinaryEntryDate: null, lateEntryDate: null };
+  }
+
+  const validFrom = combineEntryDateTime(relevant.ValidFromDate);
+  const validTo = combineEntryDateTime(relevant.ValidToDate);
+
+  return {
+    ordinaryEntryDate: validFrom ? subtractOneMinuteIso(validFrom) : null,
+    lateEntryDate: validTo,
+  };
 }
 
 function extractCenterPosition(value: unknown) {

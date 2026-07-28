@@ -41,8 +41,10 @@ export type EventDetail = EventItem & {
   finishDate: string | null;
   hasPublishedResults: boolean;
   hasPublishedStarts: boolean;
+  lateEntryDate: string | null;
   liveloxEventId: string | null;
   modifyDate: string | null;
+  ordinaryEntryDate: string | null;
   organiserNames: string[];
   webUrl: string | null;
 };
