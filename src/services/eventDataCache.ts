@@ -28,6 +28,13 @@ export const EVENT_RESULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 /** Maximum total size of the on-disk cache before LRU eviction kicks in. */
 const MAX_CACHE_BYTES = 40 * 1024 * 1024;
 
+/**
+ * Never write to the cache if doing so would leave the device with less free
+ * disk space than this. This keeps the app from contributing to a full device
+ * (which can otherwise make features like Analysis fail on low-storage phones).
+ */
+const MIN_FREE_DISK_BYTES = 250 * 1024 * 1024;
+
 const CACHE_SUBDIRECTORY = 'eventdata/';
 const INDEX_FILE = 'index.json';
 
@@ -52,6 +59,28 @@ function getBaseDirectory() {
   }
 
   return `${baseDirectory}${CACHE_SUBDIRECTORY}`;
+}
+
+/**
+ * Returns true only when persisting {@link estimatedBytes} would still leave the
+ * device with at least {@link MIN_FREE_DISK_BYTES} free. If the free space can't
+ * be determined we allow the write (it is guarded by try/catch anyway).
+ */
+async function hasRoomToCache(estimatedBytes: number): Promise<boolean> {
+  try {
+    if (typeof FileSystem.getFreeDiskStorageAsync !== 'function') {
+      return true;
+    }
+
+    const freeBytes = await FileSystem.getFreeDiskStorageAsync();
+    if (typeof freeBytes !== 'number' || !Number.isFinite(freeBytes)) {
+      return true;
+    }
+
+    return freeBytes - estimatedBytes >= MIN_FREE_DISK_BYTES;
+  } catch {
+    return true;
+  }
 }
 
 async function ensureCacheDirectory() {
@@ -232,6 +261,13 @@ export async function setCachedEventData(key: string, value: string): Promise<vo
   try {
     const directoryUri = await ensureCacheDirectory();
     if (!directoryUri) {
+      return;
+    }
+
+    // Skip persisting when the device is low on storage (or access is denied),
+    // so caching never blocks or degrades result/analysis loading. The parsed
+    // data is still returned to the caller either way.
+    if (!(await hasRoomToCache(value.length))) {
       return;
     }
 

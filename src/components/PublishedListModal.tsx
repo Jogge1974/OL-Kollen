@@ -857,7 +857,7 @@ function PublishedTableSection({
             ) : null}
 
             {!isEntries ? (
-              <Text numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.time }]}>
+              <Text allowFontScaling={false} numberOfLines={1} style={[styles.tableColumnHeaderText, styles.tableMetricColumn, { width: columnWidths.time }]}>
                 {kind === 'starts' ? 'Starttid' : 'Tid'}
               </Text>
             ) : null}
@@ -1285,7 +1285,7 @@ function PublishedTableSection({
 
             {scope === 'organisation' && !isOrganisationResults ? (
               <Pressable disabled={!row.classLabel} onPress={() => handleRowPress(row)} style={styles.tableClassColumn}>
-                <Text numberOfLines={1} style={[styles.tableCellText, row.classLabel ? styles.tableClubLinkText : null, { width: columnWidths.class }]}>
+                <Text numberOfLines={1} style={[styles.tableCellText, row.classLabel ? styles.tableClubLinkText : null, { width: columnWidths.class, flexShrink: 1, minWidth: 0 }]}>
                   {row.classLabel ?? '-'}
                 </Text>
               </Pressable>
@@ -1304,7 +1304,7 @@ function PublishedTableSection({
             ) : null}
 
             {!isEntries && !resultStatus ? (
-              <Text numberOfLines={1} style={[styles.tableCellText, styles.tableMetricColumn, styles.tableMetricStrong, { width: columnWidths.time }]}>
+              <Text allowFontScaling={false} numberOfLines={1} style={[styles.tableCellText, styles.tableMetricColumn, styles.tableMetricStrong, { width: columnWidths.time }]}>
                 {row.time ?? '-'}
               </Text>
             ) : null}
@@ -2179,7 +2179,8 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     flexShrink: 0,
   },
   tableClassColumn: {
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
     width: 86,
   },
