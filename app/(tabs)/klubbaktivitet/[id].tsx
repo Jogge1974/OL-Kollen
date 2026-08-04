@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -81,23 +82,32 @@ export default function ClubActivityDetailScreen() {
     };
   }, [organisationId, activityId, year]);
 
+  const goBack = () => router.navigate('/klubbaktiviteter');
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Pressable onPress={() => router.navigate('/klubbaktiviteter')} style={styles.backButton}>
-          <Ionicons color={colors.primary} name="chevron-back" size={20} />
-          <Text style={styles.backLabel}>Klubbaktiviteter</Text>
-        </Pressable>
-
         {isLoading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>Hämtar aktivitet…</Text>
-          </View>
+          <>
+            <Pressable onPress={goBack} style={styles.backButton}>
+              <Ionicons color={colors.primary} name="chevron-back" size={20} />
+              <Text style={styles.backLabel}>Klubbaktiviteter</Text>
+            </Pressable>
+            <View style={styles.loadingBox}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loadingText}>Hämtar aktivitet…</Text>
+            </View>
+          </>
         ) : !activity ? (
-          <EmptyState description={error ?? 'Aktiviteten kunde inte hittas.'} title="Kunde inte öppna aktiviteten" />
+          <>
+            <Pressable onPress={goBack} style={styles.backButton}>
+              <Ionicons color={colors.primary} name="chevron-back" size={20} />
+              <Text style={styles.backLabel}>Klubbaktiviteter</Text>
+            </Pressable>
+            <EmptyState description={error ?? 'Aktiviteten kunde inte hittas.'} title="Kunde inte öppna aktiviteten" />
+          </>
         ) : (
-          <ActivityDetail activity={activity} colors={colors} styles={styles} />
+          <ActivityDetail activity={activity} colors={colors} onBack={goBack} styles={styles} />
         )}
       </ScrollView>
     </SafeAreaView>
@@ -107,10 +117,12 @@ export default function ClubActivityDetailScreen() {
 function ActivityDetail({
   activity,
   colors,
+  onBack,
   styles,
 }: {
   activity: ClubActivity;
   colors: ColorPalette;
+  onBack: () => void;
   styles: ReturnType<typeof createStyles>;
 }) {
   const registrations = activity.registrations;
@@ -139,23 +151,42 @@ function ActivityDetail({
 
   const summaries = React.useMemo(() => computeAttributeSummaries(activity), [activity]);
   const [summaryExpanded, setSummaryExpanded] = React.useState(false);
+  const registrationHint = deadlineHint(activity.registrationDeadline);
 
   return (
     <>
-      <Text style={styles.title}>{activity.name}</Text>
+      <LinearGradient colors={[colors.heroTop, colors.heroBottom]} style={styles.hero}>
+        <Pressable onPress={onBack} style={styles.heroBack}>
+          <Ionicons color={colors.heroText} name="chevron-back" size={18} />
+          <Text style={styles.heroBackLabel}>Klubbaktiviteter</Text>
+        </Pressable>
+
+        <View style={styles.heroBody}>
+          <Text style={styles.heroTitle}>{activity.name}</Text>
+          <View style={styles.heroMetaRow}>
+            <View style={styles.heroMetaItem}>
+              <Ionicons color={colors.heroTextMuted} name="calendar-outline" size={14} />
+              <Text style={styles.heroMeta}>{formatDateTime(activity.startTime)}</Text>
+            </View>
+            <View style={styles.heroBadge}>
+              <Ionicons color={colors.heroText} name="people" size={12} />
+              <Text style={styles.heroBadgeText}>{activity.registrationCount} anmälda</Text>
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
 
       <View style={styles.metaCard}>
         <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={formatDateTime(activity.startTime)} />
         <View style={styles.metaDivider} />
-        <MetaRow
-          colors={colors}
-          icon="time-outline"
-          label="Anmälan stänger"
-          styles={styles}
-          subValue={deadlineHint(activity.registrationDeadline)?.text}
-          subValueDanger={deadlineHint(activity.registrationDeadline)?.danger}
-          value={formatDateTime(activity.registrationDeadline)}
-        />
+        <View style={styles.metaRow}>
+          <Ionicons color={colors.primary} name="time-outline" size={16} />
+          <Text style={styles.metaLabelStatic}>Anmälan stänger</Text>
+          <View style={styles.metaHintWrap}>
+            {registrationHint ? <Text style={styles.metaHint}>{registrationHint}</Text> : null}
+          </View>
+          <Text style={styles.metaValue}>{formatDateTime(activity.registrationDeadline)}</Text>
+        </View>
         <View style={styles.metaDivider} />
         <MetaRow
           colors={colors}
@@ -172,14 +203,14 @@ function ActivityDetail({
       </Pressable>
 
       {activity.informationText ? (
-        <View style={styles.section}>
+        <View style={styles.panel}>
           <Text style={styles.sectionTitle}>Information</Text>
           <Text style={styles.infoText}>{activity.informationText}</Text>
         </View>
       ) : null}
 
       {summaries.length > 0 ? (
-        <View style={styles.section}>
+        <View style={styles.panel}>
           <Pressable onPress={() => setSummaryExpanded((value) => !value)} style={styles.collapsibleHeader}>
             <Text style={styles.sectionTitle}>Sammanställning</Text>
             <View style={styles.collapsibleToggle}>
@@ -197,7 +228,7 @@ function ActivityDetail({
         </View>
       ) : null}
 
-      <View style={styles.section}>
+      <View style={styles.panel}>
         <View style={styles.registrationsHeader}>
           <Text style={styles.sectionTitle}>Anmälda ({registrations.length})</Text>
           {registrations.length > 0 ? (
@@ -377,28 +408,19 @@ function MetaRow({
   icon,
   label,
   styles,
-  subValue,
-  subValueDanger = false,
   value,
 }: {
   colors: ColorPalette;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   styles: ReturnType<typeof createStyles>;
-  subValue?: string | null;
-  subValueDanger?: boolean;
   value: string;
 }) {
   return (
     <View style={styles.metaRow}>
       <Ionicons color={colors.primary} name={icon} size={16} />
       <Text style={styles.metaLabel}>{label}</Text>
-      <View style={styles.metaValueWrap}>
-        <Text style={styles.metaValue}>{value}</Text>
-        {subValue ? (
-          <Text style={[styles.metaSubValue, subValueDanger ? styles.metaSubValueDanger : null]}>{subValue}</Text>
-        ) : null}
-      </View>
+      <Text style={styles.metaValue}>{value}</Text>
     </View>
   );
 }
@@ -425,9 +447,9 @@ function formatDateTime(iso: string | null): string {
   return dateTimeFormatter.format(time);
 }
 
-// Small helper under the registration deadline: "Stängd" once it has passed,
-// otherwise a relative hint like "om 3 dagar" / "idag" / "i morgon".
-function deadlineHint(iso: string | null): { danger: boolean; text: string } | null {
+// Small red note under the registration deadline row: "Stängd" once it has
+// passed, otherwise "X dagar kvar" – but only when 10 days or fewer remain.
+function deadlineHint(iso: string | null): string | null {
   if (!iso) {
     return null;
   }
@@ -438,7 +460,7 @@ function deadlineHint(iso: string | null): { danger: boolean; text: string } | n
   }
 
   if (deadline < Date.now()) {
-    return { danger: true, text: 'Stängd' };
+    return 'Stängd';
   }
 
   const startOfToday = new Date();
@@ -447,15 +469,15 @@ function deadlineHint(iso: string | null): { danger: boolean; text: string } | n
   startOfDeadlineDay.setHours(0, 0, 0, 0);
   const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
 
+  if (days > 10) {
+    return null;
+  }
+
   if (days <= 0) {
-    return { danger: false, text: 'idag' };
+    return 'idag';
   }
 
-  if (days === 1) {
-    return { danger: false, text: 'i morgon' };
-  }
-
-  return { danger: false, text: `om ${days} dagar` };
+  return `${days} dagar\nkvar`;
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
@@ -508,6 +530,70 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
     },
+    hero: {
+      borderRadius: 26,
+      gap: spacing.md,
+      overflow: 'hidden',
+      padding: spacing.lg,
+    },
+    heroBack: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    heroBackLabel: {
+      ...typography.captionStrong,
+      color: colors.heroText,
+    },
+    heroBadge: {
+      alignItems: 'center',
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
+      borderRadius: 999,
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 5,
+    },
+    heroBadgeText: {
+      ...typography.captionStrong,
+      color: colors.heroText,
+      fontSize: 12,
+    },
+    heroBody: {
+      gap: spacing.sm,
+    },
+    heroMeta: {
+      ...typography.body,
+      color: colors.heroTextMuted,
+      fontSize: 14,
+    },
+    heroMetaItem: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexShrink: 1,
+      gap: 6,
+    },
+    heroMetaRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.md,
+      justifyContent: 'space-between',
+    },
+    heroTitle: {
+      color: colors.heroText,
+      fontFamily: typography.heroTitle.fontFamily,
+      fontSize: 20,
+      lineHeight: 25,
+    },
+    panel: {
+      backgroundColor: colors.surfaceOverlay,
+      borderColor: colors.border,
+      borderRadius: 22,
+      borderWidth: 1,
+      gap: spacing.sm,
+      padding: spacing.lg,
+    },
     eventorButton: {
       alignItems: 'center',
       alignSelf: 'flex-start',
@@ -537,21 +623,37 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textSecondary,
     },
     metaCard: {
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceOverlay,
       borderColor: colors.border,
-      borderRadius: 18,
+      borderRadius: 22,
       borderWidth: 1,
-      padding: spacing.md,
+      padding: spacing.lg,
     },
     metaDivider: {
       backgroundColor: colors.border,
       height: 1,
       marginVertical: spacing.sm,
     },
+    metaHint: {
+      ...typography.captionStrong,
+      color: colors.error,
+      fontSize: 11,
+      lineHeight: 13,
+      textAlign: 'center',
+    },
+    metaHintWrap: {
+      alignItems: 'center',
+      flex: 1,
+      justifyContent: 'center',
+    },
     metaLabel: {
       ...typography.caption,
       color: colors.textMuted,
       flex: 1,
+    },
+    metaLabelStatic: {
+      ...typography.caption,
+      color: colors.textMuted,
     },
     metaRow: {
       alignItems: 'center',
@@ -561,16 +663,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     metaValue: {
       ...typography.bodyStrong,
       color: colors.textPrimary,
-    },
-    metaValueWrap: {
-      alignItems: 'flex-end',
-    },
-    metaSubValue: {
-      ...typography.caption,
-      color: colors.textMuted,
-    },
-    metaSubValueDanger: {
-      color: colors.error,
     },
     registrationCard: {
       backgroundColor: colors.surface,
