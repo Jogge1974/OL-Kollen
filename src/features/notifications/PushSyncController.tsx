@@ -44,6 +44,8 @@ export function PushSyncController() {
     const fingerprint = JSON.stringify({
       calendarDefaultFilterTemplate,
       calendarFilterPresets,
+      clubId: user.organisationIds[0] ?? null,
+      clubName: user.organisationName,
       favoriteClasses,
       favoriteEvents: favoriteEvents.map((event) => event.id),
       friends: friends.map((f) => ({ id: f.personId, e: f.pushOnEntry, l: f.pushOnLive, r: f.pushOnResult, s: f.pushOnStart })),

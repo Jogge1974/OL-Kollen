@@ -15,6 +15,53 @@ import { AuthenticatedUser, EventorLoginInput, PersistedAuthSession } from '@/sr
 const AUTH_SESSION_KEY = 'olkollen.auth.session';
 const REMEMBERED_USERNAME_KEY = 'olkollen.auth.rememberedUsername';
 
+// If a signed-in user was stored without a club (e.g. they weren't in the club
+// registry at login and have since been added), silently re-authenticate in the
+// background using saved credentials to refresh the club — no logout/login needed.
+// The updated club then propagates to app_users via PushSyncController.
+async function refreshMissingClub(
+  storedUser: AuthenticatedUser,
+  credentials: { password: string; username: string },
+): Promise<void> {
+  try {
+    const refreshed = await authenticateEventorPerson({
+      password: credentials.password,
+      username: credentials.username,
+    });
+
+    // Only apply if Eventor now returns a club for the same person.
+    if (!refreshed.organisationName || refreshed.personId !== storedUser.personId) {
+      return;
+    }
+
+    const currentUser = useAuthStore.getState().user;
+
+    // Bail if the session changed (logout/relogin) or a club already got set meanwhile.
+    if (!currentUser || currentUser.personId !== storedUser.personId || currentUser.organisationName) {
+      return;
+    }
+
+    const updatedUser: AuthenticatedUser = {
+      ...currentUser,
+      organisationIds: refreshed.organisationIds,
+      organisationName: refreshed.organisationName,
+    };
+
+    useAuthStore.setState({ user: updatedUser });
+
+    // Persist the refreshed club so future starts already have it.
+    const storedSession = await getStoredJson<PersistedAuthSession>(AUTH_SESSION_KEY).catch(() => null);
+    if (storedSession?.user) {
+      await setStoredJson(AUTH_SESSION_KEY, {
+        ...storedSession,
+        user: updatedUser,
+      } satisfies PersistedAuthSession);
+    }
+  } catch {
+    // Best-effort: never block startup on a failed refresh.
+  }
+}
+
 type AuthState = {
   error: string | null;
   hydrateSession: () => Promise<void>;
@@ -42,6 +89,18 @@ export const useAuthStore = create<AuthState>((set) => ({
           storedRememberedUsername ?? storedSession?.rememberedUsername ?? storedSession?.user?.username ?? storedCredentials?.username ?? '',
         user: storedSession?.user ?? null,
       });
+
+      // If the stored user has no club but we have saved credentials, refresh it
+      // silently in the background (without forcing a re-login).
+      const storedUser = storedSession?.user ?? null;
+      if (
+        storedUser?.personId &&
+        !storedUser.organisationName &&
+        storedCredentials?.username &&
+        storedCredentials?.password
+      ) {
+        void refreshMissingClub(storedUser, storedCredentials);
+      }
     } catch {
       set({
         error: 'Det gick inte att läsa sparad session.',
