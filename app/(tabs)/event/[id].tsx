@@ -49,6 +49,7 @@ export default function EventDetailScreen() {
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [isInfoExpanded, setIsInfoExpanded] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isMapExpanded, setIsMapExpanded] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
@@ -366,6 +367,18 @@ export default function EventDetailScreen() {
                 </View>
               )}
 
+              {canShowNativeMap ? (
+                <Pressable
+                  accessibilityLabel="Visa kartan i större vy"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => setIsMapExpanded(true)}
+                  style={({ pressed }) => [styles.mapExpandButton, pressed ? styles.mapOverlayButtonPressed : null]}
+                >
+                  <Ionicons color={colors.primaryDeep} name="expand-outline" size={20} />
+                </Pressable>
+              ) : null}
+
               {Platform.OS === 'ios' ? (
                 <View style={styles.navigationButtonOverlayRow}>
                   <MapShortcutButton icon="logo-google" label="Google Maps" onPress={() => void handleOpenGoogleMaps()} />
@@ -429,6 +442,12 @@ export default function EventDetailScreen() {
       </ScrollView>
 
       <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} />
+      <MapModal
+        coordinate={event.centerPosition ?? null}
+        onClose={() => setIsMapExpanded(false)}
+        title={event.name}
+        visible={isMapExpanded}
+      />
       <PublishedListModal onClose={() => setActiveListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeListModal} />
       <SplitTimesModal state={activeSplitTimesModal} onClose={() => setActiveSplitTimesModal(null)} onOpenAnalysis={handleOpenAnalysis} />
       <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />
@@ -605,6 +624,78 @@ function resolveResultCount(starts: number | null, entries: number | null) {
 
 function normalizeDocumentName(name: string) {
   return name.trim().toLocaleLowerCase('sv').replace(/\.[^.]+$/, '');
+}
+
+function MapModal({
+  coordinate,
+  onClose,
+  title,
+  visible,
+}: {
+  coordinate: { latitude: number; longitude: number } | null;
+  onClose: () => void;
+  title: string;
+  visible: boolean;
+}) {
+  const { colors, isDark, themeName } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
+  const canShowNativeMap = canRenderNativeMap();
+  const [isSatellite, setIsSatellite] = React.useState(false);
+
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text numberOfLines={2} style={styles.modalTitle}>
+              {title}
+            </Text>
+            <Pressable onPress={onClose}>
+              <Text style={styles.modalClose}>Stäng</Text>
+            </Pressable>
+          </View>
+
+          {coordinate && canShowNativeMap ? (
+            <View style={styles.mapModalBody}>
+              <MapView
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                initialRegion={{
+                  latitude: coordinate.latitude,
+                  latitudeDelta: 0.12,
+                  longitude: coordinate.longitude,
+                  longitudeDelta: 0.12,
+                }}
+                mapType={isSatellite ? 'hybrid' : 'standard'}
+                rotateEnabled
+                scrollEnabled
+                style={styles.mapModalMap}
+                zoomEnabled
+              >
+                <Marker coordinate={coordinate} pinColor={colors.accent} title={title} />
+              </MapView>
+
+              <Pressable
+                accessibilityLabel={isSatellite ? 'Visa kartvy' : 'Visa satellitvy'}
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => setIsSatellite((current) => !current)}
+                style={({ pressed }) => [styles.mapTypeToggle, pressed ? styles.mapOverlayButtonPressed : null]}
+              >
+                <Ionicons color={colors.primaryDeep} name={isSatellite ? 'map-outline' : 'globe-outline'} size={16} />
+                <Text style={styles.mapTypeToggleText}>{isSatellite ? 'Karta' : 'Satellit'}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={[styles.navigationMapFallback, styles.mapModalFallback]}>
+              <Ionicons color={colors.primary} name="map-outline" size={28} />
+              <Text style={styles.navigationMapFallbackTitle}>Kartan kan inte visas</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 function DocumentModal({ document, onClose }: { document: EventDocument | null; onClose: () => void }) {
@@ -964,6 +1055,66 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     left: spacing.md,
     position: 'absolute',
     right: spacing.md,
+  },
+  mapExpandButton: {
+    alignItems: 'center',
+    backgroundColor: isDark ? colors.surfaceMuted : isSoft ? 'rgba(240, 246, 252, 0.94)' : 'rgba(252, 253, 249, 0.94)',
+    borderColor: isDark ? colors.border : isSoft ? '#B0C4DE' : '#BED2B6',
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 3,
+    height: 40,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { height: 1, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    top: spacing.md,
+    width: 40,
+  },
+  mapOverlayButtonPressed: {
+    opacity: 0.86,
+  },
+  mapModalMap: {
+    flex: 1,
+  },
+  mapModalBody: {
+    flex: 1,
+    position: 'relative',
+  },
+  mapTypeToggle: {
+    alignItems: 'center',
+    backgroundColor: isDark ? colors.surfaceMuted : isSoft ? 'rgba(240, 246, 252, 0.94)' : 'rgba(252, 253, 249, 0.94)',
+    borderColor: isDark ? colors.border : isSoft ? '#B0C4DE' : '#BED2B6',
+    borderRadius: 16,
+    borderWidth: 1,
+    elevation: 3,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    position: 'absolute',
+    right: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { height: 1, width: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    top: spacing.md,
+  },
+  mapTypeToggleText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  mapModalFallback: {
+    borderRadius: 0,
+    borderWidth: 0,
+    flex: 1,
+    minHeight: undefined,
   },
   sectionHeader: {
     alignItems: 'center',
