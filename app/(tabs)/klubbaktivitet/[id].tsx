@@ -1,0 +1,691 @@
+import * as React from 'react';
+
+import { Ionicons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { EmptyState } from '@/src/components/EmptyState';
+import { fetchOrganisationActivities, getCachedActivity } from '@/src/api/eventorActivities';
+import { useAuthStore } from '@/src/store/authStore';
+import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
+import { spacing } from '@/src/theme/spacing';
+import { typography } from '@/src/theme/typography';
+import { ClubActivity, ActivityRegistration } from '@/src/types/eventorActivities';
+
+export default function ClubActivityDetailScreen() {
+  const { colors, isDark, themeName } = useTheme();
+  const isSoft = themeName === 'soft' || themeName === 'soft-dark';
+  const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
+
+  const params = useLocalSearchParams<{ id?: string; year?: string }>();
+  const activityId = typeof params.id === 'string' ? params.id : '';
+  const year = Number(params.year) || new Date().getFullYear();
+
+  const user = useAuthStore((state) => state.user);
+  const organisationId = user?.organisationIds[0] ?? null;
+
+  const [activity, setActivity] = React.useState<ClubActivity | null>(() =>
+    organisationId ? getCachedActivity(organisationId, year, activityId) : null,
+  );
+  const [isLoading, setIsLoading] = React.useState(!activity);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!organisationId || !activityId) {
+      setActivity(null);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    const cached = getCachedActivity(organisationId, year, activityId);
+    if (cached) {
+      setActivity(cached);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    let isMounted = true;
+    setActivity(null);
+    setIsLoading(true);
+    setError(null);
+
+    fetchOrganisationActivities(organisationId, year)
+      .then((list) => {
+        if (!isMounted) {
+          return;
+        }
+        const found = list.find((item) => item.id === activityId) ?? null;
+        setActivity(found);
+        if (!found) {
+          setError('Aktiviteten kunde inte hittas.');
+        }
+      })
+      .catch((caught: unknown) => {
+        if (!isMounted) {
+          return;
+        }
+        setActivity(null);
+        setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta aktiviteten.');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [organisationId, activityId, year]);
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Pressable onPress={() => router.navigate('/klubbaktiviteter')} style={styles.backButton}>
+          <Ionicons color={colors.primary} name="chevron-back" size={20} />
+          <Text style={styles.backLabel}>Klubbaktiviteter</Text>
+        </Pressable>
+
+        {isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.loadingText}>Hämtar aktivitet…</Text>
+          </View>
+        ) : !activity ? (
+          <EmptyState description={error ?? 'Aktiviteten kunde inte hittas.'} title="Kunde inte öppna aktiviteten" />
+        ) : (
+          <ActivityDetail activity={activity} colors={colors} styles={styles} />
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function ActivityDetail({
+  activity,
+  colors,
+  styles,
+}: {
+  activity: ClubActivity;
+  colors: ColorPalette;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const registrations = activity.registrations;
+  const registrationKeys = React.useMemo(
+    () => registrations.map((registration, index) => `${registration.personId}-${index}`),
+    [registrations],
+  );
+  const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
+  const allExpanded = registrationKeys.length > 0 && registrationKeys.every((key) => expanded.has(key));
+
+  const toggleOne = React.useCallback((key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAll = React.useCallback(() => {
+    setExpanded(allExpanded ? new Set() : new Set(registrationKeys));
+  }, [allExpanded, registrationKeys]);
+
+  const summaries = React.useMemo(() => computeAttributeSummaries(activity), [activity]);
+  const [summaryExpanded, setSummaryExpanded] = React.useState(false);
+
+  return (
+    <>
+      <Text style={styles.title}>{activity.name}</Text>
+
+      <View style={styles.metaCard}>
+        <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={formatDateTime(activity.startTime)} />
+        <View style={styles.metaDivider} />
+        <MetaRow
+          colors={colors}
+          icon="time-outline"
+          label="Anmälan stänger"
+          styles={styles}
+          subValue={deadlineHint(activity.registrationDeadline)?.text}
+          subValueDanger={deadlineHint(activity.registrationDeadline)?.danger}
+          value={formatDateTime(activity.registrationDeadline)}
+        />
+        <View style={styles.metaDivider} />
+        <MetaRow
+          colors={colors}
+          icon="people-outline"
+          label="Anmälda"
+          styles={styles}
+          value={`${activity.registrationCount} personer`}
+        />
+      </View>
+
+      <Pressable onPress={() => void Linking.openURL(activity.url)} style={styles.eventorButton}>
+        <Ionicons color="#fff" name="open-outline" size={16} />
+        <Text style={styles.eventorButtonText}>Öppna i Eventor</Text>
+      </Pressable>
+
+      {activity.informationText ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Information</Text>
+          <Text style={styles.infoText}>{activity.informationText}</Text>
+        </View>
+      ) : null}
+
+      {summaries.length > 0 ? (
+        <View style={styles.section}>
+          <Pressable onPress={() => setSummaryExpanded((value) => !value)} style={styles.collapsibleHeader}>
+            <Text style={styles.sectionTitle}>Sammanställning</Text>
+            <View style={styles.collapsibleToggle}>
+              <Ionicons color={colors.primary} name={summaryExpanded ? 'chevron-up' : 'chevron-down'} size={14} />
+              <Text style={styles.collapsibleToggleText}>{summaryExpanded ? 'Stäng' : 'Visa'}</Text>
+            </View>
+          </Pressable>
+          {summaryExpanded ? (
+            <View style={styles.summaryList}>
+              {summaries.map((summary) => (
+                <AttributeSummaryCard colors={colors} key={summary.id} styles={styles} summary={summary} />
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={styles.section}>
+        <View style={styles.registrationsHeader}>
+          <Text style={styles.sectionTitle}>Anmälda ({registrations.length})</Text>
+          {registrations.length > 0 ? (
+            <Pressable onPress={toggleAll} style={styles.toggleAllButton}>
+              <Ionicons color={colors.primary} name={allExpanded ? 'chevron-up' : 'chevron-down'} size={14} />
+              <Text style={styles.toggleAllText}>{allExpanded ? 'Dölj alla' : 'Visa alla'}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {registrations.length === 0 ? (
+          <Text style={styles.infoText}>Inga anmälda ännu.</Text>
+        ) : (
+          <View style={styles.registrationList}>
+            {registrations.map((registration, index) => {
+              const key = registrationKeys[index];
+              return (
+                <RegistrationCard
+                  colors={colors}
+                  isExpanded={expanded.has(key)}
+                  key={key}
+                  onToggle={() => toggleOne(key)}
+                  registration={registration}
+                  styles={styles}
+                />
+              );
+            })}
+          </View>
+        )}
+      </View>
+    </>
+  );
+}
+
+function RegistrationCard({
+  colors,
+  isExpanded,
+  onToggle,
+  registration,
+  styles,
+}: {
+  colors: ColorPalette;
+  isExpanded: boolean;
+  onToggle: () => void;
+  registration: ActivityRegistration;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const groupedAnswers = React.useMemo(() => {
+    const map = new Map<string, { attributeName: string; values: string[] }>();
+    for (const entry of registration.attributes) {
+      const existing = map.get(entry.attributeId);
+      if (existing) {
+        existing.values.push(entry.value);
+      } else {
+        map.set(entry.attributeId, { attributeName: entry.attributeName, values: [entry.value] });
+      }
+    }
+    return [...map.entries()].map(([attributeId, group]) => ({ attributeId, ...group }));
+  }, [registration.attributes]);
+  const answerCount = groupedAnswers.length;
+  const displayName = registration.personName ?? `Deltagare ${registration.personId}`;
+  const nameWithClub = registration.clubName ? `${displayName} (${registration.clubName})` : displayName;
+
+  return (
+    <View style={styles.registrationCard}>
+      <Pressable onPress={onToggle} style={styles.registrationHeader}>
+        <Ionicons color={colors.primary} name="person-circle-outline" size={20} />
+        <Text numberOfLines={1} style={styles.registrationName}>
+          {nameWithClub}
+        </Text>
+        <Text style={styles.registrationCount}>{answerCount} svar</Text>
+        <Ionicons color={colors.textMuted} name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} />
+      </Pressable>
+
+      {isExpanded ? (
+        answerCount > 0 ? (
+          <View style={styles.attributeList}>
+            {groupedAnswers.map((group, index) => (
+              <View key={`${group.attributeId}-${index}`} style={styles.attributeRow}>
+                {group.attributeName ? <Text style={styles.attributeLabel}>{group.attributeName}</Text> : null}
+                <Text style={styles.attributeValue}>{group.values.join(', ')}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.attributeEmpty}>Inga val angivna.</Text>
+        )
+      ) : null}
+    </View>
+  );
+}
+
+type AttributeSummaryOption = { count: number; label: string };
+type AttributeSummary = { id: string; name: string; options: AttributeSummaryOption[]; totalAnswered: number };
+
+function computeAttributeSummaries(activity: ClubActivity): AttributeSummary[] {
+  const attributes = [...activity.attributes].sort((left, right) => left.order - right.order);
+
+  return attributes
+    .map((attribute) => {
+      // Multi-select checkbox answers arrive as several AttributeValue entries with
+      // the same attribute id, so collect all of a registration's values for it.
+      const perRegistrationValues = activity.registrations.map((registration) =>
+        registration.attributes
+          .filter((entry) => entry.attributeId === attribute.id)
+          .map((entry) => entry.value.trim())
+          .filter((value) => value.length > 0),
+      );
+      const answered = perRegistrationValues.filter((values) => values.length > 0);
+      const totalAnswered = answered.length;
+
+      if (attribute.values.length > 0) {
+        const options = attribute.values.map((option) => {
+          const key = option.trim().toLowerCase();
+          const count = answered.filter((values) => values.some((value) => value.toLowerCase() === key)).length;
+          return { count, label: option.trim() };
+        });
+        return { id: attribute.id, name: attribute.name, options, totalAnswered };
+      }
+
+      const counts = new Map<string, number>();
+      for (const values of answered) {
+        for (const value of values) {
+          counts.set(value, (counts.get(value) ?? 0) + 1);
+        }
+      }
+      const options = [...counts.entries()]
+        .map(([label, count]) => ({ count, label }))
+        .sort((left, right) => right.count - left.count);
+      return { id: attribute.id, name: attribute.name, options, totalAnswered };
+    })
+    .filter((summary) => summary.options.length > 0);
+}
+
+function AttributeSummaryCard({
+  colors,
+  styles,
+  summary,
+}: {
+  colors: ColorPalette;
+  styles: ReturnType<typeof createStyles>;
+  summary: AttributeSummary;
+}) {
+  const maxCount = summary.options.reduce((max, option) => Math.max(max, option.count), 0);
+
+  return (
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryHeader}>
+        <Ionicons color={colors.primary} name="stats-chart-outline" size={15} />
+        <Text style={styles.summaryTitle}>{summary.name || 'Fråga'}</Text>
+        <Text style={styles.summaryTotal}>{summary.totalAnswered} svar</Text>
+      </View>
+
+      <View style={styles.summaryOptions}>
+        {summary.options.map((option, index) => (
+          <View key={`${option.label}-${index}`} style={styles.summaryOptionRow}>
+            <View style={styles.summaryOptionTop}>
+              <Text numberOfLines={2} style={styles.summaryOptionLabel}>
+                {option.label}
+              </Text>
+              <Text style={styles.summaryOptionCount}>{option.count}</Text>
+            </View>
+            <View style={styles.summaryBarTrack}>
+              <View
+                style={[styles.summaryBarFill, { width: maxCount > 0 ? `${Math.round((option.count / maxCount) * 100)}%` : '0%' }]}
+              />
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function MetaRow({
+  colors,
+  icon,
+  label,
+  styles,
+  subValue,
+  subValueDanger = false,
+  value,
+}: {
+  colors: ColorPalette;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  styles: ReturnType<typeof createStyles>;
+  subValue?: string | null;
+  subValueDanger?: boolean;
+  value: string;
+}) {
+  return (
+    <View style={styles.metaRow}>
+      <Ionicons color={colors.primary} name={icon} size={16} />
+      <Text style={styles.metaLabel}>{label}</Text>
+      <View style={styles.metaValueWrap}>
+        <Text style={styles.metaValue}>{value}</Text>
+        {subValue ? (
+          <Text style={[styles.metaSubValue, subValueDanger ? styles.metaSubValueDanger : null]}>{subValue}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const dateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  month: 'short',
+  timeZone: 'Europe/Stockholm',
+  year: 'numeric',
+});
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) {
+    return 'Ingen tid angiven';
+  }
+
+  const time = new Date(iso);
+  if (Number.isNaN(time.getTime())) {
+    return 'Ingen tid angiven';
+  }
+
+  return dateTimeFormatter.format(time);
+}
+
+// Small helper under the registration deadline: "Stängd" once it has passed,
+// otherwise a relative hint like "om 3 dagar" / "idag" / "i morgon".
+function deadlineHint(iso: string | null): { danger: boolean; text: string } | null {
+  if (!iso) {
+    return null;
+  }
+
+  const deadline = new Date(iso).getTime();
+  if (!Number.isFinite(deadline)) {
+    return null;
+  }
+
+  if (deadline < Date.now()) {
+    return { danger: true, text: 'Stängd' };
+  }
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfDeadlineDay = new Date(deadline);
+  startOfDeadlineDay.setHours(0, 0, 0, 0);
+  const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
+
+  if (days <= 0) {
+    return { danger: false, text: 'idag' };
+  }
+
+  if (days === 1) {
+    return { danger: false, text: 'i morgon' };
+  }
+
+  return { danger: false, text: `om ${days} dagar` };
+}
+
+function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
+  return StyleSheet.create({
+    attributeEmpty: {
+      ...typography.caption,
+      color: colors.textMuted,
+    },
+    attributeLabel: {
+      ...typography.caption,
+      color: colors.textMuted,
+    },
+    attributeList: {
+      gap: spacing.xs,
+    },
+    attributeRow: {
+      gap: 2,
+    },
+    attributeValue: {
+      ...typography.body,
+      color: colors.textPrimary,
+    },
+    backButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    backLabel: {
+      ...typography.captionStrong,
+      color: colors.primary,
+    },
+    collapsibleHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    collapsibleToggle: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 4,
+    },
+    collapsibleToggleText: {
+      ...typography.captionStrong,
+      color: colors.primary,
+    },
+    content: {
+      gap: spacing.lg,
+      paddingBottom: spacing.xxl,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+    },
+    eventorButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderRadius: 16,
+      flexDirection: 'row',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
+    eventorButtonText: {
+      ...typography.captionStrong,
+      color: '#fff',
+    },
+    infoText: {
+      ...typography.body,
+      color: colors.textSecondary,
+      lineHeight: 21,
+    },
+    loadingBox: {
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.xl,
+    },
+    loadingText: {
+      ...typography.body,
+      color: colors.textSecondary,
+    },
+    metaCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: spacing.md,
+    },
+    metaDivider: {
+      backgroundColor: colors.border,
+      height: 1,
+      marginVertical: spacing.sm,
+    },
+    metaLabel: {
+      ...typography.caption,
+      color: colors.textMuted,
+      flex: 1,
+    },
+    metaRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    metaValue: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+    },
+    metaValueWrap: {
+      alignItems: 'flex-end',
+    },
+    metaSubValue: {
+      ...typography.caption,
+      color: colors.textMuted,
+    },
+    metaSubValueDanger: {
+      color: colors.error,
+    },
+    registrationCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    registrationCount: {
+      ...typography.caption,
+      color: colors.textMuted,
+    },
+    registrationHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    registrationList: {
+      gap: spacing.xs,
+    },
+    registrationName: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      flex: 1,
+    },
+    registrationsHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    summaryBarFill: {
+      backgroundColor: colors.primary,
+      borderRadius: 999,
+      height: 6,
+    },
+    summaryBarTrack: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 999,
+      height: 6,
+      overflow: 'hidden',
+    },
+    summaryCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      gap: spacing.sm,
+      padding: spacing.md,
+    },
+    summaryHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    summaryList: {
+      gap: spacing.sm,
+    },
+    summaryOptionCount: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+    },
+    summaryOptionLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      flex: 1,
+    },
+    summaryOptionRow: {
+      gap: 4,
+    },
+    summaryOptionTop: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+      justifyContent: 'space-between',
+    },
+    summaryOptions: {
+      gap: spacing.sm,
+    },
+    summaryTitle: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      flex: 1,
+    },
+    summaryTotal: {
+      ...typography.caption,
+      color: colors.textMuted,
+    },
+    toggleAllButton: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 4,
+      paddingVertical: 4,
+    },
+    toggleAllText: {
+      ...typography.captionStrong,
+      color: colors.primary,
+    },
+    safeArea: {
+      backgroundColor: colors.background,
+      flex: 1,
+    },
+    section: {
+      gap: spacing.sm,
+    },
+    sectionTitle: {
+      ...typography.sectionTitle,
+      color: colors.textPrimary,
+    },
+    title: {
+      ...typography.heroTitle,
+      color: colors.textPrimary,
+      fontSize: 22,
+      lineHeight: 27,
+    },
+  });
+}
