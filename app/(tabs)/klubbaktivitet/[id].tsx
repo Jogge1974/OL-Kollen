@@ -179,13 +179,13 @@ function ActivityDetail({
       <View style={styles.metaCard}>
         <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={formatDateTime(activity.startTime)} />
         <View style={styles.metaDivider} />
-        <View style={styles.metaRow}>
-          <Ionicons color={colors.primary} name="time-outline" size={16} />
-          <Text style={styles.metaLabelStatic}>Anmälan stänger</Text>
-          <View style={styles.metaHintWrap}>
-            {registrationHint ? <Text style={styles.metaHint}>{registrationHint}</Text> : null}
+        <View style={styles.deadlineBlock}>
+          <View style={styles.metaRow}>
+            <Ionicons color={colors.primary} name="time-outline" size={16} />
+            <Text style={styles.metaLabel}>Anmälan stänger</Text>
+            <Text style={styles.metaValue}>{formatDateTime(activity.registrationDeadline)}</Text>
           </View>
-          <Text style={styles.metaValue}>{formatDateTime(activity.registrationDeadline)}</Text>
+          {registrationHint ? <Text style={styles.metaHint}>{registrationHint}</Text> : null}
         </View>
         <View style={styles.metaDivider} />
         <MetaRow
@@ -304,18 +304,38 @@ function RegistrationCard({
       </Pressable>
 
       {isExpanded ? (
-        answerCount > 0 ? (
-          <View style={styles.attributeList}>
-            {groupedAnswers.map((group, index) => (
-              <View key={`${group.attributeId}-${index}`} style={styles.attributeRow}>
-                {group.attributeName ? <Text style={styles.attributeLabel}>{group.attributeName}</Text> : null}
-                <Text style={styles.attributeValue}>{group.values.join(', ')}</Text>
-              </View>
-            ))}
+        <View style={styles.registrationExpanded}>
+          <View style={styles.registrationNameHeader}>
+            <View style={styles.registrationAvatar}>
+              {registration.personName ? (
+                <Text style={styles.registrationAvatarText}>{getInitials(displayName)}</Text>
+              ) : (
+                <Ionicons color="#fff" name="person" size={16} />
+              )}
+            </View>
+            <View style={styles.registrationNameCol}>
+              <Text style={styles.registrationFullName}>{displayName}</Text>
+              {registration.clubName ? (
+                <View style={styles.registrationClubBadge}>
+                  <Ionicons color={colors.primary} name="people-outline" size={11} />
+                  <Text style={styles.registrationClubBadgeText}>{registration.clubName}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-        ) : (
-          <Text style={styles.attributeEmpty}>Inga val angivna.</Text>
-        )
+          {answerCount > 0 ? (
+            <View style={styles.attributeList}>
+              {groupedAnswers.map((group, index) => (
+                <View key={`${group.attributeId}-${index}`} style={styles.attributeRow}>
+                  {group.attributeName ? <Text style={styles.attributeLabel}>{group.attributeName}</Text> : null}
+                  <Text style={styles.attributeValue}>{group.values.join(', ')}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.attributeEmpty}>Inga val angivna.</Text>
+          )}
+        </View>
       ) : null}
     </View>
   );
@@ -447,6 +467,18 @@ function formatDateTime(iso: string | null): string {
   return dateTimeFormatter.format(time);
 }
 
+// Initials for the registrant avatar (first + last word).
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return '?';
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 // Small red note under the registration deadline row: "Stängd" once it has
 // passed, otherwise "X dagar kvar" – but only when 10 days or fewer remain.
 function deadlineHint(iso: string | null): string | null {
@@ -477,7 +509,11 @@ function deadlineHint(iso: string | null): string | null {
     return 'idag';
   }
 
-  return `${days} dagar\nkvar`;
+  if (days === 1) {
+    return '1 dag kvar';
+  }
+
+  return `${days} dagar kvar`;
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
@@ -529,6 +565,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingBottom: spacing.xxl,
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
+    },
+    deadlineBlock: {
+      justifyContent: 'center',
     },
     hero: {
       borderRadius: 26,
@@ -639,21 +678,13 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.error,
       fontSize: 11,
       lineHeight: 13,
-      textAlign: 'center',
-    },
-    metaHintWrap: {
-      alignItems: 'center',
-      flex: 1,
-      justifyContent: 'center',
+      marginTop: 1,
+      textAlign: 'right',
     },
     metaLabel: {
       ...typography.caption,
       color: colors.textMuted,
       flex: 1,
-    },
-    metaLabelStatic: {
-      ...typography.caption,
-      color: colors.textMuted,
     },
     metaRow: {
       alignItems: 'center',
@@ -663,6 +694,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     metaValue: {
       ...typography.bodyStrong,
       color: colors.textPrimary,
+    },
+    metaValueWrap: {
+      alignItems: 'flex-end',
     },
     registrationCard: {
       backgroundColor: colors.surface,
@@ -676,6 +710,56 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     registrationCount: {
       ...typography.caption,
       color: colors.textMuted,
+    },
+    registrationExpanded: {
+      gap: spacing.sm,
+    },
+    registrationAvatar: {
+      alignItems: 'center',
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderRadius: 16,
+      height: 32,
+      justifyContent: 'center',
+      width: 32,
+    },
+    registrationAvatarText: {
+      ...typography.captionStrong,
+      color: '#fff',
+      fontSize: 12,
+    },
+    registrationClubBadge: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: 999,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+    },
+    registrationClubBadgeText: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontSize: 11,
+    },
+    registrationFullName: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+    },
+    registrationNameCol: {
+      alignItems: 'flex-start',
+      flex: 1,
+      gap: 3,
+    },
+    registrationNameHeader: {
+      alignItems: 'center',
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingTop: spacing.sm,
     },
     registrationHeader: {
       alignItems: 'center',

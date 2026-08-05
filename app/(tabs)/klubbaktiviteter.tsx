@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/EmptyState';
@@ -34,6 +34,7 @@ export default function KlubbaktiviteterScreen() {
           { icon: 'flash-outline' as const, label: 'Aktiva', value: String(activeCount) },
         ]
       : undefined;
+  const [warningVisible, setWarningVisible] = React.useState(false);
 
   const renderBody = () => {
     if (!user) {
@@ -108,6 +109,14 @@ export default function KlubbaktiviteterScreen() {
           eyebrow="KLUBBEN"
           subtitle={clubName ?? 'Aktiviteter och händelser i din klubb'}
           title="Klubbaktiviteter"
+          topRightContent={
+            organisationId ? (
+              <Pressable onPress={() => setWarningVisible(true)} style={styles.warningBadge}>
+                <Ionicons color={colors.heroText} name="warning" size={13} />
+                <Text style={styles.warningBadgeText}>OBS!</Text>
+              </Pressable>
+            ) : undefined
+          }
         />
 
         {user && organisationId ? (
@@ -126,6 +135,39 @@ export default function KlubbaktiviteterScreen() {
 
         {renderBody()}
       </ScrollView>
+
+      <Modal animationType="fade" onRequestClose={() => setWarningVisible(false)} transparent visible={warningVisible}>
+        <Pressable onPress={() => setWarningVisible(false)} style={styles.dialogOverlay}>
+          <Pressable onPress={() => {}} style={styles.dialogCard}>
+            <View style={styles.dialogHeader}>
+              <View style={styles.dialogHeaderLeft}>
+                <Ionicons color={colors.error} name="warning" size={22} />
+                <Text style={styles.dialogTitle}>OBS!</Text>
+              </View>
+              <Pressable hitSlop={8} onPress={() => setWarningVisible(false)} style={styles.dialogCloseIcon}>
+                <Ionicons color={colors.textMuted} name="close" size={22} />
+              </Pressable>
+            </View>
+            <Text style={styles.dialogText}>
+              Aktiviteter från SOFT och ditt distrikt får inte visas här. För att se dessa behöver du gå till eventor.orientering.se.
+            </Text>
+            <Pressable
+              onPress={() => {
+                if (organisationId) {
+                  void Linking.openURL(`https://eventor.orientering.se/Activities?organisationId=${organisationId}`);
+                }
+              }}
+              style={styles.dialogButton}
+            >
+              <Ionicons color="#fff" name="open-outline" size={16} />
+              <Text style={styles.dialogButtonText}>Gå till alla aktiviteter i Eventor</Text>
+            </Pressable>
+            <Pressable onPress={() => setWarningVisible(false)} style={styles.dialogCloseButton}>
+              <Text style={styles.dialogClose}>Stäng</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -159,7 +201,7 @@ function ActivityRow({
           </View>
           <View style={styles.cardMetaItem}>
             <Ionicons color={colors.primary} name="people-outline" size={14} />
-            <Text style={styles.cardMetaText}>{activity.registrationCount} anmälda</Text>
+            <Text style={styles.cardMetaText}>{activity.registrationCount} anm.</Text>
           </View>
         </View>
       </View>
@@ -206,10 +248,10 @@ function describeDeadline(deadline: string | null): DeadlineInfo {
   }
 
   if (days === 1) {
-    return { label: '1 dag kvar till anmälan går ut', tone: 'open' };
+    return { label: 'Anmälan om 1 dag', tone: 'open' };
   }
 
-  return { label: `${days} dagar kvar till anmälan går ut`, tone: 'open' };
+  return { label: `Anmälan om ${days} dagar`, tone: 'open' };
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
@@ -263,6 +305,72 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
     },
+    dialogButton: {
+      alignItems: 'center',
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderRadius: 14,
+      flexDirection: 'row',
+      gap: spacing.xs,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+    },
+    dialogButtonText: {
+      ...typography.captionStrong,
+      color: '#fff',
+    },
+    dialogCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 22,
+      borderWidth: 1,
+      gap: spacing.md,
+      maxWidth: 420,
+      padding: spacing.lg,
+      width: '100%',
+    },
+    dialogClose: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+    },
+    dialogCloseButton: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
+    dialogCloseIcon: {
+      padding: 2,
+    },
+    dialogHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    dialogHeaderLeft: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    dialogOverlay: {
+      alignItems: 'center',
+      backgroundColor: colors.overlay,
+      flex: 1,
+      justifyContent: 'center',
+      padding: spacing.xl,
+    },
+    dialogText: {
+      ...typography.body,
+      color: colors.textSecondary,
+      lineHeight: 21,
+    },
+    dialogTitle: {
+      ...typography.sectionTitle,
+      color: colors.textPrimary,
+    },
     list: {
       gap: spacing.sm,
     },
@@ -302,6 +410,22 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     safeArea: {
       backgroundColor: colors.background,
       flex: 1,
+    },
+    warningBadge: {
+      alignItems: 'center',
+      backgroundColor: 'rgba(214, 69, 69, 0.35)',
+      borderColor: 'rgba(255, 255, 255, 0.45)',
+      borderRadius: 999,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+    },
+    warningBadgeText: {
+      ...typography.captionStrong,
+      color: colors.heroText,
+      fontSize: 12,
     },
     yearChip: {
       backgroundColor: colors.surfaceMuted,
