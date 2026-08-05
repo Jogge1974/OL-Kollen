@@ -222,8 +222,13 @@ Deno.serve(async (request) => {
 
     // 6. Build notifications
     const allMessages: Array<{ body: string; data: Record<string, unknown>; sound: 'default'; title: string; to: string }> = [];
-    const stateInserts: Array<{ event_id: string; event_name: string; friend_person_id: string }> = [];
+    const stateInserts: Array<{ entry_id: string; event_id: string; event_name: string; friend_person_id: string }> = [];
     const insertedKeys = new Set<string>();
+    // Entries that HAVE an eligible watcher but no active token right now. We
+    // deliberately do NOT record state for these so a transient token gap (e.g.
+    // right after an app/OS update, before the token re-registers) doesn't
+    // permanently swallow the entry — it will be retried on the next run.
+    let deferredCount = 0;
 
     for (const entry of allParsedEntries) {
       const stateKey = `${entry.personId}::${entry.eventId}`;
@@ -231,6 +236,9 @@ Deno.serve(async (request) => {
 
       // Find all watchers for this friend
       const watchers = allWatches.filter((w) => w.friend_person_id === entry.personId);
+
+      let hasEligibleWatcher = false;
+      let hasTokenForEligible = false;
 
       for (const watch of watchers) {
         // Skip if friend was added AFTER the entry was made
@@ -244,8 +252,11 @@ Deno.serve(async (request) => {
         // Skip if push_on_entry is disabled
         if (!watch.push_on_entry) continue;
 
+        hasEligibleWatcher = true;
+
         const userTokens = tokensByPerson.get(watch.person_id);
         if (!userTokens || userTokens.length === 0) continue;
+        hasTokenForEligible = true;
 
         const clubSuffix = watch.friend_club ? `, ${watch.friend_club}` : '';
         for (const token of userTokens) {
@@ -262,7 +273,16 @@ Deno.serve(async (request) => {
         }
       }
 
-      // Record state (once per friend+event combo)
+      // Defer (don't record) entries that someone wants but can't be delivered
+      // yet because there is no active token — retry them next run.
+      if (hasEligibleWatcher && !hasTokenForEligible) {
+        deferredCount += 1;
+        continue;
+      }
+
+      // Record state (once per friend+event combo) for entries that either had
+      // no eligible watcher (nothing to send — suppress future spam) or that we
+      // are about to send a push for.
       if (!insertedKeys.has(stateKey)) {
         insertedKeys.add(stateKey);
         stateInserts.push({
@@ -274,27 +294,35 @@ Deno.serve(async (request) => {
       }
     }
 
-    // 7. Record notified entries BEFORE sending pushes to prevent duplicates
-    //    if the push succeeds but state recording fails.
-    if (stateInserts.length > 0) {
+    // 7. Send pushes FIRST. If the send throws we skip recording state so the
+    //    entries are retried next run instead of being silently swallowed.
+    let sendFailed = false;
+    if (allMessages.length > 0) {
+      try {
+        const { invalidTokens } = await sendExpoPushMessages(allMessages);
+        await deactivateInvalidTokens(supabase, invalidTokens);
+      } catch (sendErr) {
+        console.error('[poll-friend-entries] Push send failed — not recording state so entries retry next run:', sendErr);
+        sendFailed = true;
+      }
+    }
+
+    // 8. Record notified entries only after a successful send. The small risk of
+    //    a duplicate push (send ok, then upsert fails) is preferred over a
+    //    silently missed notification.
+    if (!sendFailed && stateInserts.length > 0) {
       const { error: upsertErr } = await supabase
         .from('friend_entry_state')
         .upsert(stateInserts, { onConflict: 'friend_person_id,event_id' });
 
       if (upsertErr) {
-        console.error('[poll-friend-entries] Failed to record entry state — aborting to prevent duplicate pushes:', upsertErr);
-        return jsonOk({ checkedFriends: uniqueFriendIds.length, entriesFound: allParsedEntries.length, ok: false, error: 'state_upsert_failed', pushCount: 0 });
+        console.error('[poll-friend-entries] Failed to record entry state:', upsertErr);
       }
-    }
-
-    // 8. Send pushes (state already recorded, so even if this fails we won't re-send)
-    if (allMessages.length > 0) {
-      const { invalidTokens } = await sendExpoPushMessages(allMessages);
-      await deactivateInvalidTokens(supabase, invalidTokens);
     }
 
     return jsonOk({
       checkedFriends: uniqueFriendIds.length,
+      deferred: deferredCount,
       entriesFound: allParsedEntries.length,
       ok: true,
       pushCount: allMessages.length,
