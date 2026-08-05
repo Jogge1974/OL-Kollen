@@ -39,7 +39,7 @@ export default function CalendarScreen() {
               { flex: 2, icon: 'calendar-outline', label: 'Datumintervall', value: formatCalendarRange(filters.fromDate, filters.toDate) },
               { flex: 1, icon: 'map-outline', label: 'Distrikt', value: getSelectedDistrictCountLabel(filters.districtIds.length) },
             ]}
-            eyebrow="Ranking"
+            eyebrow="Tävling"
             title="Tävlingskalendern"
             topRightText={`${events.length} tävlingar`}
           />
