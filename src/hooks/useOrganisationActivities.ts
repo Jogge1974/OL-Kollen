@@ -1,43 +1,28 @@
 import * as React from 'react';
 
 import { fetchOrganisationActivities } from '@/src/api/eventorActivities';
-import { ClubActivity } from '@/src/types/eventorActivities';
+import { ActivitySections } from '@/src/types/eventorActivities';
 
 type UseOrganisationActivitiesResult = {
-  activities: ClubActivity[];
-  availableYears: number[];
   error: string | null;
   isLoading: boolean;
   reload: () => void;
-  selectedYear: number;
-  setSelectedYear: React.Dispatch<React.SetStateAction<number>>;
+  sections: ActivitySections | null;
 };
 
-const YEARS_BACK = 3;
-
 export function useOrganisationActivities(organisationId: string | null): UseOrganisationActivitiesResult {
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = React.useState(currentYear);
-  const [activities, setActivities] = React.useState<ClubActivity[]>([]);
+  const [sections, setSections] = React.useState<ActivitySections | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const requestIdRef = React.useRef(0);
-
-  const availableYears = React.useMemo(() => {
-    const years: number[] = [];
-    for (let year = currentYear + 1; year >= currentYear - YEARS_BACK; year -= 1) {
-      years.push(year);
-    }
-    return years;
-  }, [currentYear]);
 
   React.useEffect(() => {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
     if (!organisationId) {
-      setActivities([]);
+      setSections(null);
       setError(null);
       setIsLoading(false);
       return;
@@ -47,18 +32,18 @@ export function useOrganisationActivities(organisationId: string | null): UseOrg
     setIsLoading(true);
     setError(null);
 
-    fetchOrganisationActivities(organisationId, selectedYear)
+    fetchOrganisationActivities(organisationId)
       .then((result) => {
         if (!isMounted || requestId !== requestIdRef.current) {
           return;
         }
-        setActivities(result);
+        setSections(result);
       })
       .catch((caught: unknown) => {
         if (!isMounted || requestId !== requestIdRef.current) {
           return;
         }
-        setActivities([]);
+        setSections(null);
         setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta klubbaktiviteterna.');
       })
       .finally(() => {
@@ -70,9 +55,9 @@ export function useOrganisationActivities(organisationId: string | null): UseOrg
     return () => {
       isMounted = false;
     };
-  }, [organisationId, selectedYear, refreshKey]);
+  }, [organisationId, refreshKey]);
 
   const reload = React.useCallback(() => setRefreshKey((key) => key + 1), []);
 
-  return { activities, availableYears, error, isLoading, reload, selectedYear, setSelectedYear };
+  return { error, isLoading, reload, sections };
 }

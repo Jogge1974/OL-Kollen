@@ -1,39 +1,35 @@
-export type ActivityAttributeType = 'CheckBoxes' | 'RadioButtons' | 'SingleSelectList' | 'Text';
-
-export type ActivityAttributeDefinition = {
-  id: string;
-  name: string;
-  order: number;
-  type: ActivityAttributeType;
-  values: string[];
-};
+// Klubbaktiviteter are scraped from Eventor's web pages (the API is org-locked),
+// so the shapes below mirror what the HTML exposes rather than the XML API.
 
 export type ActivityRegistrationAttribute = {
-  attributeId: string;
   attributeName: string;
-  value: string;
+  values: string[];
 };
 
 export type ActivityRegistration = {
   attributes: ActivityRegistrationAttribute[];
   clubName: string | null;
-  modifyDate: string | null;
-  organisationId: string | null;
-  personId: string;
-  personName: string | null;
+  personName: string;
 };
 
 export type ClubActivity = {
-  attributes: ActivityAttributeDefinition[];
+  attributeNames: string[];
   id: string;
-  informationHtml: string | null;
   informationText: string | null;
   name: string;
+  organiser: string | null;
   registrationCount: number;
   registrationDeadline: string | null;
+  registrationDeadlineIso: string | null;
   registrations: ActivityRegistration[];
   startTime: string | null;
   url: string;
-  visibleFrom: string | null;
-  visibleTo: string | null;
+};
+
+export type ActivitySections = {
+  club: ClubActivity[];
+  clubName: string | null;
+  district: ClubActivity[];
+  districtName: string | null;
+  soft: ClubActivity[];
 };

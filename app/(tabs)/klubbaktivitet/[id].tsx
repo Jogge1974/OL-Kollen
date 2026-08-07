@@ -7,40 +7,34 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, Vi
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/EmptyState';
-import { fetchOrganisationActivities, getCachedActivity } from '@/src/api/eventorActivities';
-import { useAuthStore } from '@/src/store/authStore';
+import { fetchActivityDetail, getCachedActivityDetail } from '@/src/api/eventorActivities';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { ClubActivity, ActivityRegistration } from '@/src/types/eventorActivities';
+import { ActivityRegistration, ClubActivity } from '@/src/types/eventorActivities';
 
 export default function ClubActivityDetailScreen() {
   const { colors, isDark, themeName } = useTheme();
   const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
 
-  const params = useLocalSearchParams<{ id?: string; year?: string }>();
+  const params = useLocalSearchParams<{ id?: string }>();
   const activityId = typeof params.id === 'string' ? params.id : '';
-  const year = Number(params.year) || new Date().getFullYear();
-
-  const user = useAuthStore((state) => state.user);
-  const organisationId = user?.organisationIds[0] ?? null;
 
   const [activity, setActivity] = React.useState<ClubActivity | null>(() =>
-    organisationId ? getCachedActivity(organisationId, year, activityId) : null,
+    activityId ? getCachedActivityDetail(activityId) : null,
   );
   const [isLoading, setIsLoading] = React.useState(!activity);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!organisationId || !activityId) {
+    if (!activityId) {
       setActivity(null);
       setIsLoading(false);
-      setError(null);
       return;
     }
 
-    const cached = getCachedActivity(organisationId, year, activityId);
+    const cached = getCachedActivityDetail(activityId);
     if (cached) {
       setActivity(cached);
       setIsLoading(false);
@@ -53,22 +47,17 @@ export default function ClubActivityDetailScreen() {
     setIsLoading(true);
     setError(null);
 
-    fetchOrganisationActivities(organisationId, year)
-      .then((list) => {
+    fetchActivityDetail(activityId)
+      .then((result) => {
         if (!isMounted) {
           return;
         }
-        const found = list.find((item) => item.id === activityId) ?? null;
-        setActivity(found);
-        if (!found) {
-          setError('Aktiviteten kunde inte hittas.');
-        }
+        setActivity(result);
       })
       .catch((caught: unknown) => {
         if (!isMounted) {
           return;
         }
-        setActivity(null);
         setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta aktiviteten.');
       })
       .finally(() => {
@@ -80,7 +69,7 @@ export default function ClubActivityDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [organisationId, activityId, year]);
+  }, [activityId]);
 
   const goBack = () => router.navigate('/klubbaktiviteter');
 
@@ -127,7 +116,7 @@ function ActivityDetail({
 }) {
   const registrations = activity.registrations;
   const registrationKeys = React.useMemo(
-    () => registrations.map((registration, index) => `${registration.personId}-${index}`),
+    () => registrations.map((registration, index) => `${registration.personName}-${index}`),
     [registrations],
   );
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
@@ -151,7 +140,9 @@ function ActivityDetail({
 
   const summaries = React.useMemo(() => computeAttributeSummaries(activity), [activity]);
   const [summaryExpanded, setSummaryExpanded] = React.useState(false);
-  const registrationHint = deadlineHint(activity.registrationDeadline);
+  const registrationHint = deadlineHint(activity.registrationDeadlineIso);
+  const startDisplay = shortenSwedishDate(activity.startTime) ?? 'Ingen tid angiven';
+  const deadlineDisplay = shortenSwedishDate(activity.registrationDeadline) ?? 'Ingen tid angiven';
 
   return (
     <>
@@ -166,7 +157,7 @@ function ActivityDetail({
           <View style={styles.heroMetaRow}>
             <View style={styles.heroMetaItem}>
               <Ionicons color={colors.heroTextMuted} name="calendar-outline" size={14} />
-              <Text style={styles.heroMeta}>{formatDateTime(activity.startTime)}</Text>
+              <Text style={styles.heroMeta}>{startDisplay}</Text>
             </View>
             <View style={styles.heroBadge}>
               <Ionicons color={colors.heroText} name="people" size={12} />
@@ -177,24 +168,31 @@ function ActivityDetail({
       </LinearGradient>
 
       <View style={styles.metaCard}>
-        <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={formatDateTime(activity.startTime)} />
+        {activity.organiser ? (
+          <>
+            <MetaRow colors={colors} icon="flag-outline" label="Arrangör" styles={styles} value={activity.organiser} />
+            <View style={styles.metaDivider} />
+          </>
+        ) : null}
+        <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={startDisplay} />
         <View style={styles.metaDivider} />
         <View style={styles.deadlineBlock}>
           <View style={styles.metaRow}>
             <Ionicons color={colors.primary} name="time-outline" size={16} />
             <Text style={styles.metaLabel}>Anmälan stänger</Text>
-            <Text style={styles.metaValue}>{formatDateTime(activity.registrationDeadline)}</Text>
+            <View style={styles.metaValueWrap}>
+              <Text style={styles.metaValue}>{deadlineDisplay}</Text>
+              {registrationHint ? (
+                <View style={styles.deadlineBadge}>
+                  <Ionicons color={colors.error} name="alarm-outline" size={12} />
+                  <Text style={styles.deadlineBadgeText}>{registrationHint}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-          {registrationHint ? <Text style={styles.metaHint}>{registrationHint}</Text> : null}
         </View>
         <View style={styles.metaDivider} />
-        <MetaRow
-          colors={colors}
-          icon="people-outline"
-          label="Anmälda"
-          styles={styles}
-          value={`${activity.registrationCount} personer`}
-        />
+        <MetaRow colors={colors} icon="people-outline" label="Anmälda" styles={styles} value={`${activity.registrationCount} personer`} />
       </View>
 
       <Pressable onPress={() => void Linking.openURL(activity.url)} style={styles.eventorButton}>
@@ -276,21 +274,9 @@ function RegistrationCard({
   registration: ActivityRegistration;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const groupedAnswers = React.useMemo(() => {
-    const map = new Map<string, { attributeName: string; values: string[] }>();
-    for (const entry of registration.attributes) {
-      const existing = map.get(entry.attributeId);
-      if (existing) {
-        existing.values.push(entry.value);
-      } else {
-        map.set(entry.attributeId, { attributeName: entry.attributeName, values: [entry.value] });
-      }
-    }
-    return [...map.entries()].map(([attributeId, group]) => ({ attributeId, ...group }));
-  }, [registration.attributes]);
-  const answerCount = groupedAnswers.length;
-  const displayName = registration.personName ?? `Deltagare ${registration.personId}`;
-  const nameWithClub = registration.clubName ? `${displayName} (${registration.clubName})` : displayName;
+  const answeredAttributes = registration.attributes.filter((attribute) => attribute.values.length > 0);
+  const answerCount = answeredAttributes.length;
+  const nameWithClub = registration.clubName ? `${registration.personName} (${registration.clubName})` : registration.personName;
 
   return (
     <View style={styles.registrationCard}>
@@ -307,14 +293,10 @@ function RegistrationCard({
         <View style={styles.registrationExpanded}>
           <View style={styles.registrationNameHeader}>
             <View style={styles.registrationAvatar}>
-              {registration.personName ? (
-                <Text style={styles.registrationAvatarText}>{getInitials(displayName)}</Text>
-              ) : (
-                <Ionicons color="#fff" name="person" size={16} />
-              )}
+              <Text style={styles.registrationAvatarText}>{getInitials(registration.personName)}</Text>
             </View>
             <View style={styles.registrationNameCol}>
-              <Text style={styles.registrationFullName}>{displayName}</Text>
+              <Text style={styles.registrationFullName}>{registration.personName}</Text>
               {registration.clubName ? (
                 <View style={styles.registrationClubBadge}>
                   <Ionicons color={colors.primary} name="people-outline" size={11} />
@@ -323,12 +305,13 @@ function RegistrationCard({
               ) : null}
             </View>
           </View>
+
           {answerCount > 0 ? (
             <View style={styles.attributeList}>
-              {groupedAnswers.map((group, index) => (
-                <View key={`${group.attributeId}-${index}`} style={styles.attributeRow}>
-                  {group.attributeName ? <Text style={styles.attributeLabel}>{group.attributeName}</Text> : null}
-                  <Text style={styles.attributeValue}>{group.values.join(', ')}</Text>
+              {answeredAttributes.map((attribute, index) => (
+                <View key={`${attribute.attributeName}-${index}`} style={styles.attributeRow}>
+                  {attribute.attributeName ? <Text style={styles.attributeLabel}>{attribute.attributeName}</Text> : null}
+                  <Text style={styles.attributeValue}>{attribute.values.join(', ')}</Text>
                 </View>
               ))}
             </View>
@@ -345,29 +328,12 @@ type AttributeSummaryOption = { count: number; label: string };
 type AttributeSummary = { id: string; name: string; options: AttributeSummaryOption[]; totalAnswered: number };
 
 function computeAttributeSummaries(activity: ClubActivity): AttributeSummary[] {
-  const attributes = [...activity.attributes].sort((left, right) => left.order - right.order);
-
-  return attributes
-    .map((attribute) => {
-      // Multi-select checkbox answers arrive as several AttributeValue entries with
-      // the same attribute id, so collect all of a registration's values for it.
-      const perRegistrationValues = activity.registrations.map((registration) =>
-        registration.attributes
-          .filter((entry) => entry.attributeId === attribute.id)
-          .map((entry) => entry.value.trim())
-          .filter((value) => value.length > 0),
-      );
-      const answered = perRegistrationValues.filter((values) => values.length > 0);
+  return activity.attributeNames
+    .map((attributeName) => {
+      const answered = activity.registrations
+        .map((registration) => registration.attributes.find((attribute) => attribute.attributeName === attributeName)?.values ?? [])
+        .filter((values) => values.length > 0);
       const totalAnswered = answered.length;
-
-      if (attribute.values.length > 0) {
-        const options = attribute.values.map((option) => {
-          const key = option.trim().toLowerCase();
-          const count = answered.filter((values) => values.some((value) => value.toLowerCase() === key)).length;
-          return { count, label: option.trim() };
-        });
-        return { id: attribute.id, name: attribute.name, options, totalAnswered };
-      }
 
       const counts = new Map<string, number>();
       for (const values of answered) {
@@ -378,7 +344,8 @@ function computeAttributeSummaries(activity: ClubActivity): AttributeSummary[] {
       const options = [...counts.entries()]
         .map(([label, count]) => ({ count, label }))
         .sort((left, right) => right.count - left.count);
-      return { id: attribute.id, name: attribute.name, options, totalAnswered };
+
+      return { id: attributeName, name: attributeName, options, totalAnswered };
     })
     .filter((summary) => summary.options.length > 0);
 }
@@ -412,9 +379,7 @@ function AttributeSummaryCard({
               <Text style={styles.summaryOptionCount}>{option.count}</Text>
             </View>
             <View style={styles.summaryBarTrack}>
-              <View
-                style={[styles.summaryBarFill, { width: maxCount > 0 ? `${Math.round((option.count / maxCount) * 100)}%` : '0%' }]}
-              />
+              <View style={[styles.summaryBarFill, { width: maxCount > 0 ? `${Math.round((option.count / maxCount) * 100)}%` : '0%' }]} />
             </View>
           </View>
         ))}
@@ -445,29 +410,29 @@ function MetaRow({
   );
 }
 
-const dateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  month: 'short',
-  timeZone: 'Europe/Stockholm',
-  year: 'numeric',
-});
+const MONTH_ABBREVIATIONS: Record<string, string> = {
+  april: 'apr.',
+  augusti: 'aug.',
+  december: 'dec.',
+  februari: 'feb.',
+  januari: 'jan.',
+  november: 'nov.',
+  oktober: 'okt.',
+  september: 'sep.',
+};
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) {
-    return 'Ingen tid angiven';
+// Shorten scraped Swedish dates: long month -> "aug." and drop the "klockan" word.
+function shortenSwedishDate(input: string | null): string | null {
+  if (!input) {
+    return null;
   }
-
-  const time = new Date(iso);
-  if (Number.isNaN(time.getTime())) {
-    return 'Ingen tid angiven';
-  }
-
-  return dateTimeFormatter.format(time);
+  return input
+    .replace(/\bklockan\s*/gi, '')
+    .replace(/\b(januari|februari|april|augusti|september|oktober|november|december)\b/gi, (month) => MONTH_ABBREVIATIONS[month.toLowerCase()] ?? month)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
-// Initials for the registrant avatar (first + last word).
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
@@ -479,8 +444,8 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// Small red note under the registration deadline row: "Stängd" once it has
-// passed, otherwise "X dagar kvar" – but only when 10 days or fewer remain.
+// Small red note under the deadline: "Stängd" once passed, otherwise "X dagar
+// kvar" — but only when 10 days or fewer remain.
 function deadlineHint(iso: string | null): string | null {
   if (!iso) {
     return null;
@@ -506,7 +471,7 @@ function deadlineHint(iso: string | null): string | null {
   }
 
   if (days <= 0) {
-    return 'idag';
+    return 'Stänger idag';
   }
 
   if (days === 1) {
@@ -566,8 +531,40 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
     },
+    deadlineBadge: {
+      alignItems: 'center',
+      alignSelf: 'flex-end',
+      backgroundColor: isDark ? 'rgba(224, 96, 96, 0.15)' : 'rgba(183, 59, 59, 0.10)',
+      borderColor: isDark ? 'rgba(224, 96, 96, 0.50)' : 'rgba(183, 59, 59, 0.40)',
+      borderRadius: 999,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 4,
+      marginTop: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+    },
+    deadlineBadgeText: {
+      ...typography.captionStrong,
+      color: colors.error,
+      fontSize: 11,
+    },
     deadlineBlock: {
       justifyContent: 'center',
+    },
+    eventorButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderRadius: 16,
+      flexDirection: 'row',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
+    eventorButtonText: {
+      ...typography.captionStrong,
+      color: '#fff',
     },
     hero: {
       borderRadius: 26,
@@ -625,28 +622,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       fontSize: 20,
       lineHeight: 25,
     },
-    panel: {
-      backgroundColor: colors.surfaceOverlay,
-      borderColor: colors.border,
-      borderRadius: 22,
-      borderWidth: 1,
-      gap: spacing.sm,
-      padding: spacing.lg,
-    },
-    eventorButton: {
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
-      borderRadius: 16,
-      flexDirection: 'row',
-      gap: spacing.xs,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm,
-    },
-    eventorButtonText: {
-      ...typography.captionStrong,
-      color: '#fff',
-    },
     infoText: {
       ...typography.body,
       color: colors.textSecondary,
@@ -673,14 +648,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       height: 1,
       marginVertical: spacing.sm,
     },
-    metaHint: {
-      ...typography.captionStrong,
-      color: colors.error,
-      fontSize: 11,
-      lineHeight: 13,
-      marginTop: 1,
-      textAlign: 'right',
-    },
     metaLabel: {
       ...typography.caption,
       color: colors.textMuted,
@@ -698,21 +665,13 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     metaValueWrap: {
       alignItems: 'flex-end',
     },
-    registrationCard: {
-      backgroundColor: colors.surface,
+    panel: {
+      backgroundColor: colors.surfaceOverlay,
       borderColor: colors.border,
-      borderRadius: 16,
+      borderRadius: 22,
       borderWidth: 1,
       gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-    },
-    registrationCount: {
-      ...typography.caption,
-      color: colors.textMuted,
-    },
-    registrationExpanded: {
-      gap: spacing.sm,
+      padding: spacing.lg,
     },
     registrationAvatar: {
       alignItems: 'center',
@@ -726,6 +685,15 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.captionStrong,
       color: '#fff',
       fontSize: 12,
+    },
+    registrationCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
     },
     registrationClubBadge: {
       alignItems: 'center',
@@ -744,22 +712,16 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textSecondary,
       fontSize: 11,
     },
-    registrationFullName: {
-      ...typography.bodyStrong,
-      color: colors.textPrimary,
+    registrationCount: {
+      ...typography.caption,
+      color: colors.textMuted,
     },
-    registrationNameCol: {
-      alignItems: 'flex-start',
-      flex: 1,
-      gap: 3,
-    },
-    registrationNameHeader: {
-      alignItems: 'center',
-      borderTopColor: colors.border,
-      borderTopWidth: 1,
-      flexDirection: 'row',
+    registrationExpanded: {
       gap: spacing.sm,
-      paddingTop: spacing.sm,
+    },
+    registrationFullName: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
     },
     registrationHeader: {
       alignItems: 'center',
@@ -774,10 +736,31 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textPrimary,
       flex: 1,
     },
+    registrationNameCol: {
+      alignItems: 'flex-start',
+      flex: 1,
+      gap: 3,
+    },
+    registrationNameHeader: {
+      alignItems: 'center',
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingTop: spacing.sm,
+    },
     registrationsHeader: {
       alignItems: 'center',
       flexDirection: 'row',
       justifyContent: 'space-between',
+    },
+    safeArea: {
+      backgroundColor: colors.background,
+      flex: 1,
+    },
+    sectionTitle: {
+      ...typography.sectionTitle,
+      color: colors.textPrimary,
     },
     summaryBarFill: {
       backgroundColor: colors.primary,
@@ -845,23 +828,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     toggleAllText: {
       ...typography.captionStrong,
       color: colors.primary,
-    },
-    safeArea: {
-      backgroundColor: colors.background,
-      flex: 1,
-    },
-    section: {
-      gap: spacing.sm,
-    },
-    sectionTitle: {
-      ...typography.sectionTitle,
-      color: colors.textPrimary,
-    },
-    title: {
-      ...typography.heroTitle,
-      color: colors.textPrimary,
-      fontSize: 22,
-      lineHeight: 27,
     },
   });
 }
