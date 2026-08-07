@@ -14,6 +14,10 @@ import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { ClubActivity } from '@/src/types/eventorActivities';
 
+// The Eventor API key is issued to a single organisation (OK Tyr = 416). The
+// activities endpoint only returns data for that org; every other org gets 403.
+const ACTIVITIES_API_ORG_ID = '416';
+
 export default function KlubbaktiviteterScreen() {
   const { colors, isDark, themeName } = useTheme();
   const isSoft = themeName === 'soft' || themeName === 'soft-dark';
@@ -22,13 +26,16 @@ export default function KlubbaktiviteterScreen() {
   const user = useAuthStore((state) => state.user);
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
+  const canFetchActivities = organisationId === ACTIVITIES_API_ORG_ID;
 
-  const { activities, availableYears, error, isLoading, selectedYear, setSelectedYear } = useOrganisationActivities(organisationId);
+  const { activities, availableYears, error, isLoading, selectedYear, setSelectedYear } = useOrganisationActivities(
+    canFetchActivities ? organisationId : null,
+  );
 
   const totalCount = activities.length;
   const activeCount = activities.filter((activity) => !isActivityExpired(activity)).length;
   const heroChips =
-    user && organisationId && !isLoading && !error
+    canFetchActivities && !isLoading && !error
       ? [
           { icon: 'albums-outline' as const, label: 'Aktiviteter', value: String(totalCount) },
           { icon: 'flash-outline' as const, label: 'Aktiva', value: String(activeCount) },
@@ -46,6 +53,26 @@ export default function KlubbaktiviteterScreen() {
         <EmptyState
           description="Ingen klubb hittades på ditt konto i Eventor, så några klubbaktiviteter kan inte visas."
           title="Ingen klubb"
+        />
+      );
+    }
+
+    if (!canFetchActivities) {
+      return (
+        <EmptyState
+          action={
+            <Pressable
+              onPress={() =>
+                void Linking.openURL(`https://eventor.orientering.se/Activities?organisationId=${organisationId}`)
+              }
+              style={styles.dialogButton}
+            >
+              <Ionicons color="#fff" name="open-outline" size={16} />
+              <Text style={styles.dialogButtonText}>Till klubbaktiviteter i Eventor</Text>
+            </Pressable>
+          }
+          description="Tyvärr kan inte aktiviteter visas för din förening. SOFT/Eventors behörighetsregler tillåter inte appen att hämta aktiviteter för din förening. För att se föreningens aktiviteter, gå till Eventor via länken nedan."
+          title="Aktiviteter kan inte visas"
         />
       );
     }
@@ -110,7 +137,7 @@ export default function KlubbaktiviteterScreen() {
           subtitle={clubName ?? 'Aktiviteter och händelser i din klubb'}
           title="Klubbaktiviteter"
           topRightContent={
-            organisationId ? (
+            canFetchActivities ? (
               <Pressable onPress={() => setWarningVisible(true)} style={styles.warningBadge}>
                 <Ionicons color={colors.heroText} name="warning" size={13} />
                 <Text style={styles.warningBadgeText}>OBS!</Text>
@@ -119,7 +146,7 @@ export default function KlubbaktiviteterScreen() {
           }
         />
 
-        {user && organisationId ? (
+        {canFetchActivities ? (
           <ScrollView contentContainerStyle={styles.yearRow} horizontal showsHorizontalScrollIndicator={false}>
             {availableYears.map((year) => (
               <Pressable
