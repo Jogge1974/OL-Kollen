@@ -62,26 +62,34 @@ export default function HomeScreen() {
   );
   const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
 
-  const closingSoonCount = React.useMemo(() => {
+  const closingSoon = React.useMemo(() => {
     if (!activitySections) {
-      return 0;
+      return { count: 0, nearestDays: null as number | null };
     }
     const all = [...activitySections.club, ...activitySections.district, ...activitySections.soft];
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    return all.filter((activity) => {
+    let count = 0;
+    let nearestDays: number | null = null;
+    for (const activity of all) {
       if (!activity.registrationDeadlineIso) {
-        return false;
+        continue;
       }
       const deadline = new Date(activity.registrationDeadlineIso).getTime();
       if (!Number.isFinite(deadline) || deadline < Date.now()) {
-        return false;
+        continue;
       }
       const startOfDeadlineDay = new Date(deadline);
       startOfDeadlineDay.setHours(0, 0, 0, 0);
       const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
-      return days < 5;
-    }).length;
+      if (days < 5) {
+        count += 1;
+        if (nearestDays === null || days < nearestDays) {
+          nearestDays = days;
+        }
+      }
+    }
+    return { count, nearestDays };
   }, [activitySections]);
 
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
@@ -200,16 +208,16 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {closingSoonCount > 0 ? (
+        {closingSoon.count > 0 ? (
           <Pressable onPress={() => router.push('/klubbaktiviteter')} style={styles.activityAlertCard}>
             <View style={styles.activityAlertIcon}>
               <Ionicons color="#fff" name="alarm-outline" size={20} />
             </View>
             <View style={styles.activityAlertBody}>
               <Text style={styles.activityAlertTitle}>
-                {closingSoonCount} {closingSoonCount === 1 ? 'aktivitet' : 'aktiviteter'} stänger snart
+                {closingSoon.count} {closingSoon.count === 1 ? 'aktivitet' : 'aktiviteter'} stänger snart
               </Text>
-              <Text style={styles.activityAlertText}>Anmälan går ut inom 5 dagar.</Text>
+              <Text style={styles.activityAlertText}>{nearestDeadlineText(closingSoon.nearestDays)}</Text>
             </View>
             <Ionicons color="#fff" name="chevron-forward" size={18} />
           </Pressable>
@@ -345,6 +353,19 @@ function sortEventsDesc(left: EventItem, right: EventItem) {
 
 function sortEventsByName(left: EventItem, right: EventItem) {
   return left.name.localeCompare(right.name, 'sv');
+}
+
+function nearestDeadlineText(days: number | null): string {
+  if (days === null) {
+    return 'Anmälan går ut snart.';
+  }
+  if (days <= 0) {
+    return 'Närmast går ut idag.';
+  }
+  if (days === 1) {
+    return 'Närmast går ut om 1 dag.';
+  }
+  return `Närmast går ut om ${days} dagar.`;
 }
 
 function getLocalIsoDate(offsetDays = 0) {
