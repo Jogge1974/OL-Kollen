@@ -19,6 +19,7 @@ import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from 
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
 import { useAnnouncements } from '@/src/hooks/useAnnouncements';
+import { useOrganisationActivities } from '@/src/hooks/useOrganisationActivities';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
 import { useAuthStore } from '@/src/store/authStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
@@ -32,6 +33,7 @@ export default function HomeScreen() {
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
   const { allAnnouncements, announcements, dismiss: dismissAnnouncement } = useAnnouncements();
+  const { sections: activitySections } = useOrganisationActivities(user?.organisationIds[0] ?? null);
   const [showAnnouncements, setShowAnnouncements] = React.useState(false);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
   const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
@@ -59,6 +61,28 @@ export default function HomeScreen() {
     [exactTodayEvents],
   );
   const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
+
+  const closingSoonCount = React.useMemo(() => {
+    if (!activitySections) {
+      return 0;
+    }
+    const all = [...activitySections.club, ...activitySections.district, ...activitySections.soft];
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return all.filter((activity) => {
+      if (!activity.registrationDeadlineIso) {
+        return false;
+      }
+      const deadline = new Date(activity.registrationDeadlineIso).getTime();
+      if (!Number.isFinite(deadline) || deadline < Date.now()) {
+        return false;
+      }
+      const startOfDeadlineDay = new Date(deadline);
+      startOfDeadlineDay.setHours(0, 0, 0, 0);
+      const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
+      return days < 5;
+    }).length;
+  }, [activitySections]);
 
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
@@ -175,6 +199,21 @@ export default function HomeScreen() {
             <ShortcutCard icon="person-outline" label="Min sida" onPress={() => router.push('/profile')} />
           </View>
         </View>
+
+        {closingSoonCount > 0 ? (
+          <Pressable onPress={() => router.push('/klubbaktiviteter')} style={styles.activityAlertCard}>
+            <View style={styles.activityAlertIcon}>
+              <Ionicons color="#fff" name="alarm-outline" size={20} />
+            </View>
+            <View style={styles.activityAlertBody}>
+              <Text style={styles.activityAlertTitle}>
+                {closingSoonCount} {closingSoonCount === 1 ? 'aktivitet' : 'aktiviteter'} stänger snart
+              </Text>
+              <Text style={styles.activityAlertText}>Anmälan går ut inom 5 dagar.</Text>
+            </View>
+            <Ionicons color="#fff" name="chevron-forward" size={18} />
+          </Pressable>
+        ) : null}
 
         {user ? (
           <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
@@ -342,6 +381,35 @@ function createStyles(colors: ColorPalette) {
   accessPillText: {
     ...typography.captionStrong,
     color: colors.heroText,
+  },
+  activityAlertBody: {
+    flex: 1,
+    gap: 2,
+  },
+  activityAlertCard: {
+    alignItems: 'center',
+    backgroundColor: '#E5484D',
+    borderRadius: 18,
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginHorizontal: spacing.xs,
+    padding: spacing.md,
+  },
+  activityAlertIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 999,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  activityAlertText: {
+    ...typography.caption,
+    color: 'rgba(255, 255, 255, 0.92)',
+  },
+  activityAlertTitle: {
+    ...typography.bodyStrong,
+    color: '#fff',
   },
   bellButton: {
     padding: spacing.xs,

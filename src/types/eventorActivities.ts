@@ -12,10 +12,21 @@ export type ActivityRegistration = {
   personName: string;
 };
 
+export type ActivityDocument = {
+  name: string;
+  url: string;
+};
+
+export type ActivityInfoSegment = {
+  text: string;
+  url?: string;
+};
+
 export type ClubActivity = {
   attributeNames: string[];
+  documents: ActivityDocument[];
   id: string;
-  informationText: string | null;
+  informationSegments: ActivityInfoSegment[];
   name: string;
   organiser: string | null;
   registrationCount: number;

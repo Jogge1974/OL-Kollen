@@ -3,15 +3,16 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 import { EmptyState } from '@/src/components/EmptyState';
 import { fetchActivityDetail, getCachedActivityDetail } from '@/src/api/eventorActivities';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { ActivityRegistration, ClubActivity } from '@/src/types/eventorActivities';
+import { ActivityDocument, ActivityRegistration, ClubActivity } from '@/src/types/eventorActivities';
 
 export default function ClubActivityDetailScreen() {
   const { colors, isDark, themeName } = useTheme();
@@ -143,6 +144,7 @@ function ActivityDetail({
   const registrationHint = deadlineHint(activity.registrationDeadlineIso);
   const startDisplay = shortenSwedishDate(activity.startTime) ?? 'Ingen tid angiven';
   const deadlineDisplay = shortenSwedishDate(activity.registrationDeadline) ?? 'Ingen tid angiven';
+  const [activeDocument, setActiveDocument] = React.useState<ActivityDocument | null>(null);
 
   return (
     <>
@@ -200,10 +202,43 @@ function ActivityDetail({
         <Text style={styles.eventorButtonText}>Öppna i Eventor</Text>
       </Pressable>
 
-      {activity.informationText ? (
+      {activity.informationSegments.length > 0 || activity.documents.length > 0 ? (
         <View style={styles.panel}>
           <Text style={styles.sectionTitle}>Information</Text>
-          <Text style={styles.infoText}>{activity.informationText}</Text>
+          {activity.informationSegments.length > 0 ? (
+            <Text style={styles.infoText}>
+              {activity.informationSegments.map((segment, index) =>
+                segment.url ? (
+                  <Text
+                    key={index}
+                    onPress={() => setActiveDocument({ name: segment.text, url: segment.url as string })}
+                    style={styles.infoLink}
+                  >
+                    {segment.text}
+                  </Text>
+                ) : (
+                  <Text key={index}>{segment.text}</Text>
+                ),
+              )}
+            </Text>
+          ) : null}
+          {activity.documents.length > 0 ? (
+            <View style={styles.documentList}>
+              {activity.documents.map((document, index) => (
+                <Pressable
+                  key={`${document.url}-${index}`}
+                  onPress={() => setActiveDocument(document)}
+                  style={({ pressed }) => [styles.documentRow, pressed ? styles.documentRowPressed : null]}
+                >
+                  <Ionicons color={colors.primary} name={isImageDocument(document.url) ? 'image-outline' : 'document-text-outline'} size={18} />
+                  <Text numberOfLines={1} style={styles.documentName}>
+                    {document.name}
+                  </Text>
+                  <Ionicons color={colors.textMuted} name="open-outline" size={16} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -228,7 +263,7 @@ function ActivityDetail({
 
       <View style={styles.panel}>
         <View style={styles.registrationsHeader}>
-          <Text style={styles.sectionTitle}>Anmälda ({registrations.length})</Text>
+          <Text style={styles.sectionTitle}>Anmälda ({activity.registrationCount})</Text>
           {registrations.length > 0 ? (
             <Pressable onPress={toggleAll} style={styles.toggleAllButton}>
               <Ionicons color={colors.primary} name={allExpanded ? 'chevron-up' : 'chevron-down'} size={14} />
@@ -238,7 +273,11 @@ function ActivityDetail({
         </View>
 
         {registrations.length === 0 ? (
-          <Text style={styles.infoText}>Inga anmälda ännu.</Text>
+          <Text style={styles.infoText}>
+            {activity.registrationCount > 0
+              ? 'Deltagarlistan kunde inte hämtas. Logga ut och in igen för att uppdatera din Eventor-session.'
+              : 'Inga anmälda ännu.'}
+          </Text>
         ) : (
           <View style={styles.registrationList}>
             {registrations.map((registration, index) => {
@@ -257,7 +296,49 @@ function ActivityDetail({
           </View>
         )}
       </View>
+
+      <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} styles={styles} />
     </>
+  );
+}
+
+function DocumentModal({
+  document,
+  onClose,
+  styles,
+}: {
+  document: ActivityDocument | null;
+  onClose: () => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  // Android WebView can't render PDFs inline -> proxy them through Google's viewer.
+  const uri = React.useMemo(() => {
+    if (!document) {
+      return '';
+    }
+    const isPdf = /\.pdf(\?|#|$)/i.test(document.url);
+    return Platform.OS === 'android' && isPdf
+      ? `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(document.url)}`
+      : document.url;
+  }, [document]);
+
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} transparent visible={Boolean(document)}>
+      <View style={styles.modalOverlay}>
+        <Pressable onPress={onClose} style={styles.modalBackdrop} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text numberOfLines={2} style={styles.modalTitle}>
+              {document?.name}
+            </Text>
+            <Pressable onPress={onClose}>
+              <Text style={styles.modalClose}>Stäng</Text>
+            </Pressable>
+          </View>
+          {document ? <WebView source={{ uri }} startInLoadingState style={styles.webView} /> : null}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -433,6 +514,10 @@ function shortenSwedishDate(input: string | null): string | null {
     .trim();
 }
 
+function isImageDocument(url: string): boolean {
+  return /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(url);
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
@@ -552,6 +637,29 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     deadlineBlock: {
       justifyContent: 'center',
     },
+    documentList: {
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+    },
+    documentName: {
+      ...typography.body,
+      color: colors.textPrimary,
+      flex: 1,
+    },
+    documentRow: {
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    documentRowPressed: {
+      opacity: 0.85,
+    },
     eventorButton: {
       alignItems: 'center',
       alignSelf: 'flex-start',
@@ -627,6 +735,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textSecondary,
       lineHeight: 21,
     },
+    infoLink: {
+      color: colors.primary,
+      textDecorationLine: 'underline',
+    },
     loadingBox: {
       alignItems: 'center',
       gap: spacing.sm,
@@ -664,6 +776,40 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     },
     metaValueWrap: {
       alignItems: 'flex-end',
+    },
+    modalBackdrop: {
+      flex: 1,
+    },
+    modalClose: {
+      ...typography.captionStrong,
+      color: colors.primary,
+    },
+    modalHeader: {
+      alignItems: 'center',
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.md,
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+    },
+    modalOverlay: {
+      backgroundColor: colors.overlay,
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalSheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      height: '86%',
+      overflow: 'hidden',
+    },
+    modalTitle: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      flex: 1,
     },
     panel: {
       backgroundColor: colors.surfaceOverlay,
@@ -828,6 +974,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     toggleAllText: {
       ...typography.captionStrong,
       color: colors.primary,
+    },
+    webView: {
+      flex: 1,
     },
   });
 }

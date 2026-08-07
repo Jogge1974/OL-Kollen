@@ -1,4 +1,6 @@
-import { ActivityRegistration, ActivityRegistrationAttribute, ActivitySections, ClubActivity } from '@/src/types/eventorActivities';
+import { ActivityDocument, ActivityInfoSegment, ActivityRegistration, ActivityRegistrationAttribute, ActivitySections, ClubActivity } from '@/src/types/eventorActivities';
+import { getStoredEventorCredentials } from '@/src/services/eventorCredentials';
+import { getStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
 
 // The Eventor API key is issued to a single org, so activities are scraped from
 // the public web pages instead (works for any org and includes district + SOFT).
@@ -8,6 +10,28 @@ const SECTIONS_TTL_MS = 5 * 60 * 1000;
 const DETAIL_TTL_MS = 5 * 60 * 1000;
 const sectionsCache = new Map<string, { data: ActivitySections; fetchedAt: number }>();
 const detailCache = new Map<string, { data: ClubActivity; fetchedAt: number }>();
+
+// Eventor's web session (ASP.NET_SessionId) times out; re-login with stored
+// credentials to re-authenticate so member-only participant lists show again.
+const SESSION_REFRESH_TTL_MS = 5 * 60 * 1000;
+let lastSessionRefreshAt = 0;
+
+async function refreshSessionWithStoredCredentials(): Promise<boolean> {
+  if (Date.now() - lastSessionRefreshAt < SESSION_REFRESH_TTL_MS) {
+    return false;
+  }
+  try {
+    const credentials = await getStoredEventorCredentials();
+    if (!credentials?.username || !credentials?.password) {
+      return false;
+    }
+    await refreshStoredEventorWebSessionCookie(credentials.username, credentials.password);
+    lastSessionRefreshAt = Date.now();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const SWEDISH_MONTHS: Record<string, number> = {
   april: 3,
@@ -25,7 +49,15 @@ const SWEDISH_MONTHS: Record<string, number> = {
 };
 
 async function fetchHtml(url: string): Promise<string> {
-  const response = await fetch(url, { headers: { Accept: 'text/html' } });
+  // Send the logged-in Eventor session cookie so member-only registration lists
+  // are included (public requests only see the participant count).
+  const cookie = await getStoredEventorWebSessionCookie().catch(() => null);
+  const headers: Record<string, string> = { Accept: 'text/html' };
+  if (cookie) {
+    headers.Cookie = cookie;
+  }
+
+  const response = await fetch(url, { credentials: 'include', headers });
   if (!response.ok) {
     throw new Error(`Eventor ${response.status}`);
   }
@@ -56,14 +88,29 @@ export async function fetchActivityDetail(activityId: string): Promise<ClubActiv
     return cached.data;
   }
 
+  const url = `${EVENTOR_BASE}/Activities/Show/${activityId}`;
   let html: string;
   try {
-    html = await fetchHtml(`${EVENTOR_BASE}/Activities/Show/${activityId}`);
+    html = await fetchHtml(url);
   } catch {
     throw new Error('Det gick inte att hämta aktiviteten just nu.');
   }
 
-  const data = parseDetailHtml(html, activityId);
+  let data = parseDetailHtml(html, activityId);
+
+  // Participant list hidden (member-only) but there ARE participants -> the
+  // session likely expired; re-authenticate once and retry.
+  if (data.registrations.length === 0 && data.registrationCount > 0) {
+    const refreshed = await refreshSessionWithStoredCredentials();
+    if (refreshed) {
+      try {
+        data = parseDetailHtml(await fetchHtml(url), activityId);
+      } catch {
+        // Keep the first result if the retry fails.
+      }
+    }
+  }
+
   detailCache.set(activityId, { data, fetchedAt: Date.now() });
   return data;
 }
@@ -136,8 +183,9 @@ function parseActivityRows(tableHtml: string): ClubActivity[] {
 
     activities.push({
       attributeNames: [],
+      documents: [],
       id,
-      informationText: null,
+      informationSegments: [],
       name,
       organiser: null,
       registrationCount,
@@ -179,8 +227,9 @@ function parseDetailHtml(html: string, activityId: string): ClubActivity {
 
   return {
     attributeNames,
+    documents: extractEventInfoBoxDocuments(page),
     id: activityId,
-    informationText: informationRaw ? htmlToPlainText(informationRaw) : null,
+    informationSegments: informationRaw ? parseInformationSegments(informationRaw) : [],
     name,
     organiser: organiserRaw ? stripTags(organiserRaw).trim() || null : null,
     registrationCount: Number((countRaw ? stripTags(countRaw) : '').replace(/\D/g, '')) || registrations.length,
@@ -190,6 +239,109 @@ function parseDetailHtml(html: string, activityId: string): ClubActivity {
     startTime: startRaw ? stripTags(startRaw).trim() || null : null,
     url: `${EVENTOR_BASE}/Activities/Show/${activityId}`,
   };
+}
+
+const DOCUMENT_URL_RE = /(eventdocuments|\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|webp))(?:$|[?#/])/i;
+
+function resolveUrl(href: string): string {
+  if (/^https?:\/\//i.test(href)) {
+    return href;
+  }
+  if (href.startsWith('/')) {
+    return `${EVENTOR_BASE}${href}`;
+  }
+  return `${EVENTOR_BASE}/${href.replace(/^(?:\.\.\/)+/, '')}`;
+}
+
+// <a> links inside the Information text stay inline (clickable); bare document
+// URLs are dropped since eventInfoBox lists them separately.
+function parseInformationSegments(html: string): ActivityInfoSegment[] {
+  const segments: ActivityInfoSegment[] = [];
+  const anchorRe = /<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = anchorRe.exec(html)) !== null) {
+    const before = htmlChunkToText(html.slice(lastIndex, match.index));
+    if (before) {
+      segments.push({ text: before });
+    }
+    const url = resolveUrl(match[1].replace(/&amp;/g, '&').trim());
+    const text = stripTags(match[2]).trim() || fileNameFromUrl(url);
+    segments.push({ text, url });
+    lastIndex = match.index + match[0].length;
+  }
+
+  const tail = htmlChunkToText(html.slice(lastIndex));
+  if (tail) {
+    segments.push({ text: tail });
+  }
+
+  if (segments.length > 0 && !segments[0].url) {
+    segments[0].text = segments[0].text.replace(/^\s+/, '');
+    if (!segments[0].text) {
+      segments.shift();
+    }
+  }
+  const last = segments[segments.length - 1];
+  if (last && !last.url) {
+    last.text = last.text.replace(/\s+$/, '');
+    if (!last.text) {
+      segments.pop();
+    }
+  }
+
+  return segments;
+}
+
+function htmlChunkToText(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*li[^>]*>/gi, '\n• ')
+    .replace(/<\/\s*(p|div|li|ul|ol|h[1-6]|tr)\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/https?:\/\/[^\s<]+/gi, (url) => (DOCUMENT_URL_RE.test(url) ? '' : url))
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
+// The "Dokument och länkar" box lists documents/links as <ul class="documents">.
+function extractEventInfoBoxDocuments(page: string): ActivityDocument[] {
+  const headingIdx = page.search(/<h3[^>]*>\s*Dokument och länkar\s*<\/h3>/i);
+  if (headingIdx < 0) {
+    return [];
+  }
+  const ulMatch = page.slice(headingIdx).match(/<ul class="documents">([\s\S]*?)<\/ul>/i);
+  if (!ulMatch) {
+    return [];
+  }
+
+  const documents: ActivityDocument[] = [];
+  const seen = new Set<string>();
+  for (const anchor of ulMatch[1].matchAll(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const name = stripTags(anchor[2]).trim();
+    if (!name) {
+      continue;
+    }
+    const url = resolveUrl(anchor[1].replace(/&amp;/g, '&').trim());
+    if (seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    documents.push({ name, url });
+  }
+  return documents;
+}
+
+function fileNameFromUrl(url: string): string {
+  try {
+    const path = url.split(/[?#]/)[0];
+    const last = path.substring(path.lastIndexOf('/') + 1);
+    return decodeURIComponent(last) || 'Dokument';
+  } catch {
+    return 'Dokument';
+  }
 }
 
 function parseRegistrations(page: string): { attributeNames: string[]; registrations: ActivityRegistration[] } {
@@ -298,18 +450,4 @@ function decodeEntities(text: string): string {
     .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
     .replace(/&([a-zA-Z]+);/g, (matched, name: string) => NAMED_ENTITIES[name] ?? matched);
-}
-
-function htmlToPlainText(html: string): string {
-  const withBreaks = html
-    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
-    .replace(/<\s*li[^>]*>/gi, '\n• ')
-    .replace(/<\/\s*(p|div|li|ul|ol|h[1-6]|tr)\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, '');
-
-  return withBreaks
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
 }
