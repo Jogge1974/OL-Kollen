@@ -142,8 +142,9 @@ Deno.serve(async (request) => {
     }
 
     const nowNaive = nowStockholmNaiveMs();
-    const messages: Array<{ body: string; data: Record<string, unknown>; title: string; to: string }> = [];
-    const stateInserts: Array<{ person_id: string; event_id: string; reminder_type: ReminderType }> = [];
+    // Each due reminder is collected with the tokens it targets so we can send
+    // FIRST and only record state for reminders that reached a valid token.
+    const pending: Array<{ baseEventId: string; body: string; eventName: string; personId: string; reminderType: ReminderType; tokens: string[] }> = [];
 
     let checkedEvents = 0;
 
@@ -179,17 +180,10 @@ Deno.serve(async (request) => {
         if (pushTokens.length === 0) continue;
 
         const queue = (reminderType: ReminderType, body: string) => {
-          if (notifiedSet.has(`${personId}::${baseEventId}::${reminderType}`)) return;
-          for (const pushToken of pushTokens) {
-            messages.push({
-              body,
-              data: { type: 'entry-deadline', eventId: baseEventId, reminderType },
-              title: `Anmälan ${eventName}`,
-              to: pushToken,
-            });
-          }
-          stateInserts.push({ person_id: personId, event_id: baseEventId, reminder_type: reminderType });
-          notifiedSet.add(`${personId}::${baseEventId}::${reminderType}`);
+          const key = `${personId}::${baseEventId}::${reminderType}`;
+          if (notifiedSet.has(key)) return;
+          notifiedSet.add(key);
+          pending.push({ baseEventId, body, eventName, personId, reminderType, tokens: pushTokens });
         };
 
         if (dayBeforeDue) {
@@ -202,17 +196,44 @@ Deno.serve(async (request) => {
       }
     }
 
-    let pushCount = 0;
+    const messages = pending.flatMap((reminder) =>
+      reminder.tokens.map((to) => ({
+        body: reminder.body,
+        data: { type: 'entry-deadline', eventId: reminder.baseEventId, reminderType: reminder.reminderType },
+        sound: 'default' as const,
+        title: `Anmälan ${reminder.eventName}`,
+        to,
+      })),
+    );
+
+    // Send FIRST, then record state only for reminders that actually reached a
+    // valid token. A reminder whose only token is stale (DeviceNotRegistered) or
+    // a send that throws is left unrecorded so it retries next run instead of
+    // being silently swallowed.
+    let sendFailed = false;
+    let invalidTokenSet = new Set<string>();
     if (messages.length > 0) {
-      // Record the sent state first so a retry can't double-send.
+      try {
+        const { invalidTokens } = await sendExpoPushMessages(messages);
+        invalidTokenSet = new Set(invalidTokens);
+        await deactivateInvalidTokens(supabase, invalidTokens);
+      } catch (sendError) {
+        console.error('[poll-entry-deadlines] Push send failed — not recording state so reminders retry next run:', sendError);
+        sendFailed = true;
+      }
+    }
+
+    if (!sendFailed) {
+      const stateInserts = pending
+        .filter((reminder) => reminder.tokens.some((token) => !invalidTokenSet.has(token)))
+        .map((reminder) => ({ person_id: reminder.personId, event_id: reminder.baseEventId, reminder_type: reminder.reminderType }));
+
       if (stateInserts.length > 0) {
         await supabase.from('entry_deadline_state').upsert(stateInserts, { onConflict: 'person_id,event_id,reminder_type' });
       }
-
-      const { invalidTokens } = await sendExpoPushMessages(messages.map((message) => ({ ...message, sound: 'default' })));
-      await deactivateInvalidTokens(supabase, invalidTokens);
-      pushCount = messages.length;
     }
+
+    const pushCount = messages.length;
 
     return new Response(JSON.stringify({ checkedEvents, ok: true, pushCount }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

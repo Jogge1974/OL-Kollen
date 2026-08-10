@@ -214,7 +214,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.activityAlertBody}>
               <Text style={styles.activityAlertTitle}>
-                {closingSoon.count} (av {closingSoon.total}) aktiviteter stänger snart
+                {closingSoon.count} aktiviteter stänger snart
               </Text>
             </View>
             <Ionicons color="#fff" name="chevron-forward" size={18} />
