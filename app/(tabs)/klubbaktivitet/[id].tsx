@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -27,6 +27,23 @@ export default function ClubActivityDetailScreen() {
   );
   const [isLoading, setIsLoading] = React.useState(!activity);
   const [error, setError] = React.useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  const handleRefresh = React.useCallback(async () => {
+    if (!activityId) {
+      return;
+    }
+    setIsRefreshing(true);
+    try {
+      const result = await fetchActivityDetail(activityId, true);
+      setActivity(result);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta aktiviteten.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [activityId]);
 
   React.useEffect(() => {
     if (!activityId) {
@@ -76,7 +93,11 @@ export default function ClubActivityDetailScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
+        showsVerticalScrollIndicator={false}
+      >
         {isLoading ? (
           <>
             <Pressable onPress={goBack} style={styles.backButton}>

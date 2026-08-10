@@ -33,7 +33,7 @@ export default function HomeScreen() {
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
   const { allAnnouncements, announcements, dismiss: dismissAnnouncement } = useAnnouncements();
-  const { sections: activitySections } = useOrganisationActivities(user?.organisationIds[0] ?? null);
+  const { sections: activitySections, reload: reloadActivities } = useOrganisationActivities(user?.organisationIds[0] ?? null);
   const [showAnnouncements, setShowAnnouncements] = React.useState(false);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
   const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
@@ -64,13 +64,12 @@ export default function HomeScreen() {
 
   const closingSoon = React.useMemo(() => {
     if (!activitySections) {
-      return { count: 0, nearestDays: null as number | null };
+      return { count: 0, total: 0 };
     }
     const all = [...activitySections.club, ...activitySections.district, ...activitySections.soft];
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     let count = 0;
-    let nearestDays: number | null = null;
     for (const activity of all) {
       if (!activity.registrationDeadlineIso) {
         continue;
@@ -84,13 +83,11 @@ export default function HomeScreen() {
       const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
       if (days < 5) {
         count += 1;
-        if (nearestDays === null || days < nearestDays) {
-          nearestDays = days;
-        }
       }
     }
-    return { count, nearestDays };
+    return { count, total: all.length };
   }, [activitySections]);
+  const laterCount = closingSoon.total - closingSoon.count;
 
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
     void openEventAnalysisModal(eventId, setActiveAnalysisModal, classLabel, personId ?? null);
@@ -123,7 +120,8 @@ export default function HomeScreen() {
   useFocusEffect(
     React.useCallback(() => {
       void loadTodayEvents();
-    }, [loadTodayEvents]),
+      reloadActivities();
+    }, [loadTodayEvents, reloadActivities]),
   );
 
   React.useEffect(() => {
@@ -142,6 +140,7 @@ export default function HomeScreen() {
     setTodayIso(currentToday);
     setIsLoadingTodayEvents(true);
     setTodayEventsError(null);
+    reloadActivities(true);
 
     try {
       await Promise.all([
@@ -159,7 +158,7 @@ export default function HomeScreen() {
     } finally {
       setIsLoadingTodayEvents(false);
     }
-  }, [refetchPersonLists, user?.personId]);
+  }, [reloadActivities, refetchPersonLists, user?.personId]);
 
   const greetingName = user?.firstName ?? user?.fullName ?? 'orienterare';
 
@@ -217,9 +216,22 @@ export default function HomeScreen() {
               <Text style={styles.activityAlertTitle}>
                 {closingSoon.count} {closingSoon.count === 1 ? 'aktivitet' : 'aktiviteter'} stänger snart
               </Text>
-              <Text style={styles.activityAlertText}>{nearestDeadlineText(closingSoon.nearestDays)}</Text>
             </View>
             <Ionicons color="#fff" name="chevron-forward" size={18} />
+          </Pressable>
+        ) : null}
+
+        {laterCount > 0 ? (
+          <Pressable onPress={() => router.push('/klubbaktiviteter')} style={styles.activityInfoCard}>
+            <View style={styles.activityInfoIcon}>
+              <Ionicons color="#33290A" name="albums-outline" size={20} />
+            </View>
+            <View style={styles.activityAlertBody}>
+              <Text style={styles.activityInfoTitle}>
+                {laterCount} {laterCount === 1 ? 'aktuell aktivitet' : 'aktuella aktiviteter'}
+              </Text>
+            </View>
+            <Ionicons color="#33290A" name="chevron-forward" size={18} />
           </Pressable>
         ) : null}
 
@@ -355,19 +367,6 @@ function sortEventsByName(left: EventItem, right: EventItem) {
   return left.name.localeCompare(right.name, 'sv');
 }
 
-function nearestDeadlineText(days: number | null): string {
-  if (days === null) {
-    return 'Anmälan går ut snart.';
-  }
-  if (days <= 0) {
-    return 'Närmast går ut idag.';
-  }
-  if (days === 1) {
-    return 'Närmast går ut om 1 dag.';
-  }
-  return `Närmast går ut om ${days} dagar.`;
-}
-
 function getLocalIsoDate(offsetDays = 0) {
   const now = new Date();
   if (offsetDays) now.setDate(now.getDate() + offsetDays);
@@ -431,6 +430,27 @@ function createStyles(colors: ColorPalette) {
   activityAlertTitle: {
     ...typography.bodyStrong,
     color: '#fff',
+  },
+  activityInfoCard: {
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: 18,
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginHorizontal: spacing.xs,
+    padding: spacing.md,
+  },
+  activityInfoIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+    borderRadius: 999,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  activityInfoTitle: {
+    ...typography.bodyStrong,
+    color: '#33290A',
   },
   bellButton: {
     padding: spacing.xs,

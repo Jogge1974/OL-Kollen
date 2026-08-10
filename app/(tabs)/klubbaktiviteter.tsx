@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/EmptyState';
@@ -23,7 +23,17 @@ export default function KlubbaktiviteterScreen() {
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
 
-  const { error, isLoading, sections } = useOrganisationActivities(organisationId);
+  const { error, isLoading, reload, sections } = useOrganisationActivities(organisationId);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  const handleRefresh = React.useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await reload(true);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [reload]);
 
   const totalCount = sections ? sections.club.length + sections.district.length + sections.soft.length : 0;
   const heroChips =
@@ -91,7 +101,11 @@ export default function KlubbaktiviteterScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
+        showsVerticalScrollIndicator={false}
+      >
         <ScreenHeroHeader
           chips={heroChips}
           eyebrow="KLUBBEN"

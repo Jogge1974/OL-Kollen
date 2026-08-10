@@ -64,9 +64,9 @@ async function fetchHtml(url: string): Promise<string> {
   return await response.text();
 }
 
-export async function fetchOrganisationActivities(organisationId: string): Promise<ActivitySections> {
+export async function fetchOrganisationActivities(organisationId: string, force = false): Promise<ActivitySections> {
   const cached = sectionsCache.get(organisationId);
-  if (cached && Date.now() - cached.fetchedAt < SECTIONS_TTL_MS) {
+  if (!force && cached && Date.now() - cached.fetchedAt < SECTIONS_TTL_MS) {
     return cached.data;
   }
 
@@ -82,9 +82,9 @@ export async function fetchOrganisationActivities(organisationId: string): Promi
   return data;
 }
 
-export async function fetchActivityDetail(activityId: string): Promise<ClubActivity> {
+export async function fetchActivityDetail(activityId: string, force = false): Promise<ClubActivity> {
   const cached = detailCache.get(activityId);
-  if (cached && Date.now() - cached.fetchedAt < DETAIL_TTL_MS) {
+  if (!force && cached && Date.now() - cached.fetchedAt < DETAIL_TTL_MS) {
     return cached.data;
   }
 
