@@ -8,7 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { EmptyState } from '@/src/components/EmptyState';
+import { AppButton } from '@/src/components/AppButton';
+import { AppTextField } from '@/src/components/AppTextField';
 import { fetchActivityDetail, getCachedActivityDetail } from '@/src/api/eventorActivities';
+import { getStoredEventorCredentials } from '@/src/services/eventorCredentials';
+import { refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { useAuthStore } from '@/src/store/authStore';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -28,6 +33,34 @@ export default function ClubActivityDetailScreen() {
   const [isLoading, setIsLoading] = React.useState(!activity);
   const [error, setError] = React.useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [hasStoredCreds, setHasStoredCreds] = React.useState(false);
+  const [isRetrying, setIsRetrying] = React.useState(false);
+  const [retryError, setRetryError] = React.useState<string | null>(null);
+  const [manualLoginVisible, setManualLoginVisible] = React.useState(false);
+  const [manualUsername, setManualUsername] = React.useState('');
+  const [manualPassword, setManualPassword] = React.useState('');
+  const [manualLoginError, setManualLoginError] = React.useState<string | null>(null);
+
+  const authUser = useAuthStore((store) => store.user);
+  const rememberedUsername = useAuthStore((store) => store.rememberedUsername);
+
+  React.useEffect(() => {
+    let active = true;
+    getStoredEventorCredentials()
+      .then((creds) => {
+        if (active) {
+          setHasStoredCreds(Boolean(creds?.username && creds?.password));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHasStoredCreds(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleRefresh = React.useCallback(async () => {
     if (!activityId) {
@@ -35,15 +68,78 @@ export default function ClubActivityDetailScreen() {
     }
     setIsRefreshing(true);
     try {
+      // force=true also re-authenticates the Eventor web session with stored
+      // credentials, so a swipe-down brings back a hidden participant list.
       const result = await fetchActivityDetail(activityId, true);
       setActivity(result);
       setError(null);
+      setRetryError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta aktiviteten.');
     } finally {
       setIsRefreshing(false);
     }
   }, [activityId]);
+
+  const handleRetryParticipants = React.useCallback(async () => {
+    if (!activityId) {
+      return;
+    }
+    if (!hasStoredCreds) {
+      setManualUsername((current) => current || authUser?.username || rememberedUsername || '');
+      setManualLoginError(null);
+      setManualLoginVisible(true);
+      return;
+    }
+    setIsRetrying(true);
+    setRetryError(null);
+    try {
+      const result = await fetchActivityDetail(activityId, true);
+      setActivity(result);
+      if (result.registrations.length === 0 && result.registrationCount > 0) {
+        setRetryError('Deltagarlistan är fortfarande dold. Prova att logga in igen.');
+      }
+    } catch {
+      setRetryError('Det gick inte att uppdatera just nu. Försök igen.');
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [activityId, authUser?.username, hasStoredCreds, rememberedUsername]);
+
+  const handleManualLogin = React.useCallback(async () => {
+    const username = manualUsername.trim();
+    if (!username) {
+      setManualLoginError('Ange användarnamn innan du fortsätter.');
+      return;
+    }
+    if (!manualPassword.trim()) {
+      setManualLoginError('Ange lösenordet innan du fortsätter.');
+      return;
+    }
+    setManualLoginError(null);
+    setIsRetrying(true);
+    try {
+      const cookie = await refreshStoredEventorWebSessionCookie(username, manualPassword).catch(() => null);
+      if (!cookie) {
+        setManualLoginError('Inloggningen lyckades inte. Kontrollera användarnamn och lösenord.');
+        return;
+      }
+      setManualLoginVisible(false);
+      setManualPassword('');
+      setRetryError(null);
+      if (activityId) {
+        const result = await fetchActivityDetail(activityId, true);
+        setActivity(result);
+        if (result.registrations.length === 0 && result.registrationCount > 0) {
+          setRetryError('Inloggningen lyckades men deltagarlistan är fortfarande dold.');
+        }
+      }
+    } catch {
+      setManualLoginError('Något gick fel vid inloggningen. Försök igen.');
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [activityId, manualPassword, manualUsername]);
 
   React.useEffect(() => {
     if (!activityId) {
@@ -118,9 +214,53 @@ export default function ClubActivityDetailScreen() {
             <EmptyState description={error ?? 'Aktiviteten kunde inte hittas.'} title="Kunde inte öppna aktiviteten" />
           </>
         ) : (
-          <ActivityDetail activity={activity} colors={colors} onBack={goBack} styles={styles} />
+          <ActivityDetail
+            activity={activity}
+            colors={colors}
+            hasStoredCreds={hasStoredCreds}
+            isRetrying={isRetrying}
+            onBack={goBack}
+            onRetryParticipants={() => void handleRetryParticipants()}
+            retryError={retryError}
+            styles={styles}
+          />
         )}
       </ScrollView>
+
+      <Modal animationType="fade" onRequestClose={() => setManualLoginVisible(false)} transparent visible={manualLoginVisible}>
+        <View style={styles.manualOverlay}>
+          <Pressable onPress={() => setManualLoginVisible(false)} style={styles.manualBackdrop} />
+          <View style={styles.manualCard}>
+            <Text style={styles.manualTitle}>Logga in mot Eventor</Text>
+            <Text style={styles.manualText}>Ange dina Eventor-uppgifter så förnyar vi sessionen och hämtar deltagarlistan.</Text>
+
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Användarnamn"
+              onChangeText={setManualUsername}
+              placeholder="Ange ditt Eventor-användarnamn"
+              value={manualUsername}
+            />
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Lösenord"
+              onChangeText={setManualPassword}
+              placeholder="Ange ditt lösenord"
+              secureTextEntry
+              value={manualPassword}
+            />
+
+            {manualLoginError ? <Text style={styles.manualError}>{manualLoginError}</Text> : null}
+
+            <View style={styles.manualActions}>
+              <AppButton label="Avbryt" onPress={() => setManualLoginVisible(false)} variant="secondary" />
+              <AppButton label="Logga in" loading={isRetrying} onPress={() => void handleManualLogin()} variant="primary" />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -128,12 +268,20 @@ export default function ClubActivityDetailScreen() {
 function ActivityDetail({
   activity,
   colors,
+  hasStoredCreds,
+  isRetrying,
   onBack,
+  onRetryParticipants,
+  retryError,
   styles,
 }: {
   activity: ClubActivity;
   colors: ColorPalette;
+  hasStoredCreds: boolean;
+  isRetrying: boolean;
   onBack: () => void;
+  onRetryParticipants: () => void;
+  retryError: string | null;
   styles: ReturnType<typeof createStyles>;
 }) {
   const registrations = activity.registrations;
@@ -294,11 +442,22 @@ function ActivityDetail({
         </View>
 
         {registrations.length === 0 ? (
-          <Text style={styles.infoText}>
-            {activity.registrationCount > 0
-              ? 'Deltagarlistan kunde inte hämtas. Logga ut och in igen för att uppdatera din Eventor-session.'
-              : 'Inga anmälda ännu.'}
-          </Text>
+          activity.registrationCount > 0 ? (
+            <View style={styles.participantsLocked}>
+              <Text style={styles.infoText}>
+                Du behöver vara inloggad mot Eventor för att se vilka som anmält sig.
+              </Text>
+              {retryError ? <Text style={styles.retryError}>{retryError}</Text> : null}
+              <AppButton
+                label={isRetrying ? 'Loggar in…' : hasStoredCreds ? 'Försök igen' : 'Logga in'}
+                loading={isRetrying}
+                onPress={onRetryParticipants}
+                variant="secondary"
+              />
+            </View>
+          ) : (
+            <Text style={styles.infoText}>Inga anmälda ännu.</Text>
+          )
         ) : (
           <View style={styles.registrationList}>
             {registrations.map((registration, index) => {
@@ -759,6 +918,46 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     infoLink: {
       color: colors.primary,
       textDecorationLine: 'underline',
+    },
+    manualActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      justifyContent: 'flex-end',
+    },
+    manualBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    manualCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 24,
+      gap: spacing.md,
+      padding: spacing.lg,
+      width: '100%',
+    },
+    manualError: {
+      ...typography.caption,
+      color: colors.error,
+    },
+    manualOverlay: {
+      backgroundColor: colors.overlay,
+      flex: 1,
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    manualText: {
+      ...typography.body,
+      color: colors.textSecondary,
+    },
+    manualTitle: {
+      ...typography.sectionTitle,
+      color: colors.textPrimary,
+    },
+    participantsLocked: {
+      gap: spacing.md,
+    },
+    retryError: {
+      ...typography.caption,
+      color: colors.error,
     },
     loadingBox: {
       alignItems: 'center',

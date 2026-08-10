@@ -214,14 +214,14 @@ export default function HomeScreen() {
             </View>
             <View style={styles.activityAlertBody}>
               <Text style={styles.activityAlertTitle}>
-                {closingSoon.count} {closingSoon.count === 1 ? 'aktivitet' : 'aktiviteter'} stänger snart
+                {closingSoon.count} (av {closingSoon.total}) aktiviteter stänger snart
               </Text>
             </View>
             <Ionicons color="#fff" name="chevron-forward" size={18} />
           </Pressable>
         ) : null}
 
-        {laterCount > 0 ? (
+        {closingSoon.count === 0 && laterCount > 0 ? (
           <Pressable onPress={() => router.push('/klubbaktiviteter')} style={styles.activityInfoCard}>
             <View style={styles.activityInfoIcon}>
               <Ionicons color="#33290A" name="albums-outline" size={20} />

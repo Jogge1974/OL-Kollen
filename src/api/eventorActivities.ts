@@ -16,8 +16,8 @@ const detailCache = new Map<string, { data: ClubActivity; fetchedAt: number }>()
 const SESSION_REFRESH_TTL_MS = 5 * 60 * 1000;
 let lastSessionRefreshAt = 0;
 
-async function refreshSessionWithStoredCredentials(): Promise<boolean> {
-  if (Date.now() - lastSessionRefreshAt < SESSION_REFRESH_TTL_MS) {
+async function refreshSessionWithStoredCredentials(force = false): Promise<boolean> {
+  if (!force && Date.now() - lastSessionRefreshAt < SESSION_REFRESH_TTL_MS) {
     return false;
   }
   try {
@@ -101,7 +101,7 @@ export async function fetchActivityDetail(activityId: string, force = false): Pr
   // Participant list hidden (member-only) but there ARE participants -> the
   // session likely expired; re-authenticate once and retry.
   if (data.registrations.length === 0 && data.registrationCount > 0) {
-    const refreshed = await refreshSessionWithStoredCredentials();
+    const refreshed = await refreshSessionWithStoredCredentials(force);
     if (refreshed) {
       try {
         data = parseDetailHtml(await fetchHtml(url), activityId);
