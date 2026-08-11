@@ -354,10 +354,17 @@ function ActivityDetail({
             <View style={styles.metaValueWrap}>
               <Text style={styles.metaValue}>{deadlineDisplay}</Text>
               {registrationHint ? (
-                <View style={styles.deadlineBadge}>
-                  <Ionicons color={colors.error} name="alarm-outline" size={12} />
-                  <Text style={styles.deadlineBadgeText}>{registrationHint}</Text>
-                </View>
+                registrationHint.closed ? (
+                  <View style={styles.closedBadge}>
+                    <Ionicons color="#fff" name="lock-closed" size={12} />
+                    <Text style={styles.closedBadgeText}>{registrationHint.label}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.deadlineBadge}>
+                    <Ionicons color={colors.error} name="alarm-outline" size={12} />
+                    <Text style={styles.deadlineBadgeText}>{registrationHint.label}</Text>
+                  </View>
+                )
               ) : null}
             </View>
           </View>
@@ -709,9 +716,9 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// Small red note under the deadline: "Stängd" once passed, otherwise "X dagar
+// Small note under the deadline: "Stängd" once passed, otherwise "X dagar
 // kvar" — but only when 10 days or fewer remain.
-function deadlineHint(iso: string | null): string | null {
+function deadlineHint(iso: string | null): { closed: boolean; label: string } | null {
   if (!iso) {
     return null;
   }
@@ -722,7 +729,7 @@ function deadlineHint(iso: string | null): string | null {
   }
 
   if (deadline < Date.now()) {
-    return 'Stängd';
+    return { closed: true, label: 'Stängd' };
   }
 
   const startOfToday = new Date();
@@ -736,14 +743,14 @@ function deadlineHint(iso: string | null): string | null {
   }
 
   if (days <= 0) {
-    return 'Stänger idag';
+    return { closed: false, label: 'Stänger idag' };
   }
 
   if (days === 1) {
-    return '1 dag kvar';
+    return { closed: false, label: '1 dag kvar' };
   }
 
-  return `${days} dagar kvar`;
+  return { closed: false, label: `${days} dagar kvar` };
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
@@ -812,6 +819,22 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     deadlineBadgeText: {
       ...typography.captionStrong,
       color: colors.error,
+      fontSize: 11,
+    },
+    closedBadge: {
+      alignItems: 'center',
+      alignSelf: 'flex-end',
+      backgroundColor: colors.error,
+      borderRadius: 999,
+      flexDirection: 'row',
+      gap: 4,
+      marginTop: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+    },
+    closedBadgeText: {
+      ...typography.captionStrong,
+      color: '#fff',
       fontSize: 11,
     },
     deadlineBlock: {

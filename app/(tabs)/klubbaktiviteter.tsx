@@ -143,15 +143,17 @@ function ActivityGroup({
   styles: ReturnType<typeof createStyles>;
   title: string;
 }) {
+  const sorted = React.useMemo(() => sortActivitiesByDeadline(activities), [activities]);
+
   return (
     <View style={styles.group}>
       <View style={styles.groupHeader}>
         <Text style={styles.groupHeaderText}>{title}</Text>
         <View style={styles.groupHeaderLine} />
       </View>
-      {activities.length > 0 ? (
+      {sorted.length > 0 ? (
         <View style={styles.list}>
-          {activities.map((activity) => (
+          {sorted.map((activity) => (
             <ActivityRow activity={activity} colors={colors} key={activity.id} onPress={() => onOpen(activity)} styles={styles} />
           ))}
         </View>
@@ -184,7 +186,12 @@ function ActivityRow({
 
         <View style={styles.cardMetaRow}>
           {deadline ? (
-            deadline.urgent ? (
+            deadline.tone === 'closed' ? (
+              <View style={styles.closedBadge}>
+                <Ionicons color="#fff" name="lock-closed" size={12} />
+                <Text style={styles.closedBadgeText}>{deadline.label}</Text>
+              </View>
+            ) : deadline.urgent ? (
               <View style={styles.deadlineBadge}>
                 <Ionicons color={colors.error} name="alarm-outline" size={12} />
                 <Text style={styles.deadlineBadgeText}>{deadline.label}</Text>
@@ -209,6 +216,28 @@ function ActivityRow({
 }
 
 type DeadlineInfo = { label: string; tone: 'open' | 'closed'; urgent: boolean };
+
+// Soonest-closing first; activities with no deadline in the middle; closed last
+// (most recently closed nearest the still-open ones).
+function sortActivitiesByDeadline(activities: ClubActivity[]): ClubActivity[] {
+  const bucketAndTime = (activity: ClubActivity): [number, number] => {
+    const iso = activity.registrationDeadlineIso;
+    const time = iso ? new Date(iso).getTime() : Number.NaN;
+    if (iso && Number.isFinite(time)) {
+      return time < Date.now() ? [2, time] : [0, time];
+    }
+    return [1, 0];
+  };
+
+  return [...activities].sort((a, b) => {
+    const [bucketA, timeA] = bucketAndTime(a);
+    const [bucketB, timeB] = bucketAndTime(b);
+    if (bucketA !== bucketB) {
+      return bucketA - bucketB;
+    }
+    return bucketA === 2 ? timeB - timeA : timeA - timeB;
+  });
+}
 
 function describeDeadline(iso: string | null): DeadlineInfo | null {
   if (!iso) {
@@ -285,6 +314,20 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     cardTitle: {
       ...typography.bodyStrong,
       color: colors.textPrimary,
+    },
+    closedBadge: {
+      alignItems: 'center',
+      backgroundColor: colors.error,
+      borderRadius: 999,
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+    },
+    closedBadgeText: {
+      ...typography.captionStrong,
+      color: '#fff',
+      fontSize: 11,
     },
     content: {
       gap: spacing.lg,

@@ -176,7 +176,10 @@ function parseActivityRows(tableHtml: string): ClubActivity[] {
 
     const deadlineCell = cells[2] ?? '';
     const titleMatch = deadlineCell.match(/title="([^"]*)"/i);
-    const registrationDeadline = (titleMatch ? titleMatch[1] : stripTags(deadlineCell)).trim() || null;
+    // Fall back to the activity's own date when no registration deadline is set,
+    // consistent with the detail view.
+    const registrationDeadline = (titleMatch ? titleMatch[1] : stripTags(deadlineCell)).trim() || startTime || null;
+    const registrationDeadlineIso = parseSwedishDateTime(registrationDeadline);
 
     const countText = cells[3] ? stripTags(cells[3]).trim() : '';
     const registrationCount = Number(countText.replace(/\D/g, '')) || 0;
@@ -190,7 +193,7 @@ function parseActivityRows(tableHtml: string): ClubActivity[] {
       organiser: null,
       registrationCount,
       registrationDeadline,
-      registrationDeadlineIso: parseSwedishDateTime(registrationDeadline),
+      registrationDeadlineIso,
       registrations: [],
       startTime,
       url: `${EVENTOR_BASE}/Activities/Show/${id}`,
@@ -222,7 +225,11 @@ function parseDetailHtml(html: string, activityId: string): ClubActivity {
   const informationRaw = infoField('Information');
   const countRaw = infoField('Antal anmälda deltagare');
 
-  const registrationDeadline = deadlineRaw ? stripTags(deadlineRaw).trim() || null : null;
+  const registrationDeadlineRaw = deadlineRaw ? stripTags(deadlineRaw).trim() || null : null;
+  const startTime = startRaw ? stripTags(startRaw).trim() || null : null;
+  // Activities without a registration deadline: treat the activity's own date as
+  // the deadline (consistent with the list view).
+  const registrationDeadline = registrationDeadlineRaw ?? startTime;
   const { attributeNames, registrations } = parseRegistrations(page);
 
   return {
@@ -236,7 +243,7 @@ function parseDetailHtml(html: string, activityId: string): ClubActivity {
     registrationDeadline,
     registrationDeadlineIso: parseSwedishDateTime(registrationDeadline),
     registrations,
-    startTime: startRaw ? stripTags(startRaw).trim() || null : null,
+    startTime,
     url: `${EVENTOR_BASE}/Activities/Show/${activityId}`,
   };
 }
