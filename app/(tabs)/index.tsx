@@ -32,7 +32,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
-  const { allAnnouncements, announcements, dismiss: dismissAnnouncement } = useAnnouncements();
+  const { allAnnouncements, announcements, dismiss: dismissAnnouncement, refetch: refetchAnnouncements } = useAnnouncements();
   const { sections: activitySections, reload: reloadActivities } = useOrganisationActivities(user?.organisationIds[0] ?? null);
   const [showAnnouncements, setShowAnnouncements] = React.useState(false);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
@@ -121,7 +121,8 @@ export default function HomeScreen() {
     React.useCallback(() => {
       void loadTodayEvents();
       reloadActivities();
-    }, [loadTodayEvents, reloadActivities]),
+      refetchAnnouncements();
+    }, [loadTodayEvents, reloadActivities, refetchAnnouncements]),
   );
 
   React.useEffect(() => {
@@ -141,6 +142,7 @@ export default function HomeScreen() {
     setIsLoadingTodayEvents(true);
     setTodayEventsError(null);
     reloadActivities(true);
+    refetchAnnouncements();
 
     try {
       await Promise.all([
@@ -158,7 +160,7 @@ export default function HomeScreen() {
     } finally {
       setIsLoadingTodayEvents(false);
     }
-  }, [reloadActivities, refetchPersonLists, user?.personId]);
+  }, [reloadActivities, refetchPersonLists, refetchAnnouncements, user?.personId]);
 
   const greetingName = user?.firstName ?? user?.fullName ?? 'orienterare';
 

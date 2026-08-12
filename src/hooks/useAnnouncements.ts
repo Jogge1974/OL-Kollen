@@ -176,10 +176,12 @@ export function useAnnouncements() {
     [loadedAnnouncements],
   );
 
+  const refetch = React.useCallback(() => setRefreshKey((value) => value + 1), []);
+
   return {
     allAnnouncements,
     announcements: visibleAnnouncements,
     dismiss: dismissAnnouncement,
-    refetch: () => setRefreshKey((value) => value + 1),
+    refetch,
   };
 }
