@@ -2,9 +2,11 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { fetchOrganisationList } from '@/src/api/organisationTree';
+import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { DEFAULT_ORGANISATION_ID, seriesSpansYear, useOrganisationSeries } from '@/src/hooks/useOrganisationSeries';
@@ -12,20 +14,64 @@ import { useAuthStore } from '@/src/store/authStore';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { OrganisationSeries, SeriesItem } from '@/src/types/eventorSeries';
+import { OrganisationSeries, OrganisationTreeNode, SeriesItem } from '@/src/types/eventorSeries';
 
 export default function SerierScreen() {
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const user = useAuthStore((state) => state.user);
-  const organisationId = user?.organisationIds[0] ? Number(user.organisationIds[0]) : null;
-  const clubName = user?.organisationName ?? null;
+  const userOrgId = user?.organisationIds[0] ? Number(user.organisationIds[0]) : null;
 
-  const { availableYears, error, groups, isLoading, reload } = useOrganisationSeries(organisationId);
+  // A manually picked organisation overrides the signed-in user's club.
+  const [selectedOrg, setSelectedOrg] = React.useState<{ id: number; name: string } | null>(null);
+  const activeOrgId = selectedOrg?.id ?? userOrgId;
+  const displayOrgName = selectedOrg?.name ?? user?.organisationName ?? 'Svenska Orienteringsförbundet';
+
+  const { availableYears, error, groups, isLoading, reload } = useOrganisationSeries(activeOrgId);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear());
   const [showFinished, setShowFinished] = React.useState(false);
+
+  const [searchVisible, setSearchVisible] = React.useState(false);
+  const [orgQuery, setOrgQuery] = React.useState('');
+  const [orgList, setOrgList] = React.useState<OrganisationTreeNode[]>([]);
+  const [orgListError, setOrgListError] = React.useState<string | null>(null);
+  const [orgListLoading, setOrgListLoading] = React.useState(false);
+
+  const openSearch = React.useCallback(() => {
+    setSearchVisible(true);
+    if (orgList.length > 0 || orgListLoading) {
+      return;
+    }
+    setOrgListLoading(true);
+    setOrgListError(null);
+    fetchOrganisationList()
+      .then(setOrgList)
+      .catch((caught) => setOrgListError(caught instanceof Error ? caught.message : 'Kunde inte hämta organisationer.'))
+      .finally(() => setOrgListLoading(false));
+  }, [orgList.length, orgListLoading]);
+
+  const filteredOrgs = React.useMemo(() => {
+    const query = orgQuery.trim().toLowerCase();
+    const matches =
+      query.length === 0
+        ? orgList
+        : orgList.filter((org) => org.name.toLowerCase().includes(query) || (org.shortName?.toLowerCase().includes(query) ?? false));
+    return matches.slice(0, 60);
+  }, [orgList, orgQuery]);
+
+  const handleSelectOrg = (org: OrganisationTreeNode) => {
+    setSelectedOrg({ id: org.id, name: org.name });
+    setSearchVisible(false);
+    setOrgQuery('');
+  };
+
+  const handleResetOrg = () => {
+    setSelectedOrg(null);
+    setSearchVisible(false);
+    setOrgQuery('');
+  };
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
@@ -59,7 +105,7 @@ export default function SerierScreen() {
 
   const totalForYear = filteredGroups.reduce((sum, group) => sum + group.series.length, 0);
 
-  const standingsOrgId = organisationId ?? DEFAULT_ORGANISATION_ID;
+  const standingsOrgId = activeOrgId ?? DEFAULT_ORGANISATION_ID;
 
   const openSeries = (item: SeriesItem) =>
     router.push({ params: { id: item.id, name: item.name }, pathname: '/serie/[id]' });
@@ -100,7 +146,7 @@ export default function SerierScreen() {
       >
         <ScreenHeroHeader
           eyebrow="TÄVLINGAR"
-          subtitle={clubName ?? 'Serier i din klubb och ditt distrikt'}
+          subtitle={displayOrgName}
           title="Serier"
           titleRightContent={
             !isLoading && !error ? (
@@ -120,6 +166,17 @@ export default function SerierScreen() {
             </Pressable>
           }
         />
+
+        <Pressable onPress={openSearch} style={styles.orgSelector}>
+          <Ionicons color={colors.primary} name="business-outline" size={16} />
+          <Text numberOfLines={1} style={styles.orgSelectorText}>
+            {displayOrgName}
+          </Text>
+          <View style={styles.orgSelectorAction}>
+            <Ionicons color={colors.primary} name="swap-horizontal" size={13} />
+            <Text style={styles.orgSelectorActionText}>Byt</Text>
+          </View>
+        </Pressable>
 
         {!isLoading && !error ? (
           <View style={styles.controlsRow}>
@@ -159,8 +216,82 @@ export default function SerierScreen() {
 
         {renderBody()}
       </ScrollView>
+
+      <Modal animationType="slide" onRequestClose={() => setSearchVisible(false)} transparent visible={searchVisible}>
+        <View style={styles.modalOverlay}>
+          <Pressable onPress={() => setSearchVisible(false)} style={styles.modalBackdrop} />
+          <SafeAreaView edges={['bottom']} style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Byt organisation</Text>
+              <Pressable hitSlop={8} onPress={() => setSearchVisible(false)}>
+                <Ionicons color={colors.textMuted} name="close" size={22} />
+              </Pressable>
+            </View>
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              label="Sök organisation"
+              onChangeText={setOrgQuery}
+              onClearText={() => setOrgQuery('')}
+              placeholder="Skriv klubb, distrikt eller förbund…"
+              value={orgQuery}
+            />
+            {selectedOrg ? (
+              <Pressable onPress={handleResetOrg} style={styles.orgResetRow}>
+                <Ionicons color={colors.primary} name="home-outline" size={16} />
+                <Text style={styles.orgResetText}>
+                  {user?.organisationName ? `Min klubb (${user.organisationName})` : 'Svenska Orienteringsförbundet'}
+                </Text>
+              </Pressable>
+            ) : null}
+            {orgListLoading ? (
+              <View style={styles.modalLoading}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : orgListError ? (
+              <Text style={styles.modalMessage}>{orgListError}</Text>
+            ) : (
+              <FlatList
+                data={filteredOrgs}
+                keyboardShouldPersistTaps="handled"
+                keyExtractor={(item) => String(item.id)}
+                ListEmptyComponent={<Text style={styles.modalMessage}>Inga organisationer matchar sökningen.</Text>}
+                renderItem={({ item }) => (
+                  <Pressable onPress={() => handleSelectOrg(item)} style={styles.orgRow}>
+                    <View style={styles.orgRowBody}>
+                      <Text numberOfLines={1} style={styles.orgRowName}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.orgRowType}>{orgTypeLabel(item.type)}</Text>
+                    </View>
+                    <Ionicons color={colors.textMuted} name="chevron-forward" size={16} />
+                  </Pressable>
+                )}
+                style={styles.orgListScroll}
+              />
+            )}
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
+}
+
+function orgTypeLabel(type: string | null): string {
+  switch (type) {
+    case 'Club':
+      return 'Klubb';
+    case 'NationalRegion':
+      return 'Distrikt';
+    case 'NationalFederation':
+      return 'Förbund';
+    case 'IOF':
+      return 'Internationellt';
+    default:
+      return '';
+  }
 }
 
 function SeriesGroup({
@@ -373,6 +504,114 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
     loadingText: {
       ...typography.body,
       color: colors.textSecondary,
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: colors.overlay,
+    },
+    modalCard: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      height: '82%',
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+    },
+    modalHandle: {
+      alignSelf: 'center',
+      backgroundColor: colors.border,
+      borderRadius: 999,
+      height: 4,
+      marginBottom: spacing.sm,
+      width: 40,
+    },
+    modalHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: spacing.sm,
+    },
+    modalLoading: {
+      alignItems: 'center',
+      paddingVertical: spacing.xl,
+    },
+    modalMessage: {
+      ...typography.body,
+      color: colors.textSecondary,
+      paddingVertical: spacing.lg,
+      textAlign: 'center',
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    modalTitle: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 16,
+    },
+    orgListScroll: {
+      flex: 1,
+      marginTop: spacing.xs,
+    },
+    orgResetRow: {
+      alignItems: 'center',
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    orgResetText: {
+      ...typography.bodyStrong,
+      color: colors.primary,
+    },
+    orgRow: {
+      alignItems: 'center',
+      borderBottomColor: colors.border,
+      borderBottomWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    orgRowBody: {
+      flex: 1,
+      gap: 1,
+    },
+    orgRowName: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      fontSize: 14,
+    },
+    orgRowType: {
+      ...typography.caption,
+      color: colors.textMuted,
+    },
+    orgSelector: {
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    orgSelectorAction: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 3,
+    },
+    orgSelectorActionText: {
+      ...typography.captionStrong,
+      color: colors.primary,
+    },
+    orgSelectorText: {
+      ...typography.bodyStrong,
+      color: colors.textPrimary,
+      flex: 1,
     },
     safeArea: {
       backgroundColor: colors.background,
