@@ -15,6 +15,7 @@ const iconByRoute = {
   index: 'home-outline',
   klubbaktiviteter: 'people-circle-outline',
   profile: 'person-outline',
+  serier: 'list-outline',
   sverigelista: 'trophy-outline',
   settings: 'ellipsis-horizontal-outline',
 } as const;
@@ -22,10 +23,11 @@ const iconByRoute = {
 type MoreMenuOption = {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  route: '/klubbaktiviteter' | '/settings';
+  route: '/klubbaktiviteter' | '/serier' | '/settings';
 };
 
 const MORE_MENU_OPTIONS: MoreMenuOption[] = [
+  { icon: 'list-outline', label: 'Serier', route: '/serier' },
   { icon: 'people-circle-outline', label: 'Klubbaktiviteter', route: '/klubbaktiviteter' },
   { icon: 'settings-outline', label: 'Inställningar', route: '/settings' },
 ];
@@ -129,6 +131,20 @@ export default function TabsLayout() {
           options={{
             href: null,
             title: 'Aktivitet',
+          }}
+        />
+        <Tabs.Screen
+          name="serier"
+          options={{
+            href: null,
+            title: 'Serier',
+          }}
+        />
+        <Tabs.Screen
+          name="serie/[id]"
+          options={{
+            href: null,
+            title: 'Serie',
           }}
         />
         <Tabs.Screen

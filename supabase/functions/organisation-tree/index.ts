@@ -5,20 +5,27 @@ import { corsHeaders } from '../_shared/cors.ts';
 // Returns the organisation tree branch for a given organisation id: the
 // organisation itself plus every ancestor up to the root, each with id + name.
 // Usage: GET /organisation-tree?organisationId=416
+//        POST /organisation-tree { "organisationId": 416 }
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  if (request.method !== 'GET') {
+  if (request.method !== 'GET' && request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed.' }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 405,
     });
   }
 
-  const url = new URL(request.url);
-  const rawId = url.searchParams.get('organisationId') ?? url.searchParams.get('id') ?? '';
+  let rawId = '';
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    rawId = url.searchParams.get('organisationId') ?? url.searchParams.get('id') ?? '';
+  } else {
+    const body = await request.json().catch(() => ({}));
+    rawId = String(body?.organisationId ?? body?.id ?? '');
+  }
   const organisationId = Number.parseInt(rawId.trim(), 10);
 
   if (!Number.isInteger(organisationId)) {
