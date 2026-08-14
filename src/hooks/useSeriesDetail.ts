@@ -49,6 +49,14 @@ export function useSeriesDetail(seriesId: string | null, mode: SeriesScoreMode):
     [seriesId, mode],
   );
 
+  // Clear the previous series' data when switching series (the screen instance is
+  // reused) so the loading state shows instead of the stale result. Mode changes
+  // keep the current data for a smooth toggle.
+  React.useEffect(() => {
+    setDetail(null);
+    setError(null);
+  }, [seriesId]);
+
   React.useEffect(() => {
     void load(false);
   }, [load]);

@@ -415,10 +415,23 @@ function getBestSplitTimes(rows: EventSplitTimesRow[], splitCount: number) {
 }
 
 function getSplitTime(row: EventSplitTimesRow, splitIndex: number) {
-  const current = row.splitCumulativeSeconds[splitIndex - 1];
-  const previous = splitIndex === 1 ? 0 : row.splitCumulativeSeconds[splitIndex - 2] ?? 0;
+  const total = row.totalTimeSeconds;
+  // Reject non-positive or impossibly large cumulatives (> finish time) as missing.
+  const validCumulative = (raw: number) => (Number.isFinite(raw) && raw > 0 && (total === null || raw <= total) ? raw : null);
 
-  if (!Number.isFinite(current) || current <= previous) {
+  const current = validCumulative(row.splitCumulativeSeconds[splitIndex - 1]);
+  if (current === null) {
+    return null;
+  }
+
+  if (splitIndex === 1) {
+    return current;
+  }
+
+  // A missing punch at the previous control makes this leg time unknown, so drop
+  // it instead of computing current - 0 (which equals the total).
+  const previous = validCumulative(row.splitCumulativeSeconds[splitIndex - 2]);
+  if (previous === null || current <= previous) {
     return null;
   }
 

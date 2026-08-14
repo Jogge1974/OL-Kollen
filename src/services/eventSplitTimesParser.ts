@@ -364,14 +364,28 @@ function medianOfArray(values: number[]): number {
 
 function getSplitCumulative(row: EventSplitTimesRow, splitIndex: number) {
   const value = row.splitCumulativeSeconds[splitIndex - 1];
-  return Number.isFinite(value) && value > 0 ? value : null;
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  // A control passage can't happen after the finish; treat impossibly large
+  // cumulatives (data glitches) as a missing punch.
+  if (row.totalTimeSeconds !== null && value > row.totalTimeSeconds) {
+    return null;
+  }
+  return value;
 }
 
 function getSplitTime(row: EventSplitTimesRow, splitIndex: number) {
   const current = getSplitCumulative(row, splitIndex);
-  const previous = splitIndex === 1 ? 0 : getSplitCumulative(row, splitIndex - 1) ?? 0;
+  if (current === null) {
+    return null;
+  }
 
-  if (current === null || current <= previous) {
+  // Leg 1 starts from the start (time 0). For later legs the previous control must
+  // have a valid punch — otherwise the leg time (into or out of a missing punch)
+  // is unknown and must be dropped, not computed from a 0 cumulative.
+  const previous = splitIndex === 1 ? 0 : getSplitCumulative(row, splitIndex - 1);
+  if (previous === null || current <= previous) {
     return null;
   }
 
