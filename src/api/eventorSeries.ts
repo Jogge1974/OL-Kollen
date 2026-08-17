@@ -80,8 +80,11 @@ function parseSeriesDetailHtml(html: string, seriesId: string): SeriesDetail {
   const toolbarMatch = page.match(/<p class="toolbar16[\s\S]*?<\/p>/i);
   const chaseStartAvailable = toolbarMatch ? /scoreMode=/i.test(toolbarMatch[0]) : false;
 
-  const statusMatch = page.match(/<p>\s*(Ställning[\s\S]*?)<\/p>/i);
+  // Matches both "Ställning efter X av Y deltävlingar" and the final
+  // "Slutställning efter Y deltävlingar" once every sub-competition is decided.
+  const statusMatch = page.match(/<p>\s*((?:Slut)?ställning[\s\S]*?)<\/p>/i);
   const statusText = statusMatch ? stripTags(statusMatch[1]).trim() : null;
+  const isComplete = statusText ? /^slut/i.test(statusText) : false;
 
   const infoMatch = page.match(/<p class="info">([\s\S]*?)<\/p>/i);
   const info = infoMatch ? stripTags(infoMatch[1]).trim() : null;
@@ -91,6 +94,7 @@ function parseSeriesDetailHtml(html: string, seriesId: string): SeriesDetail {
     classes: parseClassStandings(page),
     id: seriesId,
     info,
+    isComplete,
     name,
     statusText,
     subCompetitions: parseSubCompetitions(page),

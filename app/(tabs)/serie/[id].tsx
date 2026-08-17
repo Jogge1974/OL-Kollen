@@ -58,9 +58,13 @@ export default function SeriesDetailScreen() {
           <View style={styles.heroBody}>
             <Text style={styles.heroTitle}>{title}</Text>
             {detail?.statusText ? (
-              <View style={styles.heroBadge}>
-                <Ionicons color={colors.heroText} name="flag-outline" size={12} />
-                <Text style={styles.heroBadgeText}>{detail.statusText}</Text>
+              <View style={[styles.heroBadge, detail.isComplete ? styles.heroBadgeComplete : null]}>
+                <Ionicons
+                  color={detail.isComplete ? colors.buttonText : colors.heroText}
+                  name={detail.isComplete ? 'trophy' : 'flag-outline'}
+                  size={12}
+                />
+                <Text style={[styles.heroBadgeText, detail.isComplete ? styles.heroBadgeTextComplete : null]}>{detail.statusText}</Text>
               </View>
             ) : null}
           </View>
@@ -198,24 +202,27 @@ function SeriesBody({
             viewMode === 'table' ? (
               <ClassTable classStanding={activeClass} colors={colors} styles={styles} />
             ) : (
-              <View style={styles.list}>
-                {activeClass.rows.map((row, index) => {
-                  const key = `${activeClass.className}-${index}`;
-                  return (
-                    <StandingRow
-                      colors={colors}
-                      columnEvents={columnEvents}
-                      columnRanks={columnRanks}
-                      expanded={expandedKeys.has(key)}
-                      key={key}
-                      mode={viewMode}
-                      onToggle={() => toggleRow(key)}
-                      row={row}
-                      styles={styles}
-                    />
-                  );
-                })}
-              </View>
+              <>
+                {viewMode === 'points' && detail.isComplete ? <Podium colors={colors} rows={activeClass.rows} styles={styles} /> : null}
+                <View style={styles.list}>
+                  {activeClass.rows.map((row, index) => {
+                    const key = `${activeClass.className}-${index}`;
+                    return (
+                      <StandingRow
+                        colors={colors}
+                        columnEvents={columnEvents}
+                        columnRanks={columnRanks}
+                        expanded={expandedKeys.has(key)}
+                        key={key}
+                        mode={viewMode}
+                        onToggle={() => toggleRow(key)}
+                        row={row}
+                        styles={styles}
+                      />
+                    );
+                  })}
+                </View>
+              </>
             )
           ) : null}
         </>
@@ -269,6 +276,71 @@ function SegmentButton({
 
 function eventNameFromTitle(title: string): string {
   return (title.split(',')[0] ?? '').trim();
+}
+
+function Podium({
+  colors,
+  rows,
+  styles,
+}: {
+  colors: ColorPalette;
+  rows: SeriesStandingRow[];
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const top = rows.slice(0, 3);
+  if (top.length === 0) {
+    return null;
+  }
+  const [first, second, third] = top;
+
+  return (
+    <View style={styles.podiumCard}>
+      <View style={styles.podiumHeader}>
+        <Ionicons color={colors.primary} name="trophy" size={14} />
+        <Text style={styles.podiumHeaderText}>Prispall</Text>
+      </View>
+      <View style={styles.podium}>
+        {second ? <PodiumSpot rank={2} row={second} styles={styles} /> : <View style={styles.podiumSpot} />}
+        {first ? <PodiumSpot rank={1} row={first} styles={styles} /> : <View style={styles.podiumSpot} />}
+        {third ? <PodiumSpot rank={3} row={third} styles={styles} /> : <View style={styles.podiumSpot} />}
+      </View>
+    </View>
+  );
+}
+
+function PodiumSpot({
+  rank,
+  row,
+  styles,
+}: {
+  rank: 1 | 2 | 3;
+  row: SeriesStandingRow;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const medalStyle = rank === 1 ? styles.podiumMedalGold : rank === 2 ? styles.podiumMedalSilver : styles.podiumMedalBronze;
+  const barStyle = rank === 1 ? styles.podiumBarFirst : rank === 2 ? styles.podiumBarSecond : styles.podiumBarThird;
+
+  return (
+    <View style={styles.podiumSpot}>
+      <View style={[styles.podiumMedal, medalStyle]}>
+        {rank === 1 ? <Ionicons color="#5B4A00" name="trophy" size={15} /> : <Text style={styles.podiumMedalText}>{rank}</Text>}
+      </View>
+      <Text numberOfLines={1} style={styles.podiumName}>
+        {row.name}
+      </Text>
+      {row.club ? (
+        <Text numberOfLines={1} style={styles.podiumClub}>
+          {row.club}
+        </Text>
+      ) : null}
+      <View style={[styles.podiumBar, barStyle]}>
+        <Text style={styles.podiumBarPlace}>{row.place || String(rank)}</Text>
+        <Text numberOfLines={1} style={styles.podiumBarPoints}>
+          {row.total || '–'}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 // Converts a standings column label "D/M" to a comparable month*100+day number.
@@ -657,6 +729,107 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
       ...typography.captionStrong,
       color: colors.heroText,
       fontSize: 12,
+    },
+    heroBadgeComplete: {
+      backgroundColor: colors.accent,
+    },
+    heroBadgeTextComplete: {
+      color: colors.buttonText,
+    },
+    podiumCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: 20,
+      borderWidth: 1,
+      gap: spacing.sm,
+      padding: spacing.md,
+    },
+    podiumHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    podiumHeaderText: {
+      ...typography.captionStrong,
+      color: colors.primary,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    podium: {
+      alignItems: 'flex-end',
+      flexDirection: 'row',
+      gap: spacing.sm,
+      justifyContent: 'center',
+      paddingTop: spacing.xs,
+    },
+    podiumSpot: {
+      alignItems: 'center',
+      flex: 1,
+      gap: 3,
+    },
+    podiumMedal: {
+      alignItems: 'center',
+      borderRadius: 999,
+      height: 32,
+      justifyContent: 'center',
+      width: 32,
+    },
+    podiumMedalGold: {
+      backgroundColor: '#F2CB45',
+    },
+    podiumMedalSilver: {
+      backgroundColor: '#C7CDD6',
+    },
+    podiumMedalBronze: {
+      backgroundColor: '#D08B4E',
+    },
+    podiumMedalText: {
+      color: '#2A2A2A',
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    podiumName: {
+      ...typography.captionStrong,
+      color: colors.textPrimary,
+      fontSize: 12,
+      textAlign: 'center',
+    },
+    podiumClub: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 10,
+      textAlign: 'center',
+    },
+    podiumBar: {
+      alignItems: 'center',
+      borderTopLeftRadius: 10,
+      borderTopRightRadius: 10,
+      gap: 1,
+      justifyContent: 'center',
+      marginTop: 2,
+      width: '100%',
+    },
+    podiumBarFirst: {
+      backgroundColor: '#F7E08A',
+      height: 68,
+    },
+    podiumBarSecond: {
+      backgroundColor: '#DDE1E8',
+      height: 50,
+    },
+    podiumBarThird: {
+      backgroundColor: '#E7C29B',
+      height: 38,
+    },
+    podiumBarPlace: {
+      color: '#2A2A2A',
+      fontSize: 20,
+      fontWeight: '800',
+    },
+    podiumBarPoints: {
+      color: '#3A3A3A',
+      fontSize: 11,
+      fontWeight: '600',
     },
     heroTitle: {
       color: colors.heroText,

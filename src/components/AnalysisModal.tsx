@@ -28,6 +28,77 @@ export type AnalysisModalState = {
   title: string;
 };
 
+// Diverging analysis bars: percent = slower (+) / faster (−) than reference.
+// Scale clamps to [-10, +20] and every bar grows out of the 0 baseline.
+const ANALYSIS_SCALE_MIN = -10;
+const ANALYSIS_SCALE_MAX = 20;
+const ANALYSIS_SCALE_RANGE = ANALYSIS_SCALE_MAX - ANALYSIS_SCALE_MIN;
+const ANALYSIS_ZERO_POS = ((0 - ANALYSIS_SCALE_MIN) / ANALYSIS_SCALE_RANGE) * 100;
+
+const ANALYSIS_ZONES = [
+  { flex: 5, label: 'Mkt stark', tint: 'rgba(76, 139, 71, 0.30)' },
+  { flex: 5, label: 'Stark', tint: 'rgba(76, 139, 71, 0.16)' },
+  { flex: 5, label: 'Normal', tint: 'rgba(140, 140, 140, 0.12)' },
+  { flex: 5, label: 'Svag', tint: 'rgba(183, 59, 59, 0.16)' },
+  { flex: 10, label: 'Mkt svag', tint: 'rgba(183, 59, 59, 0.30)' },
+] as const;
+
+function analysisScalePos(value: number): number {
+  const clamped = Math.max(ANALYSIS_SCALE_MIN, Math.min(ANALYSIS_SCALE_MAX, value));
+  return ((clamped - ANALYSIS_SCALE_MIN) / ANALYSIS_SCALE_RANGE) * 100;
+}
+
+function ZonedBar({
+  percent,
+  styles,
+}: {
+  percent: number | null;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const valuePos = percent === null ? ANALYSIS_ZERO_POS : analysisScalePos(percent);
+  const fillLeft = Math.min(ANALYSIS_ZERO_POS, valuePos);
+  const fillWidth = Math.abs(valuePos - ANALYSIS_ZERO_POS);
+  const isLoss = percent !== null && percent > 5;
+
+  return (
+    <View style={styles.zonedTrack}>
+      <View style={styles.zonedBands}>
+        {ANALYSIS_ZONES.map((zone) => (
+          <View key={zone.label} style={[styles.zonedBand, { backgroundColor: zone.tint, flex: zone.flex }]} />
+        ))}
+      </View>
+      <View style={[styles.zonedZeroLine, { left: `${ANALYSIS_ZERO_POS}%` }]} />
+      {percent !== null ? (
+        <View
+          style={[
+            styles.zonedFill,
+            isLoss ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
+            { left: `${fillLeft}%`, width: `${Math.max(fillWidth, 2)}%` },
+          ]}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function ZoneAxis({ normalLabel = 'Normal', styles }: { normalLabel?: string; styles: ReturnType<typeof createStyles> }) {
+  return (
+    <View style={styles.zoneAxisRow}>
+      <View style={styles.zoneAxisSpacerLeft} />
+      <View style={styles.zoneAxisStrip}>
+        {ANALYSIS_ZONES.map((zone) => (
+          <View key={zone.label} style={[styles.zoneAxisCell, { flex: zone.flex }]}>
+            <Text numberOfLines={1} style={styles.zoneAxisLabel}>
+              {zone.label === 'Normal' ? normalLabel : zone.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.zoneAxisSpacerRight} />
+    </View>
+  );
+}
+
 export function AnalysisModal({ onClose, state }: { onClose: () => void; state: AnalysisModalState | null }) {
   const { colors, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
@@ -233,20 +304,13 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                       <Text style={styles.thirdLabel}>{third.controls}</Text>
                       <Text style={styles.thirdDescription}>{third.description}</Text>
                     </View>
-                    <View style={styles.thirdBarTrack}>
-                      <View
-                        style={[
-                          styles.thirdBarFill,
-                          third.percent !== null && third.percent > 5 ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
-                          { width: `${Math.min(100, Math.max(12, Math.abs(third.percent ?? 0)))}%` },
-                        ]}
-                      />
-                    </View>
+                    <ZonedBar percent={third.percent} styles={styles} />
                     <Text style={[styles.thirdPercent, third.percent !== null && third.percent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
                       {third.percent === null ? '-' : `${third.percent > 0 ? '+' : ''}${third.percent}%`}
                     </Text>
                   </View>
                 ))}
+                <ZoneAxis normalLabel="OK" styles={styles} />
               </View>
 
               <Modal animationType="fade" onRequestClose={() => setThirdInfoVisible(false)} transparent visible={thirdInfoVisible}>
@@ -320,20 +384,13 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                         <Text style={styles.thirdLabel}>{cat.categoryLabel}</Text>
                         <Text style={styles.thirdDescription}>{cat.description} ({cat.legCount} str.)</Text>
                       </View>
-                      <View style={styles.thirdBarTrack}>
-                        <View
-                          style={[
-                            styles.thirdBarFill,
-                            cat.relativePercent > 5 ? styles.thirdBarFillLoss : styles.thirdBarFillGood,
-                            { width: `${Math.min(100, Math.max(12, Math.abs(cat.relativePercent) + 10))}%` },
-                          ]}
-                        />
-                      </View>
+                      <ZonedBar percent={cat.relativePercent} styles={styles} />
                       <Text style={[styles.thirdPercent, cat.relativePercent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
                         {cat.relativePercent > 0 ? '+' : ''}{cat.relativePercent}%
                       </Text>
                     </View>
                   ))}
+                  <ZoneAxis styles={styles} />
                 </View>
               ) : null}
 
@@ -1169,6 +1226,61 @@ function createStyles(colors: ColorPalette) {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  zonedTrack: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 8,
+    flex: 1,
+    height: 22,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  zonedBands: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+  },
+  zonedBand: {
+    height: '100%',
+  },
+  zonedZeroLine: {
+    backgroundColor: colors.textSecondary,
+    bottom: 0,
+    marginLeft: -1,
+    opacity: 0.55,
+    position: 'absolute',
+    top: 0,
+    width: 2,
+  },
+  zonedFill: {
+    borderRadius: 999,
+    height: 10,
+    position: 'absolute',
+    top: 6,
+  },
+  zoneAxisRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  zoneAxisSpacerLeft: {
+    width: 128,
+  },
+  zoneAxisSpacerRight: {
+    width: 48,
+  },
+  zoneAxisStrip: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  zoneAxisCell: {
+    alignItems: 'center',
+    paddingHorizontal: 1,
+  },
+  zoneAxisLabel: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: '600',
   },
   legCategoryHint: {
     ...typography.caption,

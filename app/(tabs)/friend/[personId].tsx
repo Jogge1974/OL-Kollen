@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
-import { ActivityIndicator, InteractionManager, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -149,23 +149,6 @@ export default function FriendDetailScreen() {
     { label: 'Distrikt', value: 'district' },
   ];
 
-  const isContentLoading = isSverigelistanLoading || isLoadingResults || isLoadingStarts || isLoadingEntries || h2h.isLoading;
-
-  // Keep overlay visible until React has finished rendering the content
-  const [isRenderReady, setIsRenderReady] = React.useState(false);
-  React.useEffect(() => {
-    if (isContentLoading) {
-      setIsRenderReady(false);
-      return;
-    }
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setIsRenderReady(true);
-    });
-    return () => handle.cancel();
-  }, [isContentLoading]);
-
-  const showOverlay = isContentLoading || !isRenderReady;
-
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
@@ -175,8 +158,8 @@ export default function FriendDetailScreen() {
         <ScreenHeroHeader
           chips={friend ? [
             { icon: 'trophy-outline', label: 'Plac.', value: currentEntry ? `${currentEntry.Rank}` : '—' },
-            { icon: 'flag-outline', label: 'Ant. starter', value: `${resultsCompetitionCount}` },
-            { icon: 'medal-outline', label: 'Pallplatser', value: `${podiumCount}` },
+            { icon: 'flag-outline', label: 'Ant. starter', value: isLoadingResults ? '—' : `${resultsCompetitionCount}` },
+            { icon: 'medal-outline', label: 'Pallplatser', value: isLoadingResults ? '—' : `${podiumCount}` },
           ] : undefined}
           eyebrowContent={
             <Pressable onPress={() => router.navigate('/friends')} style={styles.backButton}>
@@ -230,12 +213,6 @@ export default function FriendDetailScreen() {
         />
 
         <View style={styles.contentWrap}>
-          {showOverlay ? (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator color={colors.primary} size="large" />
-            </View>
-          ) : null}
-
         {friend ? (
           <Pressable
             onPress={
@@ -402,8 +379,8 @@ export default function FriendDetailScreen() {
           </View>
         ) : null}
 
-        {!isContentLoading && personEntries.length > 0 ? (
-          <EntriesPanel entries={personEntries} error={entriesError} isLoading={false} organisationLabel={user?.organisationName ?? null} />
+        {personEntries.length > 0 ? (
+          <EntriesPanel entries={personEntries} error={entriesError} isLoading={isLoadingEntries} organisationLabel={user?.organisationName ?? null} />
         ) : null}
 
         <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
@@ -522,15 +499,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     },
     contentWrap: {
       gap: spacing.lg,
-      position: 'relative',
-    },
-    loadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      alignItems: 'center',
-      backgroundColor: colors.background + '99',
-      justifyContent: 'center',
-      minHeight: 300,
-      zIndex: 10,
     },
     backButton: {
       alignItems: 'center',

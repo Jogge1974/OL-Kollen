@@ -67,6 +67,7 @@ export type SeriesDetail = {
   id: string;
   name: string;
   statusText: string | null;
+  isComplete: boolean;
   info: string | null;
   chaseStartAvailable: boolean;
   classes: SeriesClassStanding[];
