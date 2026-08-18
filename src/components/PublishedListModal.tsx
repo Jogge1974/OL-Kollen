@@ -1,7 +1,7 @@
 ﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Dimensions, LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { fetchEventClassNameMap, fetchEventPublishedListXml, fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -36,21 +36,18 @@ export type PublishedListModalState = {
   title: string;
 };
 
-const LIST_LOADING_LABELS: Record<EventPublishedListKind, { fetch: string; process: string }> = {
-  results: { fetch: 'Hämtar resultat från Eventor', process: 'Bearbetar resultat' },
-  entries: { fetch: 'Hämtar anmälningar från Eventor', process: 'Bearbetar anmälningar' },
-  starts: { fetch: 'Hämtar startlista från Eventor', process: 'Bearbetar startlista' },
+const LIST_LOADING_LABELS: Record<EventPublishedListKind, string> = {
+  results: 'Hämtar resultat från Eventor',
+  entries: 'Hämtar anmälningar från Eventor',
+  starts: 'Hämtar startlista från Eventor',
 };
 
 function buildListLoadingSteps(kind: EventPublishedListKind, retrying: boolean): ProgressStep[] {
-  const labels = LIST_LOADING_LABELS[kind];
-
   return [
     {
-      label: labels.fetch,
+      label: LIST_LOADING_LABELS[kind],
       note: retrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
     },
-    { label: labels.process },
   ];
 }
 
@@ -274,10 +271,12 @@ export function PublishedListModal({
 
           <ScrollView ref={scrollRef} contentContainerStyle={styles.listModalContent}>
             {currentState?.isLoading ? (
-              <ProgressSteps
-                activeIndex={currentState.loadingStage === 'parsing' ? 1 : 0}
-                steps={buildListLoadingSteps(currentState.kind, currentState.loadingRetrying ?? false)}
-              />
+              <View style={styles.loadingCenter}>
+                <ProgressSteps
+                  activeIndex={0}
+                  steps={buildListLoadingSteps(currentState.kind, currentState.loadingRetrying ?? false)}
+                />
+              </View>
             ) : null}
             {currentState?.error ? <Text style={styles.documentsErrorText}>{currentState.error}</Text> : null}
             {!currentState?.isLoading && !currentState?.error && currentState?.sections.length === 0 ? (
@@ -1600,6 +1599,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     borderTopRightRadius: 28,
     height: '86%',
     overflow: 'hidden',
+  },
+  loadingCenter: {
+    justifyContent: 'center',
+    minHeight: Math.round(Dimensions.get('window').height * 0.6),
   },
   modalHeader: {
     alignItems: 'center',

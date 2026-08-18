@@ -25,8 +25,8 @@ type ProgressStepsProps = {
  * A vertical staged progress indicator used while loading large payloads.
  *
  * Each step shows a checkmark when completed, a spinner while active and a
- * muted dot while pending. It gives the user honest feedback ("Hämtar… →
- * Bearbetar…") during the long first load of big events.
+ * muted dot while pending. It gives the user honest feedback while loading
+ * large events.
  */
 export function ProgressSteps({ steps, activeIndex, fullScreen = false }: ProgressStepsProps) {
   const colors = useColors();

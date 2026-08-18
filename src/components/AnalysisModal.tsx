@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fetchEventorEventById } from '@/src/api/eventorApi';
 import { ProgressSteps } from '@/src/components/ProgressSteps';
@@ -170,17 +170,17 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
           </View>
 
           {currentState.isLoading ? (
-            <ProgressSteps
-              activeIndex={currentState.loadingStage === 'parsing' ? 1 : 0}
-              fullScreen
-              steps={[
-                {
-                  label: 'Hämtar resultat från Eventor',
-                  note: currentState.loadingRetrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
-                },
-                { label: 'Bearbetar och analyserar' },
-              ]}
-            />
+            <View style={styles.loadingCenter}>
+              <ProgressSteps
+                activeIndex={0}
+                steps={[
+                  {
+                    label: 'Hämtar resultat från Eventor',
+                    note: currentState.loadingRetrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
+                  },
+                ]}
+              />
+            </View>
           ) : null}
           {!currentState.isLoading && currentState.error ? <Text style={styles.errorText}>{currentState.error}</Text> : null}
           {!currentState.isLoading && !currentState.error && currentState.sections.length === 0 ? <Text style={styles.helperText}>{currentState.emptyMessage}</Text> : null}
@@ -1007,6 +1007,10 @@ function createStyles(colors: ColorPalette) {
     borderTopRightRadius: 28,
     maxHeight: '94%',
     overflow: 'hidden',
+  },
+  loadingCenter: {
+    justifyContent: 'center',
+    minHeight: Math.round(Dimensions.get('window').height * 0.6),
   },
   modalTitle: {
     ...typography.sectionTitle,

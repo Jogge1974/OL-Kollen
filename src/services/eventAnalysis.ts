@@ -359,28 +359,20 @@ function calcThirdPercent(targetTime: number, winnerTime: number) {
   return Math.round(((targetTime - winnerTime) / winnerTime) * 100);
 }
 
+// Mirrors the diagram zones in AnalysisModal (percent = slower + / faster −).
+function describeZone(percent: number, normalLabel: string): string {
+  if (percent < -5) return 'Mkt stark';
+  if (percent < 0) return 'Stark';
+  if (percent < 5) return normalLabel;
+  if (percent < 10) return 'Svag';
+  return 'Mkt svag';
+}
+
 function describeThird(percent: number | null) {
   if (percent === null) {
     return '';
   }
-
-  if (percent < -15) {
-    return 'Mycket bra';
-  }
-
-  if (percent < -5) {
-    return 'Bra';
-  }
-
-  if (percent <= 5) {
-    return 'OK';
-  }
-
-  if (percent <= 15) {
-    return 'Svag';
-  }
-
-  return 'Mycket svag';
+  return describeZone(percent, 'OK');
 }
 
 function findThresholdIndex(values: Array<number | null>, threshold: number) {
@@ -656,7 +648,7 @@ function buildLegCategories(
       avgPercent: Math.round(avgPercent),
       avgSplitPlace: Math.round(avgPlace * 10) / 10,
       categoryLabel: cat,
-      description: describeLegCategory(avgPercent),
+      description: describeLegCategory(Math.round(avgPercent)),
       legCount: bucket.indices.length,
       legWinCount: bucket.wins,
       legs: legLabels.join(', '),
@@ -668,10 +660,7 @@ function buildLegCategories(
 }
 
 function describeLegCategory(relativePercent: number): string {
-  if (relativePercent < -5) return 'Stark';
-  if (relativePercent <= 5) return 'Normal';
-  if (relativePercent <= 15) return 'Svag';
-  return 'Mycket svag';
+  return describeZone(relativePercent, 'Normal');
 }
 
 // --- Head-to-Head ---

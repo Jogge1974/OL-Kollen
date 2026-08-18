@@ -1,7 +1,7 @@
 ﻿import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { Dimensions, Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 
 import { fetchEventorEventById } from '@/src/api/eventorApi';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -316,16 +316,17 @@ export function SplitTimesModal({
 
           <View style={styles.listModalContent}>
             {currentState?.isLoading ? (
-              <ProgressSteps
-                activeIndex={currentState.loadingStage === 'parsing' ? 1 : 0}
-                steps={[
-                  {
-                    label: 'Hämtar sträcktider från Eventor',
-                    note: currentState.loadingRetrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
-                  },
-                  { label: 'Bearbetar sträcktider' },
-                ]}
-              />
+              <View style={styles.loadingCenter}>
+                <ProgressSteps
+                  activeIndex={0}
+                  steps={[
+                    {
+                      label: 'Hämtar sträcktider från Eventor',
+                      note: currentState.loadingRetrying ? 'Eventor är upptaget – försöker igen…' : 'Stora tävlingar kan ta en stund.',
+                    },
+                  ]}
+                />
+              </View>
             ) : null}
             {currentState?.error ? <Text style={styles.documentsErrorText}>{currentState.error}</Text> : null}
             {!currentState?.isLoading && !currentState?.error && currentState?.sections.length === 0 ? (
@@ -1419,6 +1420,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     height: '86%',
     position: 'relative',
     overflow: 'hidden',
+  },
+  loadingCenter: {
+    justifyContent: 'center',
+    minHeight: Math.round(Dimensions.get('window').height * 0.6),
   },
   modalTitle: {
     ...typography.bodyStrong,
