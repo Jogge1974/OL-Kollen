@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { formatDisplayDate } from '@/src/services/dateService';
+import { getClassificationLabel } from '@/src/features/calendar/calendarFilters';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
@@ -46,14 +47,14 @@ export function PersonActivitySectionList({
   );
 
   const handleToggleFavorite = React.useCallback(
-    async (row: PersonActivitySection['rows'][number]) => {
+    async (row: PersonActivitySection['rows'][number], classificationId: number) => {
       if (kind !== 'starts' || !row.favouriteId) {
         return;
       }
 
       await toggleFavorite({
-        classificationId: 0,
-        classificationLabel: row.classLabel,
+        classificationId,
+        classificationLabel: getClassificationLabel(classificationId),
         dateLabel: formatDisplayDate(row.eventDate),
         hasPublishedResults: false,
         hasPublishedStarts: false,
@@ -101,7 +102,7 @@ export function PersonActivitySectionList({
                     hitSlop={6}
                     onPress={(event) => {
                       event.stopPropagation();
-                      void handleToggleFavorite(section.rows[0]);
+                      void handleToggleFavorite(section.rows[0], section.classificationId);
                     }}
                     style={[styles.favoriteBadge, isFavorite(section.eventId) ? styles.favoriteBadgeActive : null]}
                   >

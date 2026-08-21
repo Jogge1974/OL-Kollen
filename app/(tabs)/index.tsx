@@ -81,7 +81,7 @@ export default function HomeScreen() {
       const startOfDeadlineDay = new Date(deadline);
       startOfDeadlineDay.setHours(0, 0, 0, 0);
       const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
-      if (days < 5) {
+      if (days < 3) {
         count += 1;
       }
     }

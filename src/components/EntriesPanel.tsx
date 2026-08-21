@@ -6,6 +6,7 @@ import { router, usePathname } from 'expo-router';
 import { PersonEntry } from '@/src/hooks/usePersonEntries';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { formatDisplayDate } from '@/src/services/dateService';
+import { getClassificationLabel } from '@/src/features/calendar/calendarFilters';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -37,8 +38,8 @@ export function EntriesPanel({ entries, error, isLoading, organisationLabel }: E
 
   const handleToggleFavorite = async (entry: PersonEntry) => {
     await toggleFavorite({
-      classificationId: 0,
-      classificationLabel: entry.className ?? '',
+      classificationId: entry.classificationId,
+      classificationLabel: entry.classificationId ? getClassificationLabel(entry.classificationId) : '',
       dateLabel: formatDisplayDate(entry.eventDate),
       hasPublishedResults: false,
       hasPublishedStarts: false,

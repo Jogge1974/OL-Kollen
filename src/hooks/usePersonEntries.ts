@@ -16,6 +16,7 @@ export type PersonEntry = {
   eventName: string;
   eventDate: string;
   className: string | null;
+  classificationId: number;
   totalEntries: number | null;
   organisationEntries: number | null;
   /** For multi-stage events: one sub-entry per race the person is entered in */
@@ -127,6 +128,7 @@ type RawEntry = {
   eventName: string;
   eventDate: string;
   eventClassId: string | null;
+  classificationId: number;
   races: PersonEntryRace[];
 };
 
@@ -143,6 +145,7 @@ function parseEntriesXml(xml: string): RawEntry[] {
     const eventId = getNodeText(event?.EventId) ?? '';
     const eventName = buildEventName(event);
     const eventDate = getString(getRecord(event?.StartDate)?.Date) ?? '';
+    const classificationId = Number(getNodeText(event?.EventClassificationId) ?? '') || 0;
 
     const entryClass = firstOf(entry.EntryClass);
     const entryClassRecord = getRecord(entryClass);
@@ -160,7 +163,7 @@ function parseEntriesXml(xml: string): RawEntry[] {
         })).filter((r) => r.eventRaceId !== '')
       : [];
 
-    result.push({ eventId, eventRaceId, eventName, eventDate, eventClassId, races });
+    result.push({ eventId, eventRaceId, eventName, eventDate, eventClassId, classificationId, races });
   }
 
   return result;
@@ -211,6 +214,7 @@ async function enrichEntries(rawEntries: RawEntry[], viewerOrganisationId: strin
       eventName: entry.eventName,
       eventDate: entry.eventDate,
       className: classInfo?.name ?? null,
+      classificationId: entry.classificationId,
       totalEntries: counts.total,
       organisationEntries: counts.org,
       races: entry.races,
