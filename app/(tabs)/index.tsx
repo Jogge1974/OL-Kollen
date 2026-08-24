@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import Constants from 'expo-constants';
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -163,6 +164,7 @@ export default function HomeScreen() {
   }, [reloadActivities, refetchPersonLists, refetchAnnouncements, user?.personId]);
 
   const greetingName = user?.firstName ?? user?.fullName ?? 'orienterare';
+  const appVersion = Constants.expoConfig?.version ?? null;
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -199,6 +201,7 @@ export default function HomeScreen() {
               </Pressable>
             ) : null}
           </View>
+          {appVersion ? <Text style={styles.heroVersion}>v{appVersion}</Text> : null}
         </LinearGradient>
 
         <View style={styles.shortcutSection}>
@@ -517,6 +520,16 @@ function createStyles(colors: ColorPalette) {
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'space-between',
+  },
+  heroVersion: {
+    ...typography.eyebrow,
+    bottom: spacing.md,
+    color: colors.heroText,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    opacity: 0.85,
+    position: 'absolute',
+    right: spacing.lg,
   },
   leafGlowLeft: {
     backgroundColor: colors.secondaryGlow,
