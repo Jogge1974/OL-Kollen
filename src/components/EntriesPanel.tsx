@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, usePathname } from 'expo-router';
 
 import { PersonEntry } from '@/src/hooks/usePersonEntries';
@@ -14,18 +15,19 @@ import { typography } from '@/src/theme/typography';
 type EntriesPanelProps = {
   entries: PersonEntry[];
   error: string | null;
+  expanded: boolean;
   isLoading: boolean;
+  onToggleExpanded: () => void;
   organisationLabel: string | null;
 };
 
-export function EntriesPanel({ entries, error, isLoading, organisationLabel }: EntriesPanelProps) {
+export function EntriesPanel({ entries, error, expanded, isLoading, onToggleExpanded, organisationLabel }: EntriesPanelProps) {
   const pathname = usePathname();
   const { colors, isDark, themeName } = useTheme();
   const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const toggleFavorite = usePreferencesStore((state) => state.toggleFavorite);
-  const [isExpanded, setIsExpanded] = React.useState(false);
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
 
   if (!isLoading && !error && entries.length === 0) {
@@ -64,17 +66,19 @@ export function EntriesPanel({ entries, error, isLoading, organisationLabel }: E
   const orgLabel = organisationLabel ?? 'Klubben';
 
   return (
-    <View style={styles.panel}>
-      <Pressable onPress={() => setIsExpanded((v) => !v)} style={styles.titleRow}>
+    <View style={styles.greenCard}>
+      <LinearGradient colors={[colors.heroBottom, colors.heroTop, colors.primary]} end={{ x: 0, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.innerCard}>
+      <Pressable onPress={onToggleExpanded} style={styles.titleRow}>
         <Ionicons color={colors.textMuted} name="clipboard-outline" size={18} />
         <Text style={styles.title}>Anmälningar</Text>
         <Text style={styles.subtitle}>
           {isLoading ? 'Laddar...' : `${entries.length} st`}
         </Text>
-        <Ionicons color={colors.textMuted} name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} />
+        <Ionicons color={colors.textMuted} name={expanded ? 'chevron-up' : 'chevron-down'} size={18} />
       </Pressable>
 
-      {isExpanded ? (
+      {expanded ? (
         isLoading ? (
           <Text style={styles.helperText}>Hämtar anmälningar...</Text>
         ) : error ? (
@@ -150,6 +154,7 @@ export function EntriesPanel({ entries, error, isLoading, organisationLabel }: E
           </View>
         )
       ) : null}
+      </View>
     </View>
   );
 }
@@ -174,6 +179,29 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       borderColor: colors.border,
       borderRadius: 24,
       borderWidth: 1,
+      elevation: 3,
+      gap: spacing.sm,
+      padding: spacing.sm,
+      shadowColor: '#000',
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: isDark ? 0.35 : 0.1,
+      shadowRadius: 10,
+    },
+    greenCard: {
+      borderColor: colors.primaryDeep,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      elevation: 3,
+      overflow: 'hidden',
+      padding: spacing.sm,
+      shadowColor: '#000',
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: isDark ? 0.4 : 0.16,
+      shadowRadius: 10,
+    },
+    innerCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 18,
       gap: spacing.sm,
       padding: spacing.sm,
     },

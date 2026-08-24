@@ -49,8 +49,13 @@ function createStyles(colors: ColorPalette, isDark: boolean) {
       borderColor: isDark ? colors.accent : '#D4A800',
       borderRadius: 24,
       borderWidth: 1.5,
+      elevation: 3,
       gap: spacing.sm,
       padding: spacing.md,
+      shadowColor: '#000',
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: isDark ? 0.35 : 0.1,
+      shadowRadius: 10,
     },
     titleRow: {
       alignItems: 'center',

@@ -46,7 +46,7 @@ type UsePersonEntriesResult = {
 };
 
 export function usePersonEntries({ personId, organisationId, viewerOrganisationId, excludeEventIds }: UsePersonEntriesInput): UsePersonEntriesResult {
-  const [entries, setEntries] = React.useState<PersonEntry[]>([]);
+  const [allEntries, setAllEntries] = React.useState<PersonEntry[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [refreshKey, setRefreshKey] = React.useState(0);
@@ -56,7 +56,7 @@ export function usePersonEntries({ personId, organisationId, viewerOrganisationI
 
     const load = async () => {
       if (!personId || !organisationId) {
-        setEntries([]);
+        setAllEntries([]);
         setError(null);
         setIsLoading(false);
         return;
@@ -83,8 +83,9 @@ export function usePersonEntries({ personId, organisationId, viewerOrganisationI
           return true;
         });
 
-        // Filter: only future events (>= today) and not already in starts/results
-        const filtered = uniqueEntries.filter((e) => e.eventDate >= todayIso && !excludeEventIds.has(e.eventId));
+        // Only future events; the starts/results exclusion is applied client-side
+        // below so switching year/filter on results never refetches entries.
+        const filtered = uniqueEntries.filter((e) => e.eventDate >= todayIso);
 
         // Sort by date ascending
         filtered.sort((a, b) => a.eventDate.localeCompare(b.eventDate));
@@ -94,12 +95,12 @@ export function usePersonEntries({ personId, organisationId, viewerOrganisationI
 
         if (!isMounted) return;
 
-        setEntries(enriched);
+        setAllEntries(enriched);
       } catch (err) {
         if (!isMounted) return;
         const message = err instanceof Error ? err.message : 'Okänt fel vid hämtning av anmälningar.';
         setError(message);
-        setEntries([]);
+        setAllEntries([]);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -110,7 +111,14 @@ export function usePersonEntries({ personId, organisationId, viewerOrganisationI
     return () => {
       isMounted = false;
     };
-  }, [personId, organisationId, viewerOrganisationId, refreshKey, excludeEventIds]);
+  }, [personId, organisationId, viewerOrganisationId, refreshKey]);
+
+  // Exclude events already shown in starts/results client-side, so changing the
+  // results year/filter never refetches entries — only pull-to-refresh does.
+  const entries = React.useMemo(
+    () => allEntries.filter((entry) => !excludeEventIds.has(entry.eventId)),
+    [allEntries, excludeEventIds],
+  );
 
   return {
     entries,

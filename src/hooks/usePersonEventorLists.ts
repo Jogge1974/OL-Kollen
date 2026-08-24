@@ -32,9 +32,9 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
   const [resultsYear, setResultsYear] = React.useState(currentYear);
   const [resultsFilter, setResultsFilter] = React.useState<PersonResultsFilter>(initialFilter);
   const [refreshKey, setRefreshKey] = React.useState(0);
-  const [resultsSections, setResultsSections] = React.useState<PersonActivitySection[]>([]);
   const [allResultEventIds, setAllResultEventIds] = React.useState<Set<string>>(new Set());
   const [resultsCompetitionCount, setResultsCompetitionCount] = React.useState(0);
+  const [rawResultsSections, setRawResultsSections] = React.useState<PersonActivitySection[]>([]);
   const [rawStartsSections, setRawStartsSections] = React.useState<PersonActivitySection[]>([]);
   const [resultsError, setResultsError] = React.useState<string | null>(null);
   const [startsError, setStartsError] = React.useState<string | null>(null);
@@ -101,7 +101,7 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
           return;
         }
 
-        setResultsSections([]);
+        setRawResultsSections([]);
         setResultsCompetitionCount(0);
         setResultsError(null);
         setIsLoadingResults(false);
@@ -114,7 +114,6 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
       try {
         const resultsXml = await fetchPersonResultsXml(personId, formatYearStart(resultsYear), formatYearEnd(resultsYear));
         const parsedResults = parsePersonResultsXml(resultsXml);
-        const nextResults = filterPersonResultSections(parsedResults, resultsYear, resultsFilter);
 
         if (!isMounted) {
           return;
@@ -122,7 +121,7 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
 
         setResultsCompetitionCount(parsedResults.filter((section) => Number(section.eventDate.slice(0, 4)) === resultsYear).length);
         setAllResultEventIds(new Set(parsedResults.map((s) => s.eventId)));
-        setResultsSections(nextResults);
+        setRawResultsSections(parsedResults);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -130,7 +129,7 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
 
         const message = error instanceof Error ? error.message : 'Okänt fel vid hämtning av personlistor.';
         setResultsError(message);
-        setResultsSections([]);
+        setRawResultsSections([]);
         setResultsCompetitionCount(0);
       } finally {
         if (isMounted) {
@@ -144,7 +143,13 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
     return () => {
       isMounted = false;
     };
-  }, [personId, refreshKey, resultsFilter, resultsYear]);
+  }, [personId, refreshKey, resultsYear]);
+
+  // Type filtering is client-side, so switching Nationella/Distrikt never refetches.
+  const resultsSections = React.useMemo(
+    () => filterPersonResultSections(rawResultsSections, resultsYear, resultsFilter),
+    [rawResultsSections, resultsYear, resultsFilter],
+  );
 
   // Derive filtered starts: keep until result exists or event date passes
   const startsSections = React.useMemo(() => {
@@ -158,13 +163,13 @@ export function usePersonEventorLists({ initialFilter = 'national', personId }: 
         if (row.organisationId) return row.organisationId;
       }
     }
-    for (const section of resultsSections) {
+    for (const section of rawResultsSections) {
       for (const row of section.rows) {
         if (row.organisationId) return row.organisationId;
       }
     }
     return null;
-  }, [rawStartsSections, resultsSections]);
+  }, [rawStartsSections, rawResultsSections]);
 
   // Combine eventIds from starts and results for exclusion in entries
   const excludeEventIds = React.useMemo(() => {

@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
@@ -91,9 +92,28 @@ export default function FriendDetailScreen() {
     runnerId: personId,
   });
 
-  const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
   const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
   const [isH2hExpanded, setIsH2hExpanded] = React.useState(false);
+  const [sverigelistanExpanded, setSverigelistanExpanded] = React.useState(false);
+  const [resultsExpanded, setResultsExpanded] = React.useState(false);
+  const [entriesExpanded, setEntriesExpanded] = React.useState(false);
+
+  // Collapse every card again when switching to another friend.
+  React.useEffect(() => {
+    setSverigelistanExpanded(false);
+    setResultsExpanded(false);
+    setIsH2hExpanded(false);
+    setEntriesExpanded(false);
+  }, [personId]);
+
+  const allCardsExpanded = sverigelistanExpanded && isH2hExpanded && resultsExpanded && entriesExpanded;
+  const toggleAllCards = React.useCallback(() => {
+    const next = !allCardsExpanded;
+    setSverigelistanExpanded(next);
+    setIsH2hExpanded(next);
+    setResultsExpanded(next);
+    setEntriesExpanded(next);
+  }, [allCardsExpanded]);
 
   const {
     entries: personEntries,
@@ -215,28 +235,33 @@ export default function FriendDetailScreen() {
 
         <View style={styles.contentWrap}>
         {friend ? (
+          <Pressable onPress={toggleAllCards} style={styles.showAllButton}>
+            <Text style={styles.showAllText}>{allCardsExpanded ? 'Dölj alla' : 'Visa alla'}</Text>
+            <Ionicons color={colors.primary} name={allCardsExpanded ? 'chevron-up' : 'chevron-down'} size={14} />
+          </Pressable>
+        ) : null}
+        {friend ? (
           isSverigelistanLoading ? (
             <SectionLoadingPlaceholder icon="trophy-outline" label="Sverigelistan" />
           ) : (
-          <Pressable
-            onPress={
-              isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry
-                ? undefined
-                : () => setShowSverigelistanTrend((value) => !value)
-            }
-            style={styles.panel}
-          >
-            <View style={styles.sverigelistanHeader}>
+          <View style={styles.greenCard}>
+            <LinearGradient colors={[colors.heroBottom, colors.heroTop, colors.primary]} end={{ x: 0, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} />
+            <View style={styles.innerCard}>
+            <Pressable onPress={() => setSverigelistanExpanded((value) => !value)} style={styles.sverigelistanHeader}>
               <View style={styles.titleRow}>
                 <Ionicons color={colors.textMuted} name="trophy-outline" size={16} />
                 <Text style={styles.panelTitle}>Sverigelistan</Text>
               </View>
-              {isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry ? null : (
-                <Text style={styles.sverigelistanUpdated}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
-              )}
-            </View>
+              <View style={styles.sverigelistanHeaderRight}>
+                {sverigelistanError || !hasSupabase || !currentEntry ? null : (
+                  <Text style={styles.sverigelistanUpdated}>Uppd. {formatUpdatedDate(currentEntry.Updated)}</Text>
+                )}
+                <Ionicons color={colors.textMuted} name={sverigelistanExpanded ? 'chevron-up' : 'chevron-down'} size={18} />
+              </View>
+            </Pressable>
 
-            {sverigelistanError ? (
+            {sverigelistanExpanded ? (
+            sverigelistanError ? (
               <Text style={styles.errorText}>{sverigelistanError}</Text>
             ) : !hasSupabase ? (
               <Text style={styles.helperText}>Sverigelistan kan inte visas just nu.</Text>
@@ -272,39 +297,32 @@ export default function FriendDetailScreen() {
                   </View>
                 </View>
 
-                {showSverigelistanTrend ? (
-                  <>
-                    <View style={styles.trendHeaderRow}>
-                      <Text style={styles.trendHeaderTitle}>Placering senaste månaderna</Text>
-                      <Text style={styles.trendToggleLink}>&lt; Visa mindre</Text>
-                    </View>
-                    <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
-                    <TrendTable classTrend={classTrend} monthlyTrend={monthlyTrend} />
-
-                    <Pressable
-                      onPress={() => {
-                        if (!currentEntry) return;
-                        setActiveRunnerRanking({
-                          birthYear: currentEntry.BirthYear,
-                          clubName: currentEntry.Club,
-                          currentPoints: currentEntry.Points,
-                          currentRank: currentEntry.Rank,
-                          gender: currentEntry.Gender === 'D' ? 'D' : 'H',
-                          name: currentEntry.Name,
-                          personId: currentEntry.RunnerId,
-                        });
-                      }}
-                      style={styles.sverigelistanDetailLink}
-                    >
-                      <Text style={styles.sverigelistanDetailLinkText}>Visa de 6 bästa tävlingarna &gt;</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <Text style={styles.trendToggleLink}>Visa mer &gt;</Text>
-                )}
+                <View style={styles.trendHeaderRow}>
+                  <Text style={styles.trendHeaderTitle}>Plac. senaste månaderna</Text>
+                  <Pressable
+                    onPress={() => {
+                      if (!currentEntry) return;
+                      setActiveRunnerRanking({
+                        birthYear: currentEntry.BirthYear,
+                        clubName: currentEntry.Club,
+                        currentPoints: currentEntry.Points,
+                        currentRank: currentEntry.Rank,
+                        gender: currentEntry.Gender === 'D' ? 'D' : 'H',
+                        name: currentEntry.Name,
+                        personId: currentEntry.RunnerId,
+                      });
+                    }}
+                  >
+                    <Text style={styles.sverigelistanDetailLinkText}>Visa topp 6 tävl.</Text>
+                  </Pressable>
+                </View>
+                <RankingTrendChart classPoints={classTrend} points={monthlyTrend} showTitle={false} />
+                <TrendTable classTrend={classTrend} monthlyTrend={monthlyTrend} />
               </>
-            )}
-          </Pressable>
+            )
+            ) : null}
+            </View>
+          </View>
           )
         ) : null}
 
@@ -312,7 +330,9 @@ export default function FriendDetailScreen() {
           h2h.isLoading ? (
             <SectionLoadingPlaceholder icon="people-outline" label="Head-to-Head" />
           ) : (
-          <View style={styles.panel}>
+          <View style={styles.greenCard}>
+            <LinearGradient colors={[colors.heroBottom, colors.heroTop, colors.primary]} end={{ x: 0, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} />
+            <View style={styles.innerCard}>
             <Pressable onPress={() => setIsH2hExpanded((v) => !v)} style={styles.h2hHeader}>
               <Ionicons color={colors.textMuted} name="people-outline" size={16} />
               <Text style={styles.panelTitle}>Head-To-Head</Text>
@@ -382,6 +402,7 @@ export default function FriendDetailScreen() {
                 </>
               )
             ) : null}
+            </View>
           </View>
           )
         ) : null}
@@ -389,7 +410,7 @@ export default function FriendDetailScreen() {
         {isLoadingEntries ? (
           <SectionLoadingPlaceholder icon="clipboard-outline" label="Anmälningar" />
         ) : personEntries.length > 0 ? (
-          <EntriesPanel entries={personEntries} error={entriesError} isLoading={false} organisationLabel={user?.organisationName ?? null} />
+          <EntriesPanel key={personId ?? 'none'} entries={personEntries} error={entriesError} expanded={entriesExpanded} isLoading={false} onToggleExpanded={() => setEntriesExpanded((v) => !v)} organisationLabel={user?.organisationName ?? null} />
         ) : null}
 
         {isLoadingStarts ? (
@@ -401,40 +422,53 @@ export default function FriendDetailScreen() {
         {isLoadingResults ? (
           <SectionLoadingPlaceholder icon="ribbon-outline" label="Resultat" />
         ) : (
-        <View style={styles.resultsPanel}>
-          <View style={styles.resultsPanelHeader}>
+        <View style={styles.greenCard}>
+          <LinearGradient colors={[colors.heroBottom, colors.heroTop, colors.primary]} end={{ x: 0, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill} />
+          <View style={styles.innerCard}>
+          <Pressable onPress={() => setResultsExpanded((value) => !value)} style={styles.resultsPanelHeader}>
             <View style={styles.resultsTitleRow}>
               <Ionicons color={colors.textMuted} name="ribbon-outline" size={16} />
               <Text style={styles.resultsPanelTitle}>Resultat</Text>
             </View>
-            <View style={styles.filterRow}>
-              {filterChips.map((chip) => (
-                <Pressable
-                  key={chip.value}
-                  onPress={() => setResultsFilter(chip.value)}
-                  style={[styles.filterChip, resultsFilter === chip.value ? styles.filterChipActive : null]}
-                >
-                  <Text style={[styles.filterChipText, resultsFilter === chip.value ? styles.filterChipTextActive : null]}>
-                    {chip.label}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={styles.resultsHeaderRight}>
+              <Text style={styles.resultsCountText}>{resultsSections.length} resultat</Text>
+              <Ionicons color={colors.textMuted} name={resultsExpanded ? 'chevron-up' : 'chevron-down'} size={18} />
             </View>
-          </View>
+          </Pressable>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearRow}>
-            {availableYears.map((year) => (
-              <Pressable
-                key={year}
-                onPress={() => setResultsYear(year)}
-                style={[styles.yearChip, resultsYear === year ? styles.yearChipActive : null]}
-              >
-                <Text style={[styles.yearChipText, resultsYear === year ? styles.yearChipTextActive : null]}>
-                  {year}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          {resultsExpanded ? (
+            <>
+              <View style={styles.resultsControlsRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearRow} style={styles.yearScroll}>
+                  {availableYears.map((year) => (
+                    <Pressable
+                      key={year}
+                      onPress={() => setResultsYear(year)}
+                      style={[styles.yearChip, resultsYear === year ? styles.yearChipActive : null]}
+                    >
+                      <Text style={[styles.yearChipText, resultsYear === year ? styles.yearChipTextActive : null]}>
+                        {year}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                <View style={styles.controlsDivider} />
+
+                <View style={styles.filterRow}>
+                  {filterChips.map((chip) => (
+                    <Pressable
+                      key={chip.value}
+                      onPress={() => setResultsFilter(chip.value)}
+                      style={[styles.filterChip, resultsFilter === chip.value ? styles.filterChipActive : null]}
+                    >
+                      <Text style={[styles.filterChipText, resultsFilter === chip.value ? styles.filterChipTextActive : null]}>
+                        {chip.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
 
           <PersonActivitySectionList
             emptyLabel="Inga resultat hittades."
@@ -447,6 +481,9 @@ export default function FriendDetailScreen() {
             onPressEvent={(eventId) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
             sections={resultsSections}
           />
+            </>
+          ) : null}
+          </View>
         </View>
         )}
         </View>
@@ -573,8 +610,72 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       borderColor: colors.border,
       borderRadius: 24,
       borderWidth: 1,
+      elevation: 3,
       gap: spacing.sm,
       padding: spacing.sm,
+      shadowColor: '#000',
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: isDark ? 0.35 : 0.1,
+      shadowRadius: 10,
+    },
+    greenCard: {
+      borderColor: colors.primaryDeep,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      elevation: 3,
+      overflow: 'hidden',
+      padding: spacing.sm,
+      shadowColor: '#000',
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: isDark ? 0.4 : 0.16,
+      shadowRadius: 10,
+    },
+    innerCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      gap: spacing.sm,
+      padding: spacing.sm,
+    },
+    sverigelistanHeaderRight: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    resultsHeaderRight: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    resultsCountText: {
+      ...typography.caption,
+      color: colors.textMuted,
+      fontSize: 12,
+    },
+    resultsControlsRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    yearScroll: {
+      flex: 1,
+    },
+    showAllButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-end',
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: spacing.xs,
+      paddingVertical: 2,
+    },
+    showAllText: {
+      ...typography.captionStrong,
+      color: colors.primary,
+    },
+    controlsDivider: {
+      alignSelf: 'center',
+      backgroundColor: colors.border,
+      height: 20,
+      width: 1,
     },
     panelTitle: {
       ...typography.sectionTitle,
@@ -832,8 +933,13 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       borderColor: colors.border,
       borderRadius: 24,
       borderWidth: 1,
+      elevation: 3,
       gap: spacing.md,
       padding: spacing.md,
+      shadowColor: '#000',
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: isDark ? 0.35 : 0.1,
+      shadowRadius: 10,
     },
     resultsPanelHeader: {
       alignItems: 'center',
