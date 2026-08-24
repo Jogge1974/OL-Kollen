@@ -4,7 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Kontrollen',
   slug: 'ol-kollen',
-  version: '1.7.1',
+  version: '1.7.2',
   orientation: 'portrait',
   icon: './assets/icon1024.png',
   userInterfaceStyle: 'light',
@@ -22,12 +22,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           CFBundleLocalizations: ['sv'],
     },
     bundleIdentifier: 'se.mastol.kontrollen',
-    buildNumber: '29',
+    buildNumber: '30',
     supportsTablet: true,
   },
   android: {
     package: 'se.mastol.kontrollen',
-    versionCode: 29,
+    versionCode: 30,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       foregroundImage: './assets/icon1024.png',
