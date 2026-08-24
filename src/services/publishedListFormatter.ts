@@ -86,7 +86,14 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
     };
   };
 
-  const entries = toArray<Record<string, unknown>>(parsed.EntryList?.Entry)
+  const entryNodes = toArray<Record<string, unknown>>(parsed.EntryList?.Entry);
+
+  // Relay entries are team-based (TeamCompetitor) instead of a single Competitor.
+  if (entryNodes.some((entry) => entry.TeamCompetitor !== undefined)) {
+    return formatRelayEntriesXml(entryNodes, options);
+  }
+
+  const entries = entryNodes
     .map((entry) => {
       const competitor = getRecord(entry.Competitor);
       const organisation = getRecord(competitor?.Organisation);
@@ -165,6 +172,77 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
         rows,
         title,
       }))
+      .sort((left, right) => left.title.localeCompare(right.title, 'sv')),
+  };
+}
+
+// Relay entries: each <Entry> is a team with several <TeamCompetitor> (person +
+// club + leg order) rather than one Competitor. Mirror the relay start list.
+function formatRelayEntriesXml(entryNodes: Record<string, unknown>[], options: PublishedListFormatOptions): PublishedListViewData {
+  const teams = entryNodes.map((entry) => {
+    const teamCompetitors = toArray<Record<string, unknown>>(entry.TeamCompetitor);
+    const firstOrg = getRecord(teamCompetitors[0]?.Organisation);
+    const organisationId = getNodeText(firstOrg?.OrganisationId) ?? getNodeText(entry.OrganisationId) ?? undefined;
+    const organisationName = getString(firstOrg?.Name) ?? (organisationId ? `Klubb ${organisationId}` : '-');
+    const teamName = getNodeText(entry.TeamName) ?? getString(entry.TeamName) ?? organisationName;
+
+    const entryClass = getRecord(entry.EntryClass);
+    const eventClassId = getNodeText(entryClass?.EventClassId) ?? getNodeText(entry.EventClassId);
+    const classLabel =
+      (eventClassId ? options.eventClassNameById?.[eventClassId] ?? null : null) ??
+      (eventClassId ? `Klass ${eventClassId}` : 'Okand klass');
+
+    const members = teamCompetitors
+      .map((competitor) => {
+        const person = getRecord(competitor.Person);
+        const personName = getPersonNameParts(person);
+        const legRaw = getNodeText(competitor.TeamSequence) ?? getNodeText(competitor.TeamOrder);
+        return {
+          familyName: personName.family ?? undefined,
+          givenName: personName.given ?? undefined,
+          leg: legRaw ?? undefined,
+          primary: personName.fullName || 'Namn saknas',
+          sortKey: Number(legRaw) || Number.MAX_SAFE_INTEGER,
+        };
+      })
+      .sort((left, right) => left.sortKey - right.sortKey)
+      .map(({ sortKey, ...member }) => member);
+
+    return {
+      classLabel,
+      organisation: organisationName,
+      organisationId: organisationId ?? undefined,
+      primary: teamName,
+      relayMembers: members,
+    };
+  });
+
+  if (options.scope === 'organisation') {
+    const rows = teams
+      .filter((team) => team.organisationId === options.organisationId)
+      .sort((left, right) => `${left.classLabel}${left.primary}`.localeCompare(`${right.classLabel}${right.primary}`, 'sv'));
+
+    return {
+      emptyMessage: 'Inga anmalningar hittades.',
+      sections: [
+        {
+          meta: `Ant. lag: ${rows.length}`,
+          rows,
+          title: 'Min klubb',
+        },
+      ].filter((section) => section.rows.length > 0),
+    };
+  }
+
+  const groupedSections = new Map<string, PublishedListRow[]>();
+  teams.forEach((team) => {
+    groupedSections.set(team.classLabel, [...(groupedSections.get(team.classLabel) ?? []), team]);
+  });
+
+  return {
+    emptyMessage: 'Inga anmalningar hittades.',
+    sections: Array.from(groupedSections.entries())
+      .map(([title, rows]) => ({ meta: `Ant. lag: ${rows.length}`, rows, title }))
       .sort((left, right) => left.title.localeCompare(right.title, 'sv')),
   };
 }

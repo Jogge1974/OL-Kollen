@@ -714,7 +714,7 @@ function PublishedTableSection({
           </View>
         </View>
 
-        {isRelaySection ? (
+        {isRelaySection && kind !== 'entries' ? (
           <View style={styles.relaySectionHeaderWrap}>
             <View style={styles.tableColumnHeaderRow}>
               {kind === 'starts' ? (
@@ -916,7 +916,7 @@ function PublishedTableSection({
                 }
             : {};
 
-        if (isRelaySection) {
+        if (isRelaySection && kind !== 'entries') {
           return (
             <React.Fragment key={`${section.title}-${row.primary}-${rowIndex}`}>
               <RowContainer
@@ -1147,7 +1147,7 @@ function PublishedTableSection({
           );
         }
 
-        if (isRelaySection && kind === 'starts') {
+        if (isRelaySection && (kind === 'starts' || kind === 'entries')) {
           return (
             <RowContainer
               key={`${section.title}-${row.primary}-${rowIndex}`}
@@ -1160,12 +1160,16 @@ function PublishedTableSection({
                   {kind === 'starts' ? <Text style={[styles.relayTopMetric, styles.relayBib]}>{row.bibNumber ?? '-'}</Text> : null}
 
                   <View style={styles.relayMainColumn}>
-                    <Text numberOfLines={1} style={styles.relayTeamName}>
-                      {row.primary}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.relayClubName}>
-                      {row.organisation ?? '-'}
-                    </Text>
+                    <View style={styles.relayTeamLine}>
+                      <Text numberOfLines={1} style={styles.relayTeamName}>
+                        {row.primary}
+                      </Text>
+                      {(scope === 'organisation' ? row.classLabel : row.organisation) ? (
+                        <Text numberOfLines={1} style={styles.relayTopClubName}>
+                          {scope === 'organisation' ? row.classLabel : row.organisation}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
 
                   <View style={styles.relayMetricColumn}>
@@ -1189,7 +1193,7 @@ function PublishedTableSection({
                           <Text numberOfLines={1} style={styles.relayMemberMeta}>
                             Start {member.startTime ?? member.time ?? '-'}
                           </Text>
-                        ) : (
+                        ) : kind === 'entries' ? null : (
                           <Text numberOfLines={1} style={styles.relayMemberMeta}>
                             {[
                               formatRelayMetric('Str', member.time),
@@ -2050,8 +2054,24 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   relayTeamName: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
+    flexShrink: 1,
     fontSize: 16,
     lineHeight: 19,
+  },
+  relayTeamLine: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  relayTopClubName: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    marginLeft: 'auto',
+    maxWidth: '48%',
+    textAlign: 'right',
   },
   relayClubName: {
     ...typography.caption,

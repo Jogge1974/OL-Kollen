@@ -241,13 +241,13 @@ export async function fetchOrganisationDirectory() {
 export async function fetchEventCompetitorCount(eventId: string, organisationId: string | null, eventForm?: string | null, eventRaceId?: string | null): Promise<EventCompetitorCount> {
   const normalizedEventId = normalizeEventId(eventId);
   if (isRelayEventForm(eventForm)) {
-    const relayTotalCount = await fetchRelayTeamCount(normalizedEventId);
+    const relayCounts = await fetchRelayTeamCounts(normalizedEventId, organisationId);
 
     return {
-      organisationEntries: null,
-      organisationStarts: null,
-      totalEntries: relayTotalCount,
-      totalStarts: relayTotalCount,
+      organisationEntries: relayCounts.organisation,
+      organisationStarts: relayCounts.organisation,
+      totalEntries: relayCounts.total,
+      totalStarts: relayCounts.total,
     };
   }
 
@@ -620,20 +620,24 @@ function mapCompetitorCountXml(xml: string, eventRaceId?: string | null) {
   };
 }
 
-async function fetchRelayTeamCount(eventId: string) {
-  const xml = await fetchEventPublishedListXml('results', 'public', eventId);
+async function fetchRelayTeamCounts(eventId: string, organisationId: string | null): Promise<{ total: number; organisation: number | null }> {
+  // Count entered teams from the entries list — the results list is empty until
+  // the event is over, which made the "Anmälningar" counter show 0.
+  const xml = await fetchEventPublishedListXml('entries', 'public', eventId);
   const parsed = parser.parse(xml) as {
-    ResultList?: {
-      ClassResult?: unknown;
+    EntryList?: {
+      Entry?: unknown;
     };
   };
-  const classResults = toArray<Record<string, unknown>>(parsed.ResultList?.ClassResult);
-
-  return classResults.reduce((sum, classResult) => {
-    const classNode = getRecord(classResult.Class);
-    const count = toNullableNumber(classNode?.numberOfCompetitors) ?? toNullableNumber(classResult.numberOfCompetitors) ?? 0;
-    return sum + count;
-  }, 0);
+  const entries = toArray<Record<string, unknown>>(parsed.EntryList?.Entry);
+  const organisation = organisationId
+    ? entries.filter((entry) => {
+        const firstOrg = getRecord(toArray<Record<string, unknown>>(entry.TeamCompetitor)[0]?.Organisation);
+        const orgId = getNodeText(entry.OrganisationId) ?? getNodeText(firstOrg?.OrganisationId);
+        return orgId === organisationId;
+      }).length
+    : null;
+  return { organisation, total: entries.length };
 }
 
 function isRelayEventForm(eventForm?: string | null) {
