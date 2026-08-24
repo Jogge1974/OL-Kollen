@@ -12,6 +12,7 @@ import { RankingTrendChart } from '@/src/components/RankingTrendChart';
 import { SverigelistanTrendBadge, SverigelistanTrendTable } from '@/src/components/SverigelistanTrendSection';
 import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
+import { SectionLoadingPlaceholder } from '@/src/components/SectionLoadingPlaceholder';
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { EntriesPanel } from '@/src/components/EntriesPanel';
@@ -214,6 +215,9 @@ export default function FriendDetailScreen() {
 
         <View style={styles.contentWrap}>
         {friend ? (
+          isSverigelistanLoading ? (
+            <SectionLoadingPlaceholder icon="trophy-outline" label="Sverigelistan" />
+          ) : (
           <Pressable
             onPress={
               isSverigelistanLoading || sverigelistanError || !hasSupabase || !currentEntry
@@ -232,9 +236,7 @@ export default function FriendDetailScreen() {
               )}
             </View>
 
-            {isSverigelistanLoading ? (
-              <Text style={styles.helperText}>Hämtar Sverigelistan...</Text>
-            ) : sverigelistanError ? (
+            {sverigelistanError ? (
               <Text style={styles.errorText}>{sverigelistanError}</Text>
             ) : !hasSupabase ? (
               <Text style={styles.helperText}>Sverigelistan kan inte visas just nu.</Text>
@@ -303,9 +305,13 @@ export default function FriendDetailScreen() {
               </>
             )}
           </Pressable>
+          )
         ) : null}
 
         {user && friend ? (
+          h2h.isLoading ? (
+            <SectionLoadingPlaceholder icon="people-outline" label="Head-to-Head" />
+          ) : (
           <View style={styles.panel}>
             <Pressable onPress={() => setIsH2hExpanded((v) => !v)} style={styles.h2hHeader}>
               <Ionicons color={colors.textMuted} name="people-outline" size={16} />
@@ -377,14 +383,24 @@ export default function FriendDetailScreen() {
               )
             ) : null}
           </View>
+          )
         ) : null}
 
-        {personEntries.length > 0 ? (
-          <EntriesPanel entries={personEntries} error={entriesError} isLoading={isLoadingEntries} organisationLabel={user?.organisationName ?? null} />
+        {isLoadingEntries ? (
+          <SectionLoadingPlaceholder icon="clipboard-outline" label="Anmälningar" />
+        ) : personEntries.length > 0 ? (
+          <EntriesPanel entries={personEntries} error={entriesError} isLoading={false} organisationLabel={user?.organisationName ?? null} />
         ) : null}
 
-        <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
+        {isLoadingStarts ? (
+          <SectionLoadingPlaceholder icon="time-outline" label="Kommande starter" />
+        ) : (
+          <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
+        )}
 
+        {isLoadingResults ? (
+          <SectionLoadingPlaceholder icon="ribbon-outline" label="Resultat" />
+        ) : (
         <View style={styles.resultsPanel}>
           <View style={styles.resultsPanelHeader}>
             <View style={styles.resultsTitleRow}>
@@ -432,6 +448,7 @@ export default function FriendDetailScreen() {
             sections={resultsSections}
           />
         </View>
+        )}
         </View>
       </ScrollView>
 

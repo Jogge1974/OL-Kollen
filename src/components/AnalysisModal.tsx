@@ -35,6 +35,10 @@ const ANALYSIS_SCALE_MAX = 20;
 const ANALYSIS_SCALE_RANGE = ANALYSIS_SCALE_MAX - ANALYSIS_SCALE_MIN;
 const ANALYSIS_ZERO_POS = ((0 - ANALYSIS_SCALE_MIN) / ANALYSIS_SCALE_RANGE) * 100;
 
+// Shared column widths keep the bars, zone axis and stats caption aligned.
+const ANALYSIS_LABEL_WIDTH = 108;
+const ANALYSIS_PERCENT_WIDTH = 44;
+
 const ANALYSIS_ZONES = [
   { flex: 5, label: 'Mkt stark', tint: 'rgba(76, 139, 71, 0.30)' },
   { flex: 5, label: 'Stark', tint: 'rgba(76, 139, 71, 0.16)' },
@@ -46,6 +50,25 @@ const ANALYSIS_ZONES = [
 function analysisScalePos(value: number): number {
   const clamped = Math.max(ANALYSIS_SCALE_MIN, Math.min(ANALYSIS_SCALE_MAX, value));
   return ((clamped - ANALYSIS_SCALE_MIN) / ANALYSIS_SCALE_RANGE) * 100;
+}
+
+// Small caption under each bar: my time, best time and the gap (or lead over 2nd
+// when I am fastest, shown by a leading '-' from buildGapLabel).
+function formatAnalysisStats(myLabel: string | null, bestLabel: string | null, gapLabel: string | null): string | null {
+  if (!myLabel && !bestLabel) {
+    return null;
+  }
+  const parts = [`Din ${myLabel ?? '\u2013'}`, `b\u00e4sta ${bestLabel ?? '\u2013'}`];
+  if (gapLabel) {
+    if (gapLabel.startsWith('-')) {
+      parts.push(`${gapLabel.slice(1)} f\u00f6re`);
+    } else if (gapLabel === '0.00') {
+      parts.push('i niv\u00e5');
+    } else {
+      parts.push(`${gapLabel} efter`);
+    }
+  }
+  return parts.join(' \u00b7 ');
 }
 
 function ZonedBar({
@@ -299,15 +322,20 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                   <Ionicons color={colors.primary} name="analytics-outline" size={18} />
                 </View>
                 {analysis.summary.thirdProgress.map((third) => (
-                  <View key={third.controls} style={styles.thirdRow}>
-                    <View style={styles.thirdLabelWrap}>
-                      <Text style={styles.thirdLabel}>{third.controls}</Text>
-                      <Text style={styles.thirdDescription}>{third.description}</Text>
+                  <View key={third.controls} style={styles.thirdBlock}>
+                    <View style={styles.thirdRow}>
+                      <View style={styles.thirdLabelWrap}>
+                        <Text style={styles.thirdLabel}>{third.controls}</Text>
+                        <Text style={styles.thirdDescription}>{third.description}</Text>
+                      </View>
+                      <ZonedBar percent={third.percent} styles={styles} />
+                      <Text style={[styles.thirdPercent, third.percent !== null && third.percent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
+                        {third.percent === null ? '-' : `${third.percent > 0 ? '+' : ''}${third.percent}%`}
+                      </Text>
                     </View>
-                    <ZonedBar percent={third.percent} styles={styles} />
-                    <Text style={[styles.thirdPercent, third.percent !== null && third.percent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
-                      {third.percent === null ? '-' : `${third.percent > 0 ? '+' : ''}${third.percent}%`}
-                    </Text>
+                    {formatAnalysisStats(third.myTimeLabel, third.bestTimeLabel, third.gapLabel) ? (
+                      <Text style={styles.thirdStatsText}>{formatAnalysisStats(third.myTimeLabel, third.bestTimeLabel, third.gapLabel)}</Text>
+                    ) : null}
                   </View>
                 ))}
                 <ZoneAxis normalLabel="OK" styles={styles} />
@@ -379,15 +407,20 @@ export function AnalysisModal({ onClose, state }: { onClose: () => void; state: 
                     <Ionicons color={colors.primary} name="bar-chart-outline" size={18} />
                   </View>
                   {analysis.legCategories.map((cat) => (
-                    <View key={cat.categoryLabel} style={styles.thirdRow}>
-                      <View style={styles.thirdLabelWrap}>
-                        <Text style={styles.thirdLabel}>{cat.categoryLabel}</Text>
-                        <Text style={styles.thirdDescription}>{cat.description} ({cat.legCount} str.)</Text>
+                    <View key={cat.categoryLabel} style={styles.thirdBlock}>
+                      <View style={styles.thirdRow}>
+                        <View style={styles.thirdLabelWrap}>
+                          <Text style={styles.thirdLabel}>{cat.categoryLabel}</Text>
+                          <Text style={styles.thirdDescription}>{cat.description} ({cat.legCount} str.)</Text>
+                        </View>
+                        <ZonedBar percent={cat.relativePercent} styles={styles} />
+                        <Text style={[styles.thirdPercent, cat.relativePercent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
+                          {cat.relativePercent > 0 ? '+' : ''}{cat.relativePercent}%
+                        </Text>
                       </View>
-                      <ZonedBar percent={cat.relativePercent} styles={styles} />
-                      <Text style={[styles.thirdPercent, cat.relativePercent > 5 ? styles.thirdPercentLoss : styles.thirdPercentGood]}>
-                        {cat.relativePercent > 0 ? '+' : ''}{cat.relativePercent}%
-                      </Text>
+                      {formatAnalysisStats(cat.myTotalLabel, cat.bestTotalLabel, cat.gapLabel) ? (
+                        <Text style={styles.thirdStatsText}>{formatAnalysisStats(cat.myTotalLabel, cat.bestTotalLabel, cat.gapLabel)}</Text>
+                      ) : null}
                     </View>
                   ))}
                   <ZoneAxis styles={styles} />
@@ -1213,11 +1246,11 @@ function createStyles(colors: ColorPalette) {
     color: colors.textPrimary,
   },
   thirdLabelWrap: {
-    width: 128,
+    width: ANALYSIS_LABEL_WIDTH,
   },
   thirdPercent: {
     ...typography.captionStrong,
-    minWidth: 48,
+    minWidth: ANALYSIS_PERCENT_WIDTH,
     textAlign: 'right',
   },
   thirdPercentGood: {
@@ -1230,6 +1263,17 @@ function createStyles(colors: ColorPalette) {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  thirdBlock: {
+    gap: 0,
+  },
+  thirdStatsText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: -4,
+    paddingLeft: ANALYSIS_LABEL_WIDTH + spacing.sm,
   },
   zonedTrack: {
     backgroundColor: colors.surfaceMuted,
@@ -1268,10 +1312,10 @@ function createStyles(colors: ColorPalette) {
     marginTop: 2,
   },
   zoneAxisSpacerLeft: {
-    width: 128,
+    width: ANALYSIS_LABEL_WIDTH,
   },
   zoneAxisSpacerRight: {
-    width: 48,
+    width: ANALYSIS_PERCENT_WIDTH,
   },
   zoneAxisStrip: {
     flex: 1,

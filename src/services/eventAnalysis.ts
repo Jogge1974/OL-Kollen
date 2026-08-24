@@ -2,8 +2,11 @@ import { EventSplitTimesRow, EventSplitTimesSection } from '@/src/types/eventSpl
 import { formatPacePerKmLabel } from '@/src/utils/pace';
 
 export type EventAnalysisThird = {
+  bestTimeLabel: string | null;
   controls: string;
   description: string;
+  gapLabel: string | null;
+  myTimeLabel: string | null;
   percent: number | null;
 };
 
@@ -63,11 +66,14 @@ export type EventAnalysisView = {
 export type EventAnalysisLegCategory = {
   avgPercent: number;
   avgSplitPlace: number;
+  bestTotalLabel: string | null;
   categoryLabel: string;
   description: string;
+  gapLabel: string | null;
   legCount: number;
   legWinCount: number;
   legs: string;
+  myTotalLabel: string | null;
   relativePercent: number;
 };
 
@@ -249,7 +255,7 @@ function ensureFinishSplitRow(row: EventSplitTimesRow) {
 }
 
 function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesRow, speedFactor: number) {
-  const empty = { controls: '', description: '', percent: null };
+  const empty = { bestTimeLabel: null, controls: '', description: '', gapLabel: null, myTimeLabel: null, percent: null };
   if (target.totalTimeSeconds === null || target.splitCount === 0) {
     return { firstThird: empty, secondThird: empty, thirdThird: empty };
   }
@@ -298,21 +304,44 @@ function buildThirdProgress(rows: EventSplitTimesRow[], target: EventSplitTimesR
   const secondPercent = calcThirdPercent(secondTargetTime, secondExpected);
   const thirdPercent = calcThirdPercent(thirdTargetTime, thirdExpected);
 
+  // Actual per-third times for every runner, so we can show my time, the best
+  // time and the gap (or lead over 2nd if I am fastest) under each bar.
+  const partTimes: number[][] = [[], [], []];
+  for (const row of okRows) {
+    const totals = buildTotalProgressValues(row);
+    const atFirst = totals[firstThirdEndLeg];
+    const atSecond = totals[secondThirdEndLeg];
+    const total = row.totalTimeSeconds;
+    if (atFirst == null || atSecond == null || total == null) continue;
+    [atFirst, atSecond - atFirst, total - atSecond].forEach((value, index) => {
+      if (Number.isFinite(value) && value > 0) partTimes[index].push(value);
+    });
+  }
+
+  const thirdStats = (myTime: number, values: number[]) => ({
+    bestTimeLabel: values.length ? formatTime(Math.min(...values)) : null,
+    gapLabel: values.length ? buildGapLabel(myTime, values) : null,
+    myTimeLabel: myTime > 0 ? formatTime(myTime) : null,
+  });
+
   return {
     firstThird: {
       controls: `Start-${firstThirdEndLeg + 1}`,
       description: describeThird(firstPercent),
       percent: firstPercent,
+      ...thirdStats(firstTargetTime, partTimes[0]),
     },
     secondThird: {
       controls: `${firstThirdEndLeg + 2}-${secondThirdEndLeg + 1}`,
       description: describeThird(secondPercent),
       percent: secondPercent,
+      ...thirdStats(secondTargetTime, partTimes[1]),
     },
     thirdThird: {
       controls: `${secondThirdEndLeg + 2}-Mål`,
       description: describeThird(thirdPercent),
       percent: thirdPercent,
+      ...thirdStats(thirdTargetTime, partTimes[2]),
     },
   };
 }
@@ -644,14 +673,35 @@ function buildLegCategories(
     const avgPlace = bucket.places.reduce((sum, v) => sum + v, 0) / bucket.places.length;
     const legLabels = bucket.indices.map((idx) => getLegLabel(idx, splitCount));
 
+    // My summed time for this leg type, plus every runner's summed time (only
+    // those with a valid time on every leg in the bucket) for best + gap.
+    const myTotal = bucket.indices.reduce((sum, idx) => sum + (getSplitTime(target, idx + 1) ?? 0), 0);
+    const categoryTotals: number[] = [];
+    for (const row of rows) {
+      let sum = 0;
+      let valid = true;
+      for (const idx of bucket.indices) {
+        const legTime = getSplitTime(row, idx + 1);
+        if (legTime === null) {
+          valid = false;
+          break;
+        }
+        sum += legTime;
+      }
+      if (valid) categoryTotals.push(sum);
+    }
+
     result.push({
       avgPercent: Math.round(avgPercent),
       avgSplitPlace: Math.round(avgPlace * 10) / 10,
+      bestTotalLabel: categoryTotals.length ? formatTime(Math.min(...categoryTotals)) : null,
       categoryLabel: cat,
       description: describeLegCategory(Math.round(avgPercent)),
+      gapLabel: categoryTotals.length ? buildGapLabel(myTotal, categoryTotals) : null,
       legCount: bucket.indices.length,
       legWinCount: bucket.wins,
       legs: legLabels.join(', '),
+      myTotalLabel: myTotal > 0 ? formatTime(myTotal) : null,
       relativePercent: Math.round(avgPercent),
     });
   }
