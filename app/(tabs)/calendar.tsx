@@ -238,7 +238,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     paddingTop: spacing.sm,
   },
   backgroundWash: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   backgroundOrbLarge: {
     backgroundColor: colors.backgroundGlow,

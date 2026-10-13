@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { recordEventorApiCall } from '../_shared/eventorCallCounter.ts';
 import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
 
 // ---------------------------------------------------------------------------
@@ -9,15 +10,15 @@ import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPu
 
 type FriendWatchRow = {
   created_at: string;
+  device_id: string;
   friend_person_id: string;
   friend_name: string;
   friend_club: string | null;
-  person_id: string;
   push_on_entry: boolean;
 };
 
 type TokenRow = {
-  person_id: string;
+  device_id: string;
   push_token: string;
 };
 
@@ -33,6 +34,8 @@ type EntryStateRow = {
 const EVENTOR_BASE_URL = 'https://eventor.orientering.se/api';
 
 async function fetchEventorXml(path: string): Promise<string> {
+  await recordEventorApiCall('poll-friend-entries', path);
+
   const apiKey = Deno.env.get('EVENTOR_API_KEY');
   if (!apiKey) throw new Error('Missing EVENTOR_API_KEY.');
 
@@ -103,6 +106,28 @@ function parseEntriesXml(xml: string): ParsedEntry[] {
   return [...seen.values()];
 }
 
+/**
+ * Split friend ids into chunks whose comma-joined length stays within a safe URL
+ * budget, so batching many personIds never produces an over-long request URL.
+ */
+function chunkIdsByLength(ids: string[], maxJoinedLen = 1500): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let joinedLen = 0;
+  for (const id of ids) {
+    const addLen = current.length > 0 ? id.length + 1 : id.length;
+    if (current.length > 0 && joinedLen + addLen > maxJoinedLen) {
+      chunks.push(current);
+      current = [];
+      joinedLen = 0;
+    }
+    joinedLen += current.length > 0 ? id.length + 1 : id.length;
+    current.push(id);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
@@ -135,11 +160,11 @@ Deno.serve(async (request) => {
       { data: tokens, error: tokensErr },
     ] = await Promise.all([
       supabase
-        .from('friend_watches')
-        .select('created_at, friend_club, friend_person_id, friend_name, person_id, push_on_entry'),
+        .from('device_friend_watches')
+        .select('created_at, friend_club, friend_person_id, friend_name, device_id, push_on_entry'),
       supabase
         .from('device_push_tokens')
-        .select('person_id, push_token')
+        .select('device_id, push_token')
         .eq('is_active', true)
         .not('push_token', 'is', null)
         .order('updated_at', { ascending: false }),
@@ -149,14 +174,14 @@ Deno.serve(async (request) => {
     if (tokensErr) throw tokensErr;
 
     const allWatches = (watches ?? []) as FriendWatchRow[];
-    const tokensByPerson = new Map<string, string[]>();
+    const tokensByDevice = new Map<string, string[]>();
     const seenTokens = new Set<string>();
     for (const row of (tokens ?? []) as TokenRow[]) {
       if (seenTokens.has(row.push_token)) continue;
       seenTokens.add(row.push_token);
-      const arr = tokensByPerson.get(row.person_id) ?? [];
+      const arr = tokensByDevice.get(row.device_id) ?? [];
       arr.push(row.push_token);
-      tokensByPerson.set(row.person_id, arr);
+      tokensByDevice.set(row.device_id, arr);
     }
 
     // 2. Unique friend person IDs
@@ -166,6 +191,12 @@ Deno.serve(async (request) => {
       return jsonOk({ checkedFriends: 0, ok: true, pushCount: 0 });
     }
 
+    // Entries change slowly (people register days/weeks ahead), so discover at a
+    // coarse cadence. Cron runs at :07/:27/:47 — only the :07 run discovers.
+    if (new Date().getUTCMinutes() >= 20) {
+      return jsonOk({ checkedFriends: uniqueFriendIds.length, ok: true, pushCount: 0, reason: 'non-discovery-tick' });
+    }
+
     // 3. Date window: entries for events from today up to 9 months ahead.
     //    We rely on friend_entry_state to deduplicate already-notified entries.
     const now = new Date();
@@ -173,28 +204,22 @@ Deno.serve(async (request) => {
     const toDate = new Date(now.getTime() + 270 * 24 * 60 * 60 * 1000);
     const toEventDate = formatEventorDate(toDate);
 
-    // 4. Fetch entries for each friend from Eventor
+    // 4. Fetch entries for ALL friends in as few calls as possible by batching
+    // their personIds (comma-separated), chunked to keep the URL length safe.
     const allParsedEntries: ParsedEntry[] = [];
-    const BATCH_SIZE = 5;
+    const chunks = chunkIdsByLength(uniqueFriendIds);
 
-    for (let i = 0; i < uniqueFriendIds.length; i += BATCH_SIZE) {
-      const batch = uniqueFriendIds.slice(i, i + BATCH_SIZE);
-
-      await Promise.all(
-        batch.map(async (friendId) => {
-          try {
-            const path = `/entries?personIds=${friendId}&includeEventElement=true` +
-              `&fromEventDate=${fromEventDate}&toEventDate=${toEventDate}`;
-            const xml = await fetchEventorXml(path);
-            const entries = parseEntriesXml(xml);
-            for (const entry of entries) {
-              allParsedEntries.push(entry);
-            }
-          } catch (err) {
-            console.warn(`[poll-friend-entries] Eventor fetch failed for friend ${friendId}:`, err);
-          }
-        }),
-      );
+    for (const chunk of chunks) {
+      try {
+        const path = `/entries?personIds=${chunk.join(',')}&includeEventElement=true` +
+          `&fromEventDate=${fromEventDate}&toEventDate=${toEventDate}`;
+        const xml = await fetchEventorXml(path);
+        for (const entry of parseEntriesXml(xml)) {
+          allParsedEntries.push(entry);
+        }
+      } catch (err) {
+        console.warn(`[poll-friend-entries] Eventor entries fetch failed for chunk (${chunk.length} ids):`, err);
+      }
     }
 
     if (allParsedEntries.length === 0) {
@@ -254,7 +279,7 @@ Deno.serve(async (request) => {
 
         hasEligibleWatcher = true;
 
-        const userTokens = tokensByPerson.get(watch.person_id);
+        const userTokens = tokensByDevice.get(watch.device_id);
         if (!userTokens || userTokens.length === 0) continue;
         hasTokenForEligible = true;
 

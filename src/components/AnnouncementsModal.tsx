@@ -60,7 +60,7 @@ function createStyles(colors: ColorPalette) {
       justifyContent: 'flex-end',
     },
     backdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
     },
     sheet: {
       backgroundColor: colors.background,

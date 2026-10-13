@@ -1001,7 +1001,7 @@ function createStyles(colors: ColorPalette) {
     textAlign: 'right',
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   modalCloseChip: {
     alignItems: 'center',
@@ -1080,7 +1080,7 @@ function createStyles(colors: ColorPalette) {
     padding: spacing.lg,
   },
   infoBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   infoCard: {
     backgroundColor: colors.background,
@@ -1284,7 +1284,7 @@ function createStyles(colors: ColorPalette) {
     position: 'relative',
   },
   zonedBands: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
   },
   zonedBand: {

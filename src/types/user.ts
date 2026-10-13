@@ -14,13 +14,7 @@ export type AuthenticatedUser = {
   username: string;
 };
 
-export type EventorLoginInput = {
-  password: string;
-  username: string;
-};
-
-export type PersistedAuthSession = {
-  rememberedUsername?: string | null;
+export type PersistedIdentitySession = {
   user: AuthenticatedUser;
 };
 

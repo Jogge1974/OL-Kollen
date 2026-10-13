@@ -4,17 +4,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Kontrollen',
   slug: 'ol-kollen',
-  version: '1.7.2',
+  version: '2.0.0',
   orientation: 'portrait',
   icon: './assets/icon1024.png',
   userInterfaceStyle: 'light',
-  newArchEnabled: true,
   scheme: 'olkollen',
-  splash: {
-    image: './assets/icon1024.png',
-    resizeMode: 'contain',
-    backgroundColor: '#F4F8EE',
-  },
   ios: {
     infoPlist: {
           ITSAppUsesNonExemptEncryption: false,
@@ -22,12 +16,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           CFBundleLocalizations: ['sv'],
     },
     bundleIdentifier: 'se.mastol.kontrollen',
-    buildNumber: '30',
+    buildNumber: '31',
     supportsTablet: true,
   },
   android: {
     package: 'se.mastol.kontrollen',
-    versionCode: 30,
+    versionCode: 31,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       foregroundImage: './assets/icon1024.png',
@@ -38,7 +32,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
       },
     },
-    edgeToEdgeEnabled: true,
   },
   web: {
     favicon: './assets/icon1024.png',
@@ -49,6 +42,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-font',
     '@react-native-community/datetimepicker',
     'expo-notifications',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/icon1024.png',
+        resizeMode: 'contain',
+        backgroundColor: '#F4F8EE',
+      },
+    ],
     [
       'expo-location',
       {

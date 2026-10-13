@@ -198,7 +198,7 @@ function getTabIconName(routeName: string, focused: boolean) {
 function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     menuBackdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: colors.overlay,
     },
     menuCard: {

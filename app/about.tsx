@@ -119,7 +119,7 @@ export default function AboutScreen() {
 
         <View onLayout={(e) => { feedbackCardY.current = e.nativeEvent.layout.y; }} style={styles.card}>
           <Text style={styles.bodyText}>
-            Har du feedback, förslag eller har hittat något som inte verkar stämma? Skicka gärna ett meddelande till oss.
+            Har du feedback, förslag eller har hittat något som inte verkar stämma? Skicka gärna ett meddelande och berätta.
           </Text>
 
           <AppTextField
@@ -147,12 +147,23 @@ export default function AboutScreen() {
             value={feedbackText}
           />
 
-          <Pressable onPress={() => setWantsReply((v) => !v)} style={styles.checkboxRow}>
-            <View style={[styles.checkbox, wantsReply ? styles.checkboxChecked : null]}>
-              {wantsReply ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
+          <View style={styles.radioQuestionRow}>
+            <Text style={styles.radioQuestion}>Önskar du svar på synpunkten?</Text>
+            <View style={styles.radioRow}>
+              <Pressable onPress={() => setWantsReply(false)} style={styles.radioOption}>
+                <View style={[styles.radioCircle, !wantsReply ? styles.radioCircleSelected : null]}>
+                  {!wantsReply ? <View style={styles.radioDot} /> : null}
+                </View>
+                <Text style={styles.radioLabel}>Nej</Text>
+              </Pressable>
+              <Pressable onPress={() => setWantsReply(true)} style={styles.radioOption}>
+                <View style={[styles.radioCircle, wantsReply ? styles.radioCircleSelected : null]}>
+                  {wantsReply ? <View style={styles.radioDot} /> : null}
+                </View>
+                <Text style={styles.radioLabel}>Ja</Text>
+              </Pressable>
             </View>
-            <Text style={styles.checkboxLabel}>Önskar du svar på synpunkten?</Text>
-          </Pressable>
+          </View>
 
           {wantsReply ? (
             <AppTextField
@@ -260,26 +271,47 @@ function createStyles(colors: ColorPalette) {
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  checkboxRow: {
+  radioQuestionRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  radioQuestion: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  radioRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
     paddingVertical: spacing.xs,
   },
-  checkbox: {
+  radioOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  radioCircle: {
     alignItems: 'center',
     borderColor: colors.border,
-    borderRadius: 6,
+    borderRadius: 999,
     borderWidth: 1.5,
     height: 22,
     justifyContent: 'center',
     width: 22,
   },
-  checkboxChecked: {
-    backgroundColor: colors.primaryDeep,
+  radioCircleSelected: {
     borderColor: colors.primaryDeep,
   },
-  checkboxLabel: {
+  radioDot: {
+    backgroundColor: colors.primaryDeep,
+    borderRadius: 999,
+    height: 12,
+    width: 12,
+  },
+  radioLabel: {
     ...typography.body,
     color: colors.textPrimary,
   },

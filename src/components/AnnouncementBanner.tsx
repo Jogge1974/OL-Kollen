@@ -1,9 +1,10 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 
+import { openExternalLink } from '@/src/store/externalLinkStore';
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -51,7 +52,7 @@ export function AnnouncementBanner({
 
   const handleAction = () => {
     if (announcement.actionUrl) {
-      void Linking.openURL(announcement.actionUrl);
+      openExternalLink(announcement.actionUrl);
     }
   };
 

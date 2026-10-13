@@ -2,13 +2,16 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
+import { AppButton } from '@/src/components/AppButton';
+import { ACTIVITIES_API_ORG_ID, isActivityExpired } from '@/src/api/eventorActivities';
 import { useOrganisationActivities } from '@/src/hooks/useOrganisationActivities';
 import { useAuthStore } from '@/src/store/authStore';
+import { openExternalLink } from '@/src/store/externalLinkStore';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -22,30 +25,34 @@ export default function KlubbaktiviteterScreen() {
   const user = useAuthStore((state) => state.user);
   const organisationId = user?.organisationIds[0] ?? null;
   const clubName = user?.organisationName ?? null;
+  const canFetchActivities = organisationId === ACTIVITIES_API_ORG_ID;
 
-  const { error, isLoading, reload, sections } = useOrganisationActivities(organisationId);
+  const { activities, availableYears, error, isLoading, reload, selectedYear, setSelectedYear } = useOrganisationActivities(
+    canFetchActivities ? organisationId : null,
+  );
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
-    try {
-      await reload(true);
-    } finally {
-      setIsRefreshing(false);
-    }
+    reload();
+    setIsRefreshing(false);
   }, [reload]);
 
-  const totalCount = sections ? sections.club.length + sections.district.length + sections.soft.length : 0;
+  const activeCount = activities.filter((activity) => !isActivityExpired(activity)).length;
   const heroChips =
-    sections && !isLoading && !error
-      ? [{ icon: 'albums-outline' as const, label: 'Aktiviteter', value: String(totalCount) }]
+    user && organisationId && canFetchActivities && !isLoading && !error
+      ? [
+          { icon: 'albums-outline' as const, label: 'Aktiviteter', value: String(activities.length) },
+          { icon: 'flash-outline' as const, label: 'Aktiva', value: String(activeCount) },
+        ]
       : undefined;
 
-  const openActivity = (activity: ClubActivity) => router.push({ params: { id: activity.id }, pathname: '/klubbaktivitet/[id]' });
+  const openActivity = (activity: ClubActivity) =>
+    router.push({ params: { id: activity.id, year: String(selectedYear) }, pathname: '/klubbaktivitet/[id]' });
 
   const renderBody = () => {
     if (!user) {
-      return <EmptyState description="Logga in för att se din klubbs aktiviteter." title="Inte inloggad" />;
+      return  <AppButton icon="person-add-outline" label="Välj användare i Inställningar" onPress={() => router.push('/settings')} />
     }
 
     if (!organisationId) {
@@ -54,6 +61,18 @@ export default function KlubbaktiviteterScreen() {
           description="Ingen klubb hittades på ditt konto i Eventor, så några klubbaktiviteter kan inte visas."
           title="Ingen klubb"
         />
+      );
+    }
+
+    if (!canFetchActivities) {
+      return (
+        <View style={styles.restrictedBox}>
+          <EmptyState description="Klubbaktiviteter kan bara visas i appen för OK Tyr just nu. Öppna din klubbs aktiviteter i Eventor istället. Vill du visa din klubbs aktiviteter här behöver din klubb ansluta till Kontrollen. Skicka ett meddelande i Inställningar/Om Kontrollen för att höra vad som krävs." title="Aktiviteter kan inte visas" />
+          <AppButton
+            label="Öppna i Eventor"
+            onPress={() => openExternalLink(`https://eventor.orientering.se/Activities?organisationId=${organisationId}`)}
+          />
+        </View>
       );
     }
 
@@ -70,31 +89,38 @@ export default function KlubbaktiviteterScreen() {
       return <EmptyState description={error} title="Kunde inte hämta aktiviteter" />;
     }
 
-    if (!sections) {
-      return null;
+    if (activities.length === 0) {
+      return <EmptyState description="Det finns inga registrerade aktiviteter för det valda året." title="Inga aktiviteter" />;
     }
+
+    const activeActivities = activities.filter((activity) => !isActivityExpired(activity));
+    const pastActivities = activities.filter((activity) => isActivityExpired(activity));
 
     return (
       <>
-        <ActivityGroup
-          activities={sections.club}
-          colors={colors}
-          onOpen={openActivity}
-          styles={styles}
-          title={`Aktiviteter ${sections.clubName ?? clubName ?? ''}`.trim()}
-        />
+        {activeActivities.length > 0 ? (
+          <View style={styles.list}>
+            {activeActivities.map((activity) => (
+              <ActivityRow activity={activity} colors={colors} key={activity.id} onPress={() => openActivity(activity)} styles={styles} />
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.noActiveText}>Inga aktiva aktiviteter just nu.</Text>
+        )}
 
-        {sections.districtName ? (
-          <ActivityGroup
-            activities={sections.district}
-            colors={colors}
-            onOpen={openActivity}
-            styles={styles}
-            title={`Aktiviteter ${sections.districtName}`}
-          />
+        {pastActivities.length > 0 ? (
+          <View style={styles.pastSection}>
+            <View style={styles.pastHeader}>
+              <Text style={styles.pastHeaderText}>Tidigare aktiviteter</Text>
+              <View style={styles.pastHeaderLine} />
+            </View>
+            <View style={styles.list}>
+              {pastActivities.map((activity) => (
+                <ActivityRow activity={activity} colors={colors} isPast key={activity.id} onPress={() => openActivity(activity)} styles={styles} />
+              ))}
+            </View>
+          </View>
         ) : null}
-
-        <ActivityGroup activities={sections.soft} colors={colors} onOpen={openActivity} styles={styles} title="Aktiviteter SOFT" />
       </>
     );
   };
@@ -103,7 +129,9 @@ export default function KlubbaktiviteterScreen() {
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
+        refreshControl={
+          canFetchActivities ? <RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} /> : undefined
+        }
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeroHeader
@@ -114,15 +142,36 @@ export default function KlubbaktiviteterScreen() {
           topRightContent={
             organisationId ? (
               <Pressable
-                onPress={() => void Linking.openURL(`https://eventor.orientering.se/Activities?organisationId=${organisationId}`)}
+                onPress={() => openExternalLink(`https://eventor.orientering.se/Activities?organisationId=${organisationId}`)}
                 style={styles.eventorBadge}
               >
                 <Ionicons color={colors.heroText} name="open-outline" size={13} />
-                <Text style={styles.eventorBadgeText}>Alla i Eventor</Text>
+                <Text style={styles.eventorBadgeText}>Öppna i Eventor</Text>
               </Pressable>
             ) : undefined
           }
         />
+
+        {user && organisationId && canFetchActivities ? (
+          <ScrollView contentContainerStyle={styles.yearRow} horizontal showsHorizontalScrollIndicator={false}>
+            {availableYears.map((year) => (
+              <Pressable
+                key={year}
+                onPress={() => setSelectedYear(year)}
+                style={[styles.yearChip, selectedYear === year ? styles.yearChipActive : null]}
+              >
+                <Text style={[styles.yearChipText, selectedYear === year ? styles.yearChipTextActive : null]}>{year}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        {user && organisationId && canFetchActivities ? (
+          <AppButton
+            label="Till alla aktiviteter i Eventor"
+            onPress={() => openExternalLink(`https://eventor.orientering.se/Activities?organisationId=${organisationId}`)}
+          />
+        ) : null}
 
         {renderBody()}
       </ScrollView>
@@ -130,82 +179,48 @@ export default function KlubbaktiviteterScreen() {
   );
 }
 
-function ActivityGroup({
-  activities,
-  colors,
-  onOpen,
-  styles,
-  title,
-}: {
-  activities: ClubActivity[];
-  colors: ColorPalette;
-  onOpen: (activity: ClubActivity) => void;
-  styles: ReturnType<typeof createStyles>;
-  title: string;
-}) {
-  const sorted = React.useMemo(() => sortActivitiesByDeadline(activities), [activities]);
-
-  return (
-    <View style={styles.group}>
-      <View style={styles.groupHeader}>
-        <Text style={styles.groupHeaderText}>{title}</Text>
-        <View style={styles.groupHeaderLine} />
-      </View>
-      {sorted.length > 0 ? (
-        <View style={styles.list}>
-          {sorted.map((activity) => (
-            <ActivityRow activity={activity} colors={colors} key={activity.id} onPress={() => onOpen(activity)} styles={styles} />
-          ))}
-        </View>
-      ) : (
-        <Text style={styles.emptyGroupText}>Inga aktiviteter för tillfället.</Text>
-      )}
-    </View>
-  );
-}
-
 function ActivityRow({
   activity,
   colors,
+  isPast = false,
   onPress,
   styles,
 }: {
   activity: ClubActivity;
   colors: ColorPalette;
+  isPast?: boolean;
   onPress: () => void;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const deadline = describeDeadline(activity.registrationDeadlineIso);
+  const deadline = describeDeadline(activity.registrationDeadline);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, isPast ? styles.cardPast : null, pressed ? styles.cardPressed : null]}>
       <View style={styles.cardBody}>
         <Text numberOfLines={1} style={styles.cardTitle}>
           {activity.name}
         </Text>
 
         <View style={styles.cardMetaRow}>
-          {deadline ? (
-            deadline.tone === 'closed' ? (
-              <View style={styles.closedBadge}>
-                <Ionicons color="#fff" name="lock-closed" size={12} />
-                <Text style={styles.closedBadgeText}>{deadline.label}</Text>
-              </View>
-            ) : deadline.urgent ? (
-              <View style={styles.deadlineBadge}>
-                <Ionicons color={colors.error} name="alarm-outline" size={12} />
-                <Text style={styles.deadlineBadgeText}>{deadline.label}</Text>
-              </View>
-            ) : (
-              <View style={styles.cardMetaItem}>
-                <Ionicons color={colors.primary} name="time-outline" size={14} />
-                <Text style={styles.cardMetaText}>{deadline.label}</Text>
-              </View>
-            )
-          ) : null}
+          {deadline.tone === 'closed' ? (
+            <View style={styles.closedBadge}>
+              <Ionicons color="#fff" name="lock-closed" size={12} />
+              <Text style={styles.closedBadgeText}>{deadline.label}</Text>
+            </View>
+          ) : deadline.urgent ? (
+            <View style={styles.deadlineBadge}>
+              <Ionicons color={colors.error} name="alarm-outline" size={12} />
+              <Text style={styles.deadlineBadgeText}>{deadline.label}</Text>
+            </View>
+          ) : (
+            <View style={styles.cardMetaItem}>
+              <Ionicons color={colors.primary} name="time-outline" size={14} />
+              <Text style={styles.cardMetaText}>{deadline.label}</Text>
+            </View>
+          )}
           <View style={styles.cardMetaItem}>
             <Ionicons color={colors.primary} name="people-outline" size={14} />
-            <Text style={styles.cardMetaText}>{activity.registrationCount} anm.</Text>
+            <Text style={styles.cardMetaText}>{activity.registrationCount} anmälda</Text>
           </View>
         </View>
       </View>
@@ -217,39 +232,18 @@ function ActivityRow({
 
 type DeadlineInfo = { label: string; tone: 'open' | 'closed'; urgent: boolean };
 
-// Soonest-closing first; activities with no deadline in the middle; closed last
-// (most recently closed nearest the still-open ones).
-function sortActivitiesByDeadline(activities: ClubActivity[]): ClubActivity[] {
-  const bucketAndTime = (activity: ClubActivity): [number, number] => {
-    const iso = activity.registrationDeadlineIso;
-    const time = iso ? new Date(iso).getTime() : Number.NaN;
-    if (iso && Number.isFinite(time)) {
-      return time < Date.now() ? [2, time] : [0, time];
-    }
-    return [1, 0];
-  };
-
-  return [...activities].sort((a, b) => {
-    const [bucketA, timeA] = bucketAndTime(a);
-    const [bucketB, timeB] = bucketAndTime(b);
-    if (bucketA !== bucketB) {
-      return bucketA - bucketB;
-    }
-    return bucketA === 2 ? timeB - timeA : timeA - timeB;
-  });
-}
-
-function describeDeadline(iso: string | null): DeadlineInfo | null {
-  if (!iso) {
-    return null;
+function describeDeadline(deadline: string | null): DeadlineInfo {
+  if (!deadline) {
+    return { label: 'Ingen anmälningstid', tone: 'open', urgent: false };
   }
 
-  const deadlineTime = new Date(iso).getTime();
+  const deadlineTime = new Date(deadline).getTime();
   if (!Number.isFinite(deadlineTime)) {
-    return null;
+    return { label: 'Ingen anmälningstid', tone: 'open', urgent: false };
   }
 
-  if (deadlineTime < Date.now()) {
+  const now = Date.now();
+  if (deadlineTime < now) {
     return { label: 'Anmälan stängd', tone: 'closed', urgent: true };
   }
 
@@ -267,7 +261,7 @@ function describeDeadline(iso: string | null): DeadlineInfo | null {
     return { label: '1 dag kvar', tone: 'open', urgent: true };
   }
 
-  if (days <= 10) {
+  if (days <= 3) {
     return { label: `${days} dagar kvar`, tone: 'open', urgent: true };
   }
 
@@ -305,8 +299,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.caption,
       color: colors.textSecondary,
     },
-    cardMetaTextMuted: {
-      color: colors.textMuted,
+    cardPast: {
+      backgroundColor: isDark ? 'rgba(224, 96, 96, 0.08)' : 'rgba(183, 59, 59, 0.05)',
+      borderColor: isDark ? 'rgba(224, 96, 96, 0.35)' : 'rgba(183, 59, 59, 0.30)',
     },
     cardPressed: {
       opacity: 0.85,
@@ -351,10 +346,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.error,
       fontSize: 11,
     },
-    emptyGroupText: {
-      ...typography.body,
-      color: colors.textSecondary,
-    },
     eventorBadge: {
       alignItems: 'center',
       backgroundColor: 'rgba(255, 255, 255, 0.16)',
@@ -371,25 +362,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.heroText,
       fontSize: 12,
     },
-    group: {
-      gap: spacing.sm,
-    },
-    groupHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    groupHeaderLine: {
-      backgroundColor: colors.border,
-      flex: 1,
-      height: 1,
-    },
-    groupHeaderText: {
-      ...typography.captionStrong,
-      color: colors.primary,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase',
-    },
     list: {
       gap: spacing.sm,
     },
@@ -402,9 +374,62 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.body,
       color: colors.textSecondary,
     },
+    noActiveText: {
+      ...typography.body,
+      color: colors.textSecondary,
+    },
+    pastHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    pastHeaderLine: {
+      backgroundColor: colors.border,
+      flex: 1,
+      height: 1,
+    },
+    pastHeaderText: {
+      ...typography.captionStrong,
+      color: colors.error,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    pastSection: {
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+    },
+    restrictedBox: {
+      gap: spacing.md,
+    },
     safeArea: {
       backgroundColor: colors.background,
       flex: 1,
+    },
+    yearChip: {
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
+    },
+    yearChipActive: {
+      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+      borderColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
+    },
+    yearChipText: {
+      color: colors.textPrimary,
+      fontFamily: typography.bodyStrong.fontFamily,
+      fontSize: 14,
+      lineHeight: 17,
+    },
+    yearChipTextActive: {
+      color: colors.heroText,
+    },
+    yearRow: {
+      flexDirection: 'row',
+      gap: spacing.xs,
+      paddingBottom: 2,
     },
   });
 }

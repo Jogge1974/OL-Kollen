@@ -80,11 +80,6 @@ export function createPushSyncPayload(args: {
   fullName: string | null;
   notificationSettings: NotificationSettings;
   personId: string;
-  preferences?: {
-    calendarDefaultFilterTemplate?: unknown;
-    calendarFilterPresets?: unknown;
-    favoriteClasses?: string[];
-  } | null;
   username: string;
 }): Record<string, unknown> {
   return {
@@ -92,7 +87,6 @@ export function createPushSyncPayload(args: {
     favoriteEvents: args.favoriteEvents,
     friends: args.friends,
     notificationSettings: args.notificationSettings,
-    preferences: args.preferences ?? null,
     user: {
       clubId: args.clubId,
       clubName: args.clubName,
@@ -104,27 +98,12 @@ export function createPushSyncPayload(args: {
   };
 }
 
+// personId here is only a placeholder to satisfy push-sync's required
+// payload.user.personId field — the 'logout' action deactivates by device_id.
 export function createLogoutSyncPayload(personId: string, device: PushSyncPayload['device']): Record<string, unknown> {
   return {
     action: 'logout',
     device,
-    favoriteEvents: [],
-    notificationSettings: { pushOnResultList: false, pushOnStartList: false },
-    user: {
-      clubId: null,
-      clubName: null,
-      email: null,
-      fullName: null,
-      personId,
-      username: '',
-    },
-  };
-}
-
-export function createFetchProfilePayload(personId: string): Record<string, unknown> {
-  return {
-    action: 'fetch-profile',
-    device: null,
     favoriteEvents: [],
     notificationSettings: { pushOnResultList: false, pushOnStartList: false },
     user: {

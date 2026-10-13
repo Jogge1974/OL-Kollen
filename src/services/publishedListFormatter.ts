@@ -111,7 +111,7 @@ function formatEntriesXml(xml: string, options: PublishedListFormatOptions): Pub
 
       return {
         classLabel:
-          (eventClassId ? options.eventClassNameById?.[eventClassId] ?? null : null) ??
+          (eventClassId ? options.eventClassNameById?.[eventClassId] : null) ??
           getString(eventClass?.Name) ??
           getString(eventClass?.ClassShortName) ??
           getString(entryClass?.Name) ??
@@ -189,7 +189,7 @@ function formatRelayEntriesXml(entryNodes: Record<string, unknown>[], options: P
     const entryClass = getRecord(entry.EntryClass);
     const eventClassId = getNodeText(entryClass?.EventClassId) ?? getNodeText(entry.EventClassId);
     const classLabel =
-      (eventClassId ? options.eventClassNameById?.[eventClassId] ?? null : null) ??
+      (eventClassId ? options.eventClassNameById?.[eventClassId] : null) ??
       (eventClassId ? `Klass ${eventClassId}` : 'Okand klass');
 
     const members = teamCompetitors

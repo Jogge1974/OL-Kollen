@@ -8,21 +8,21 @@ type WatchRow = {
   event_id: string;
   event_name: string;
   event_date: string | null;
-  person_id: string;
+  device_id: string;
 };
 
 type PreferenceRow = {
-  person_id: string;
+  device_id: string;
   push_on_entry_deadline: boolean;
 };
 
 type TokenRow = {
-  person_id: string;
+  device_id: string;
   push_token: string | null;
 };
 
 type StateRow = {
-  person_id: string;
+  device_id: string;
   event_id: string;
   reminder_type: string;
 };
@@ -56,6 +56,19 @@ function todayStockholmIso(): string {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Stockholm calendar date (YYYY-MM-DD) for a stored timestamptz, so "checked
+ * today" survives across UTC midnight. */
+function stockholmIsoDateFromTimestamp(value: string): string {
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Stockholm',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value));
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
@@ -96,10 +109,10 @@ Deno.serve(async (request) => {
 
     const [{ data: watches, error: watchesError }, { data: preferences, error: preferencesError }, { data: tokens, error: tokensError }, { data: states, error: statesError }] =
       await Promise.all([
-        supabase.from('favorite_event_watches').select('event_id, event_name, event_date, person_id'),
-        supabase.from('notification_preferences').select('person_id, push_on_entry_deadline').eq('push_on_entry_deadline', true),
-        supabase.from('device_push_tokens').select('person_id, push_token').eq('is_active', true).not('push_token', 'is', null),
-        supabase.from('entry_deadline_state').select('person_id, event_id, reminder_type'),
+        supabase.from('device_favorite_watches').select('event_id, event_name, event_date, device_id'),
+        supabase.from('device_notification_preferences').select('device_id, push_on_entry_deadline').eq('push_on_entry_deadline', true),
+        supabase.from('device_push_tokens').select('device_id, push_token').eq('is_active', true).not('push_token', 'is', null),
+        supabase.from('entry_deadline_state').select('device_id, event_id, reminder_type'),
       ]);
 
     if (watchesError) throw watchesError;
@@ -107,57 +120,98 @@ Deno.serve(async (request) => {
     if (tokensError) throw tokensError;
     if (statesError) throw statesError;
 
-    const optedInPersonIds = new Set((preferences as PreferenceRow[] | null ?? []).map((row) => row.person_id));
+    const optedInDeviceIds = new Set((preferences as PreferenceRow[] | null ?? []).map((row) => row.device_id));
 
-    const tokensByPersonId = new Map<string, string[]>();
+    const tokensByDeviceId = new Map<string, string[]>();
     const seenTokens = new Set<string>();
     for (const row of (tokens as TokenRow[] | null ?? [])) {
       if (!row.push_token || seenTokens.has(row.push_token)) continue;
       seenTokens.add(row.push_token);
-      const existing = tokensByPersonId.get(row.person_id) ?? [];
+      const existing = tokensByDeviceId.get(row.device_id) ?? [];
       existing.push(row.push_token);
-      tokensByPersonId.set(row.person_id, existing);
+      tokensByDeviceId.set(row.device_id, existing);
     }
 
     const notifiedSet = new Set<string>();
     for (const row of (states as StateRow[] | null ?? [])) {
-      notifiedSet.add(`${row.person_id}::${row.event_id}::${row.reminder_type}`);
+      notifiedSet.add(`${row.device_id}::${row.event_id}::${row.reminder_type}`);
     }
 
     // Group the qualifying watches (opted-in + has token + upcoming) by base event
-    // id so each event is fetched once. Each user keeps their own event name.
-    const eventGroups = new Map<string, Map<string, string>>(); // baseEventId -> (personId -> eventName)
+    // id so each event is fetched once. Each device keeps its own event name.
+    // eventDateByBaseEventId keeps the LATEST stage date seen per base event (a
+    // multi-stage event's favorites can carry different per-stage dates) so the
+    // deadline cache is only purged once every stage is over.
+    const eventGroups = new Map<string, Map<string, string>>(); // baseEventId -> (deviceId -> eventName)
+    const eventDateByBaseEventId = new Map<string, string>();
 
     for (const watch of (watches as WatchRow[] | null ?? [])) {
-      if (!optedInPersonIds.has(watch.person_id)) continue;
-      if (!tokensByPersonId.has(watch.person_id)) continue;
+      if (!optedInDeviceIds.has(watch.device_id)) continue;
+      if (!tokensByDeviceId.has(watch.device_id)) continue;
       if (watch.event_date && watch.event_date < todayIso) continue;
 
       const baseEventId = watch.event_id.split('::')[0] ?? watch.event_id;
-      const perPerson = eventGroups.get(baseEventId) ?? new Map<string, string>();
-      if (!perPerson.has(watch.person_id)) {
-        perPerson.set(watch.person_id, watch.event_name);
+      const perDevice = eventGroups.get(baseEventId) ?? new Map<string, string>();
+      if (!perDevice.has(watch.device_id)) {
+        perDevice.set(watch.device_id, watch.event_name);
       }
-      eventGroups.set(baseEventId, perPerson);
+      eventGroups.set(baseEventId, perDevice);
+
+      if (watch.event_date) {
+        const currentMax = eventDateByBaseEventId.get(baseEventId);
+        if (!currentMax || watch.event_date > currentMax) {
+          eventDateByBaseEventId.set(baseEventId, watch.event_date);
+        }
+      }
     }
+
+    // Purge cache rows for events whose (latest) stage date has already passed —
+    // nothing left to remind about, so stop carrying them forever.
+    await supabase.from('event_entry_deadline_cache').delete().lt('event_date', todayIso);
+
+    const { data: cachedDeadlines } = await supabase
+      .from('event_entry_deadline_cache')
+      .select('event_id, ordinary_deadline, checked_at')
+      .in('event_id', [...eventGroups.keys()]);
+    const deadlineCacheByEventId = new Map((cachedDeadlines ?? []).map((row) => [row.event_id as string, row as { ordinary_deadline: string | null; checked_at: string }]));
 
     const nowNaive = nowStockholmNaiveMs();
     // Each due reminder is collected with the tokens it targets so we can send
     // FIRST and only record state for reminders that reached a valid token.
-    const pending: Array<{ baseEventId: string; body: string; eventName: string; personId: string; reminderType: ReminderType; tokens: string[] }> = [];
+    const pending: Array<{ baseEventId: string; body: string; deviceId: string; eventName: string; reminderType: ReminderType; tokens: string[] }> = [];
 
     let checkedEvents = 0;
 
-    for (const [baseEventId, personNames] of eventGroups) {
-      let ordinaryDeadline: string | null;
-      try {
-        const xml = await fetchEventDetailXml(baseEventId);
-        ordinaryDeadline = extractOrdinaryEntryDeadline(xml);
-      } catch {
-        continue;
-      }
+    for (const [baseEventId, deviceNames] of eventGroups) {
+      const cached = deadlineCacheByEventId.get(baseEventId);
+      const checkedToday = cached ? stockholmIsoDateFromTimestamp(cached.checked_at) === todayIso : false;
 
-      checkedEvents += 1;
+      let ordinaryDeadline: string | null;
+
+      if (cached && checkedToday) {
+        // Already validated today — reuse the cached deadline, no Eventor call.
+        ordinaryDeadline = cached.ordinary_deadline;
+      } else {
+        try {
+          const xml = await fetchEventDetailXml(baseEventId, 'poll-entry-deadlines');
+          ordinaryDeadline = extractOrdinaryEntryDeadline(xml);
+        } catch {
+          if (!cached) continue;
+          // Fetch failed — fall back to the last known deadline rather than skipping.
+          ordinaryDeadline = cached.ordinary_deadline;
+        }
+
+        checkedEvents += 1;
+        await supabase.from('event_entry_deadline_cache').upsert(
+          {
+            checked_at: new Date().toISOString(),
+            event_date: eventDateByBaseEventId.get(baseEventId) ?? null,
+            event_id: baseEventId,
+            ordinary_deadline: ordinaryDeadline,
+          },
+          { onConflict: 'event_id' },
+        );
+      }
 
       if (!ordinaryDeadline) continue;
 
@@ -175,15 +229,15 @@ Deno.serve(async (request) => {
       // Fire from three hours before up until the deadline itself.
       const threeHoursDue = nowNaive >= threeHourTrigger && nowNaive < deadlineNaive;
 
-      for (const [personId, eventName] of personNames) {
-        const pushTokens = tokensByPersonId.get(personId) ?? [];
+      for (const [deviceId, eventName] of deviceNames) {
+        const pushTokens = tokensByDeviceId.get(deviceId) ?? [];
         if (pushTokens.length === 0) continue;
 
         const queue = (reminderType: ReminderType, body: string) => {
-          const key = `${personId}::${baseEventId}::${reminderType}`;
+          const key = `${deviceId}::${baseEventId}::${reminderType}`;
           if (notifiedSet.has(key)) return;
           notifiedSet.add(key);
-          pending.push({ baseEventId, body, eventName, personId, reminderType, tokens: pushTokens });
+          pending.push({ baseEventId, body, deviceId, eventName, reminderType, tokens: pushTokens });
         };
 
         if (dayBeforeDue) {
@@ -226,10 +280,10 @@ Deno.serve(async (request) => {
     if (!sendFailed) {
       const stateInserts = pending
         .filter((reminder) => reminder.tokens.some((token) => !invalidTokenSet.has(token)))
-        .map((reminder) => ({ person_id: reminder.personId, event_id: reminder.baseEventId, reminder_type: reminder.reminderType }));
+        .map((reminder) => ({ device_id: reminder.deviceId, event_id: reminder.baseEventId, reminder_type: reminder.reminderType }));
 
       if (stateInserts.length > 0) {
-        await supabase.from('entry_deadline_state').upsert(stateInserts, { onConflict: 'person_id,event_id,reminder_type' });
+        await supabase.from('entry_deadline_state').upsert(stateInserts, { onConflict: 'device_id,event_id,reminder_type' });
       }
     }
 

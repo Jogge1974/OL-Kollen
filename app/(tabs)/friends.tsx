@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFocusEffect } from 'expo-router';
@@ -10,11 +10,12 @@ import { useFocusEffect } from 'expo-router';
 import { AppTextField } from '@/src/components/AppTextField';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
-import { fetchEventorEventById, fetchPersonEntriesXml, fetchPersonResultsXml, fetchPersonStartsXml } from '@/src/api/eventorApi';
+import { fetchEventorEventById, fetchPersonResultsXml, fetchPersonStartsXml, fetchPersonsEntriesXml } from '@/src/api/eventorApi';
 import { findLiveCompetitionsBatch, findLiveCompetitionIdsBatch, getCompetitionClasses, getLiveFavoriteResults } from '@/src/services/liveresultat';
 import type { LiveFavorite, LiveFavoriteResult } from '@/src/services/liveresultat';
 import { useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
+import { openExternalLink } from '@/src/store/externalLinkStore';
 import { Friend, useFriendsStore } from '@/src/store/friendsStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
@@ -25,15 +26,6 @@ const PERSON_SEARCH_URL = 'https://hvscmyudneihjbtitffy.supabase.co/functions/v1
 // How long cached friend status stays fresh before a re-focus triggers a full
 // reload. Within this window, re-entering the friends view reuses the cache.
 const STATUS_TTL_MS = 5 * 60 * 1000;
-
-import { XMLParser } from 'fast-xml-parser';
-
-const entryParser = new XMLParser({
-  attributeNamePrefix: '',
-  ignoreAttributes: false,
-  parseTagValue: false,
-  trimValues: true,
-});
 
 type PersonSearchResult = {
   birthYear: number | null;
@@ -52,7 +44,6 @@ export default function FriendsScreen() {
   const friends = useFriendsStore((state) => state.friends);
   const addFriend = useFriendsStore((state) => state.addFriend);
   const removeFriend = useFriendsStore((state) => state.removeFriend);
-  const isLoggedIn = Boolean(user);
 
   const [searchVisible, setSearchVisible] = React.useState(false);
   const [legendVisible, setLegendVisible] = React.useState(false);
@@ -105,11 +96,18 @@ export default function FriendsScreen() {
   // Fetch the (expensive, per-friend) Eventor status for a subset of friends.
   // The friend_activity_state lookup is a single batched Supabase query keyed by
   // all friend ids, so it stays cheap and is run with the full list by callers.
+  // Entries are fetched in ONE batched call for every target; starts/results are
+  // then only checked for friends confirmed racing TODAY (from those entries),
+  // instead of every friend — the same call-reduction pattern used server-side
+  // for poll-friend-activity.
   const fetchEventorStatusFor = React.useCallback(async (targets: Friend[]) => {
-    const [entryCounts, todayStarts, resultIds] = await Promise.all([
-      fetchFriendEntryCounts(targets),
-      fetchFriendTodayStarts(targets),
-      fetchFriendTodayResults(targets),
+    const entryCounts = await fetchFriendEntryCounts(targets);
+    const racingTodayIds = new Set(Object.keys(entryCounts).filter((id) => entryCounts[id].today > 0));
+    const racingTodayFriends = targets.filter((friend) => racingTodayIds.has(String(friend.personId)));
+
+    const [todayStarts, resultIds] = await Promise.all([
+      fetchFriendTodayStarts(racingTodayFriends),
+      fetchFriendTodayResults(racingTodayFriends),
     ]);
     return { entryCounts, todayStarts, resultIds };
   }, []);
@@ -395,8 +393,8 @@ export default function FriendsScreen() {
       personId: result.personId,
       pushOnEntry: false,
       pushOnLive: false,
-      pushOnResult: true,
-      pushOnStart: true,
+      pushOnResult: false,
+      pushOnStart: false,
     };
     void addFriend(friend);
   }, [addFriend]);
@@ -414,20 +412,6 @@ export default function FriendsScreen() {
     setTodayStartsByFriendId((prev) => { const next = { ...prev }; delete next[pid]; return next; });
     setTodayResultFriendIds((prev) => { const next = new Set(prev); next.delete(pid); return next; });
   }, [removeFriend]);
-
-  if (!isLoggedIn) {
-    return (
-      <SafeAreaView edges={['top']} style={styles.screen}>
-        <ScreenHeroHeader subtitle="" title="Vänner" />
-        <View style={styles.emptyContainer}>
-          <EmptyState
-            description="Logga in med Eventor för att använda vänner."
-            title="Vänner kräver inloggning"
-          />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
@@ -1088,7 +1072,7 @@ function LiveFriendsPanel({
                       <Ionicons color={colors.textMuted} name="flag-outline" size={12} />
                       <Text style={styles.livePanelCompName} numberOfLines={1}>{result.competitionName}</Text>
                       <Pressable
-                        onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${result.competitionId}`)}
+                        onPress={() => openExternalLink(`https://orientering.liveidrott.se/competitions/${result.competitionId}`)}
                         style={({ pressed }) => [styles.liveCompLink, pressed ? { opacity: 0.6 } : null]}
                       >
                         <Ionicons color={liveOrange} name="open-outline" size={13} />
@@ -1171,7 +1155,7 @@ function LiveFriendsPanel({
                                     Väntar på resultat från 'liveresultat.orientering.se'.                                    
                     </Text>
                     <Pressable
-                      onPress={() => Linking.openURL(`https://orientering.liveidrott.se/competitions/${item.favorite.competitionId}`)}
+                      onPress={() => openExternalLink(`https://orientering.liveidrott.se/competitions/${item.favorite.competitionId}`)}
                       style={({ pressed }) => [styles.liveLinkButton, pressed ? { opacity: 0.7 } : null]}
                     >
                       <Ionicons color="#fff" name="open-outline" size={14} />
@@ -1331,7 +1315,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       padding: spacing.lg,
     },
     searchBackdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
     },
     searchSheet: {
       backgroundColor: colors.surface,
@@ -1831,53 +1815,93 @@ async function fetchFriendEntryCounts(friends: Friend[]): Promise<Record<string,
   const toDate = `${formatLocalIsoDate(futureDate)} 23:59:59`;
 
   const result: Record<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[] }> = {};
+  if (friends.length === 0) return result;
 
-  await Promise.all(
-    friends.map(async (friend) => {
-      try {
-        const xml = await fetchPersonEntriesXml(String(friend.personId), null, fromDate, toDate);
-        const parsed = entryParser.parse(xml) as { EntryList?: { Entry?: unknown } };
-        const entries = parsed.EntryList?.Entry;
-        const entryArray = entries == null ? [] : Array.isArray(entries) ? entries : [entries];
+  // One batched /entries call (chunked to a safe URL length) covering ALL
+  // friends' personIds, instead of one call per friend — each <Entry> carries
+  // its own <Competitor><PersonId> so rows are attributed back per friend.
+  const acc = new Map<string, { today: number; future: number; todayEventNames: string[]; todayEvents: { eventId: string; eventName: string }[]; seenEventIds: Set<string> }>();
+  for (const friend of friends) {
+    acc.set(String(friend.personId), { today: 0, future: 0, todayEventNames: [], todayEvents: [], seenEventIds: new Set() });
+  }
 
-        // Count unique events, separating today from future
-        const seenEventIds = new Set<string>();
-        let todayCount = 0;
-        let futureCount = 0;
-        const todayEventNames: string[] = [];
-        const todayEvents: { eventId: string; eventName: string }[] = [];
-        for (const entry of entryArray) {
-          const event = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>).Event : null;
-          const eventIdNode = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).EventId : null;
-          const eventId = typeof eventIdNode === 'string' ? eventIdNode : typeof eventIdNode === 'number' ? String(eventIdNode) : null;
-          const startDate = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).StartDate : null;
-          const dateStr = typeof startDate === 'object' && startDate !== null ? (startDate as Record<string, unknown>).Date : null;
-          if (typeof dateStr === 'string' && dateStr >= todayIso && eventId && !seenEventIds.has(eventId)) {
-            seenEventIds.add(eventId);
-            if (dateStr === todayIso) {
-              todayCount++;
-              const eventName = typeof event === 'object' && event !== null ? (event as Record<string, unknown>).Name : null;
-              if (typeof eventName === 'string') {
-                todayEventNames.push(eventName);
-                todayEvents.push({ eventId, eventName });
-              }
-            } else {
-              futureCount++;
-            }
-          }
+  for (const chunk of chunkIdsByLength(friends.map((f) => String(f.personId)))) {
+    try {
+      const xml = await fetchPersonsEntriesXml(chunk, fromDate, toDate);
+      for (const entry of parseFriendEntriesXml(xml)) {
+        const friendAcc = acc.get(entry.personId);
+        if (!friendAcc || !entry.eventDateStr || entry.eventDateStr < todayIso || friendAcc.seenEventIds.has(entry.eventId)) {
+          continue;
         }
-
-        if (todayCount > 0 || futureCount > 0) {
-          result[String(friend.personId)] = { today: todayCount, future: futureCount, todayEventNames, todayEvents };
+        friendAcc.seenEventIds.add(entry.eventId);
+        if (entry.eventDateStr === todayIso) {
+          friendAcc.today++;
+          friendAcc.todayEventNames.push(entry.eventName);
+          friendAcc.todayEvents.push({ eventId: entry.eventId, eventName: entry.eventName });
+        } else {
+          friendAcc.future++;
         }
-      } catch {
-        // Silently skip on error
       }
-    }),
-  );
+    } catch {
+      // Silently skip the chunk on error
+    }
+  }
+
+  for (const [personId, friendAcc] of acc) {
+    if (friendAcc.today > 0 || friendAcc.future > 0) {
+      result[personId] = { today: friendAcc.today, future: friendAcc.future, todayEventNames: friendAcc.todayEventNames, todayEvents: friendAcc.todayEvents };
+    }
+  }
 
   return result;
 }
+
+type ParsedFriendEntry = { eventDateStr: string | null; eventId: string; eventName: string; personId: string };
+
+/** Parse a (possibly multi-person) /entries response, attributing each <Entry> to its <Competitor><PersonId>. */
+function parseFriendEntriesXml(xml: string): ParsedFriendEntry[] {
+  const out: ParsedFriendEntry[] = [];
+  const blocks = xml.split(/<Entry\b/);
+
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i];
+    const personId = block.match(/<Competitor\b[\s\S]*?<PersonId>(\d+)<\/PersonId>/)?.[1] ?? block.match(/<PersonId>(\d+)<\/PersonId>/)?.[1];
+    if (!personId) continue;
+
+    const eventBlock = block.match(/<Event\b[\s\S]*?<\/Event>/)?.[0];
+    if (!eventBlock) continue;
+
+    const eventId = eventBlock.match(/<EventId>(\d+)<\/EventId>/)?.[1];
+    if (!eventId) continue;
+
+    const eventName = eventBlock.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? 'Okänd tävling';
+    const eventDateStr = eventBlock.match(/<StartDate>[\s\S]*?<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
+
+    out.push({ eventDateStr, eventId, eventName, personId });
+  }
+
+  return out;
+}
+
+/** Split ids into chunks whose comma-joined length stays within a safe URL budget. */
+function chunkIdsByLength(ids: string[], maxJoinedLen = 1500): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let joinedLen = 0;
+  for (const id of ids) {
+    const addLen = current.length > 0 ? id.length + 1 : id.length;
+    if (current.length > 0 && joinedLen + addLen > maxJoinedLen) {
+      chunks.push(current);
+      current = [];
+      joinedLen = 0;
+    }
+    joinedLen += current.length > 0 ? id.length + 1 : id.length;
+    current.push(id);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 
 /**
  * Determines if a start time (Swedish local ISO string) has already passed.

@@ -1,154 +1,47 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
 
 import { EmptyState } from '@/src/components/EmptyState';
-import { AppButton } from '@/src/components/AppButton';
-import { AppTextField } from '@/src/components/AppTextField';
-import { fetchActivityDetail, getCachedActivityDetail } from '@/src/api/eventorActivities';
-import { getStoredEventorCredentials } from '@/src/services/eventorCredentials';
-import { refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { ACTIVITIES_API_ORG_ID, fetchOrganisationActivities, getCachedActivity } from '@/src/api/eventorActivities';
 import { useAuthStore } from '@/src/store/authStore';
+import { openExternalLink } from '@/src/store/externalLinkStore';
 import { ColorPalette, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { ActivityDocument, ActivityRegistration, ClubActivity } from '@/src/types/eventorActivities';
+import { ActivityRegistration, ClubActivity } from '@/src/types/eventorActivities';
 
 export default function ClubActivityDetailScreen() {
   const { colors, isDark, themeName } = useTheme();
   const isSoft = themeName === 'soft' || themeName === 'soft-dark';
   const styles = React.useMemo(() => createStyles(colors, isDark, isSoft), [colors, isDark, isSoft]);
 
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; year?: string }>();
   const activityId = typeof params.id === 'string' ? params.id : '';
+  const year = Number(params.year) || new Date().getFullYear();
+
+  const user = useAuthStore((state) => state.user);
+  const organisationId = user?.organisationIds[0] ?? null;
+  const canFetchActivities = organisationId === ACTIVITIES_API_ORG_ID;
 
   const [activity, setActivity] = React.useState<ClubActivity | null>(() =>
-    activityId ? getCachedActivityDetail(activityId) : null,
+    organisationId ? getCachedActivity(organisationId, year, activityId) : null,
   );
   const [isLoading, setIsLoading] = React.useState(!activity);
   const [error, setError] = React.useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const [hasStoredCreds, setHasStoredCreds] = React.useState(false);
-  const [isRetrying, setIsRetrying] = React.useState(false);
-  const [retryError, setRetryError] = React.useState<string | null>(null);
-  const [manualLoginVisible, setManualLoginVisible] = React.useState(false);
-  const [manualUsername, setManualUsername] = React.useState('');
-  const [manualPassword, setManualPassword] = React.useState('');
-  const [manualLoginError, setManualLoginError] = React.useState<string | null>(null);
-
-  const authUser = useAuthStore((store) => store.user);
-  const rememberedUsername = useAuthStore((store) => store.rememberedUsername);
 
   React.useEffect(() => {
-    let active = true;
-    getStoredEventorCredentials()
-      .then((creds) => {
-        if (active) {
-          setHasStoredCreds(Boolean(creds?.username && creds?.password));
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setHasStoredCreds(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const handleRefresh = React.useCallback(async () => {
-    if (!activityId) {
-      return;
-    }
-    setIsRefreshing(true);
-    try {
-      // force=true also re-authenticates the Eventor web session with stored
-      // credentials, so a swipe-down brings back a hidden participant list.
-      const result = await fetchActivityDetail(activityId, true);
-      setActivity(result);
-      setError(null);
-      setRetryError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta aktiviteten.');
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [activityId]);
-
-  const handleRetryParticipants = React.useCallback(async () => {
-    if (!activityId) {
-      return;
-    }
-    if (!hasStoredCreds) {
-      setManualUsername((current) => current || authUser?.username || rememberedUsername || '');
-      setManualLoginError(null);
-      setManualLoginVisible(true);
-      return;
-    }
-    setIsRetrying(true);
-    setRetryError(null);
-    try {
-      const result = await fetchActivityDetail(activityId, true);
-      setActivity(result);
-      if (result.registrations.length === 0 && result.registrationCount > 0) {
-        setRetryError('Deltagarlistan är fortfarande dold. Prova att logga in igen.');
-      }
-    } catch {
-      setRetryError('Det gick inte att uppdatera just nu. Försök igen.');
-    } finally {
-      setIsRetrying(false);
-    }
-  }, [activityId, authUser?.username, hasStoredCreds, rememberedUsername]);
-
-  const handleManualLogin = React.useCallback(async () => {
-    const username = manualUsername.trim();
-    if (!username) {
-      setManualLoginError('Ange användarnamn innan du fortsätter.');
-      return;
-    }
-    if (!manualPassword.trim()) {
-      setManualLoginError('Ange lösenordet innan du fortsätter.');
-      return;
-    }
-    setManualLoginError(null);
-    setIsRetrying(true);
-    try {
-      const cookie = await refreshStoredEventorWebSessionCookie(username, manualPassword).catch(() => null);
-      if (!cookie) {
-        setManualLoginError('Inloggningen lyckades inte. Kontrollera användarnamn och lösenord.');
-        return;
-      }
-      setManualLoginVisible(false);
-      setManualPassword('');
-      setRetryError(null);
-      if (activityId) {
-        const result = await fetchActivityDetail(activityId, true);
-        setActivity(result);
-        if (result.registrations.length === 0 && result.registrationCount > 0) {
-          setRetryError('Inloggningen lyckades men deltagarlistan är fortfarande dold.');
-        }
-      }
-    } catch {
-      setManualLoginError('Något gick fel vid inloggningen. Försök igen.');
-    } finally {
-      setIsRetrying(false);
-    }
-  }, [activityId, manualPassword, manualUsername]);
-
-  React.useEffect(() => {
-    if (!activityId) {
+    if (!organisationId || !activityId || !canFetchActivities) {
       setActivity(null);
       setIsLoading(false);
+      setError(null);
       return;
     }
 
-    const cached = getCachedActivityDetail(activityId);
+    const cached = getCachedActivity(organisationId, year, activityId);
     if (cached) {
       setActivity(cached);
       setIsLoading(false);
@@ -161,17 +54,22 @@ export default function ClubActivityDetailScreen() {
     setIsLoading(true);
     setError(null);
 
-    fetchActivityDetail(activityId)
-      .then((result) => {
+    fetchOrganisationActivities(organisationId, year)
+      .then((list) => {
         if (!isMounted) {
           return;
         }
-        setActivity(result);
+        const found = list.find((item) => item.id === activityId) ?? null;
+        setActivity(found);
+        if (!found) {
+          setError('Aktiviteten kunde inte hittas.');
+        }
       })
       .catch((caught: unknown) => {
         if (!isMounted) {
           return;
         }
+        setActivity(null);
         setError(caught instanceof Error ? caught.message : 'Det gick inte att hämta aktiviteten.');
       })
       .finally(() => {
@@ -183,84 +81,29 @@ export default function ClubActivityDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [activityId]);
-
-  const goBack = () => router.navigate('/klubbaktiviteter');
+  }, [organisationId, activityId, year, canFetchActivities]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl onRefresh={() => void handleRefresh()} refreshing={isRefreshing} tintColor={colors.primary} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {isLoading ? (
-          <>
-            <Pressable onPress={goBack} style={styles.backButton}>
-              <Ionicons color={colors.primary} name="chevron-back" size={20} />
-              <Text style={styles.backLabel}>Klubbaktiviteter</Text>
-            </Pressable>
-            <View style={styles.loadingBox}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={styles.loadingText}>Hämtar aktivitet…</Text>
-            </View>
-          </>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Pressable onPress={() => router.navigate('/klubbaktiviteter')} style={styles.backButton}>
+          <Ionicons color={colors.primary} name="chevron-back" size={20} />
+          <Text style={styles.backLabel}>Klubbaktiviteter</Text>
+        </Pressable>
+
+        {!canFetchActivities ? (
+          <EmptyState description="Klubbaktiviteter kan bara visas i appen för OK Tyr just nu." title="Aktiviteten kan inte visas" />
+        ) : isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.loadingText}>Hämtar aktivitet…</Text>
+          </View>
         ) : !activity ? (
-          <>
-            <Pressable onPress={goBack} style={styles.backButton}>
-              <Ionicons color={colors.primary} name="chevron-back" size={20} />
-              <Text style={styles.backLabel}>Klubbaktiviteter</Text>
-            </Pressable>
-            <EmptyState description={error ?? 'Aktiviteten kunde inte hittas.'} title="Kunde inte öppna aktiviteten" />
-          </>
+          <EmptyState description={error ?? 'Aktiviteten kunde inte hittas.'} title="Kunde inte öppna aktiviteten" />
         ) : (
-          <ActivityDetail
-            activity={activity}
-            colors={colors}
-            hasStoredCreds={hasStoredCreds}
-            isRetrying={isRetrying}
-            onBack={goBack}
-            onRetryParticipants={() => void handleRetryParticipants()}
-            retryError={retryError}
-            styles={styles}
-          />
+          <ActivityDetail activity={activity} colors={colors} styles={styles} />
         )}
       </ScrollView>
-
-      <Modal animationType="fade" onRequestClose={() => setManualLoginVisible(false)} transparent visible={manualLoginVisible}>
-        <View style={styles.manualOverlay}>
-          <Pressable onPress={() => setManualLoginVisible(false)} style={styles.manualBackdrop} />
-          <View style={styles.manualCard}>
-            <Text style={styles.manualTitle}>Logga in mot Eventor</Text>
-            <Text style={styles.manualText}>Ange dina Eventor-uppgifter så förnyar vi sessionen och hämtar deltagarlistan.</Text>
-
-            <AppTextField
-              autoCapitalize="none"
-              autoCorrect={false}
-              label="Användarnamn"
-              onChangeText={setManualUsername}
-              placeholder="Ange ditt Eventor-användarnamn"
-              value={manualUsername}
-            />
-            <AppTextField
-              autoCapitalize="none"
-              autoCorrect={false}
-              label="Lösenord"
-              onChangeText={setManualPassword}
-              placeholder="Ange ditt lösenord"
-              secureTextEntry
-              value={manualPassword}
-            />
-
-            {manualLoginError ? <Text style={styles.manualError}>{manualLoginError}</Text> : null}
-
-            <View style={styles.manualActions}>
-              <AppButton label="Avbryt" onPress={() => setManualLoginVisible(false)} variant="secondary" />
-              <AppButton label="Logga in" loading={isRetrying} onPress={() => void handleManualLogin()} variant="primary" />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -268,25 +111,15 @@ export default function ClubActivityDetailScreen() {
 function ActivityDetail({
   activity,
   colors,
-  hasStoredCreds,
-  isRetrying,
-  onBack,
-  onRetryParticipants,
-  retryError,
   styles,
 }: {
   activity: ClubActivity;
   colors: ColorPalette;
-  hasStoredCreds: boolean;
-  isRetrying: boolean;
-  onBack: () => void;
-  onRetryParticipants: () => void;
-  retryError: string | null;
   styles: ReturnType<typeof createStyles>;
 }) {
   const registrations = activity.registrations;
   const registrationKeys = React.useMemo(
-    () => registrations.map((registration, index) => `${registration.personName}-${index}`),
+    () => registrations.map((registration, index) => `${registration.personId}-${index}`),
     [registrations],
   );
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
@@ -310,116 +143,41 @@ function ActivityDetail({
 
   const summaries = React.useMemo(() => computeAttributeSummaries(activity), [activity]);
   const [summaryExpanded, setSummaryExpanded] = React.useState(false);
-  const registrationHint = deadlineHint(activity.registrationDeadlineIso);
-  const startDisplay = shortenSwedishDate(activity.startTime) ?? 'Ingen tid angiven';
-  const deadlineDisplay = shortenSwedishDate(activity.registrationDeadline) ?? 'Ingen tid angiven';
-  const [activeDocument, setActiveDocument] = React.useState<ActivityDocument | null>(null);
 
   return (
     <>
-      <LinearGradient colors={[colors.heroTop, colors.heroBottom]} style={styles.hero}>
-        <Pressable onPress={onBack} style={styles.heroBack}>
-          <Ionicons color={colors.heroText} name="chevron-back" size={18} />
-          <Text style={styles.heroBackLabel}>Klubbaktiviteter</Text>
-        </Pressable>
-
-        <View style={styles.heroBody}>
-          <Text style={styles.heroTitle}>{activity.name}</Text>
-          <View style={styles.heroMetaRow}>
-            <View style={styles.heroMetaItem}>
-              <Ionicons color={colors.heroTextMuted} name="calendar-outline" size={14} />
-              <Text style={styles.heroMeta}>{startDisplay}</Text>
-            </View>
-            <View style={styles.heroBadge}>
-              <Ionicons color={colors.heroText} name="people" size={12} />
-              <Text style={styles.heroBadgeText}>{activity.registrationCount} anmälda</Text>
-            </View>
-          </View>
-        </View>
-      </LinearGradient>
+      <Text style={styles.title}>{activity.name}</Text>
 
       <View style={styles.metaCard}>
-        {activity.organiser ? (
-          <>
-            <MetaRow colors={colors} icon="flag-outline" label="Arrangör" styles={styles} value={activity.organiser} />
-            <View style={styles.metaDivider} />
-          </>
-        ) : null}
-        <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={startDisplay} />
+        <MetaRow colors={colors} icon="calendar-outline" label="Starttid" styles={styles} value={formatDateTime(activity.startTime)} />
         <View style={styles.metaDivider} />
-        <View style={styles.deadlineBlock}>
-          <View style={styles.metaRow}>
-            <Ionicons color={colors.primary} name="time-outline" size={16} />
-            <Text style={styles.metaLabel}>Anmälan stänger</Text>
-            <View style={styles.metaValueWrap}>
-              <Text style={styles.metaValue}>{deadlineDisplay}</Text>
-              {registrationHint ? (
-                registrationHint.closed ? (
-                  <View style={styles.closedBadge}>
-                    <Ionicons color="#fff" name="lock-closed" size={12} />
-                    <Text style={styles.closedBadgeText}>{registrationHint.label}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.deadlineBadge}>
-                    <Ionicons color={colors.error} name="alarm-outline" size={12} />
-                    <Text style={styles.deadlineBadgeText}>{registrationHint.label}</Text>
-                  </View>
-                )
-              ) : null}
-            </View>
-          </View>
-        </View>
+        <MetaRow
+          colors={colors}
+          icon="time-outline"
+          label="Anmälan stänger"
+          styles={styles}
+          subValue={deadlineHint(activity.registrationDeadline)?.text}
+          subValueDanger={deadlineHint(activity.registrationDeadline)?.danger}
+          value={formatDateTime(activity.registrationDeadline)}
+        />
         <View style={styles.metaDivider} />
         <MetaRow colors={colors} icon="people-outline" label="Anmälda" styles={styles} value={`${activity.registrationCount} personer`} />
       </View>
 
-      <Pressable onPress={() => void Linking.openURL(activity.url)} style={styles.eventorButton}>
+      <Pressable onPress={() => openExternalLink(activity.url)} style={styles.eventorButton}>
         <Ionicons color="#fff" name="open-outline" size={16} />
         <Text style={styles.eventorButtonText}>Öppna i Eventor</Text>
       </Pressable>
 
-      {activity.informationSegments.length > 0 || activity.documents.length > 0 ? (
-        <View style={styles.panel}>
+      {activity.informationText ? (
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Information</Text>
-          {activity.informationSegments.length > 0 ? (
-            <Text style={styles.infoText}>
-              {activity.informationSegments.map((segment, index) =>
-                segment.url ? (
-                  <Text
-                    key={index}
-                    onPress={() => setActiveDocument({ name: segment.text, url: segment.url as string })}
-                    style={styles.infoLink}
-                  >
-                    {segment.text}
-                  </Text>
-                ) : (
-                  <Text key={index}>{segment.text}</Text>
-                ),
-              )}
-            </Text>
-          ) : null}
-          {activity.documents.length > 0 ? (
-            <View style={styles.documentList}>
-              {activity.documents.map((document, index) => (
-                <Pressable
-                  key={`${document.url}-${index}`}
-                  onPress={() => setActiveDocument(document)}
-                  style={({ pressed }) => [styles.documentRow, pressed ? styles.documentRowPressed : null]}
-                >
-                  <Ionicons color={colors.primary} name={isImageDocument(document.url) ? 'image-outline' : 'document-text-outline'} size={18} />
-                  <Text numberOfLines={1} style={styles.documentName}>
-                    {document.name}
-                  </Text>
-                  <Ionicons color={colors.textMuted} name="open-outline" size={16} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
+          <Text style={styles.infoText}>{activity.informationText}</Text>
         </View>
       ) : null}
 
       {summaries.length > 0 ? (
-        <View style={styles.panel}>
+        <View style={styles.section}>
           <Pressable onPress={() => setSummaryExpanded((value) => !value)} style={styles.collapsibleHeader}>
             <Text style={styles.sectionTitle}>Sammanställning</Text>
             <View style={styles.collapsibleToggle}>
@@ -437,9 +195,9 @@ function ActivityDetail({
         </View>
       ) : null}
 
-      <View style={styles.panel}>
+      <View style={styles.section}>
         <View style={styles.registrationsHeader}>
-          <Text style={styles.sectionTitle}>Anmälda ({activity.registrationCount})</Text>
+          <Text style={styles.sectionTitle}>Anmälda ({registrations.length})</Text>
           {registrations.length > 0 ? (
             <Pressable onPress={toggleAll} style={styles.toggleAllButton}>
               <Ionicons color={colors.primary} name={allExpanded ? 'chevron-up' : 'chevron-down'} size={14} />
@@ -449,22 +207,7 @@ function ActivityDetail({
         </View>
 
         {registrations.length === 0 ? (
-          activity.registrationCount > 0 ? (
-            <View style={styles.participantsLocked}>
-              <Text style={styles.infoText}>
-                Du behöver vara inloggad mot Eventor för att se vilka som anmält sig.
-              </Text>
-              {retryError ? <Text style={styles.retryError}>{retryError}</Text> : null}
-              <AppButton
-                label={isRetrying ? 'Loggar in…' : hasStoredCreds ? 'Försök igen' : 'Logga in'}
-                loading={isRetrying}
-                onPress={onRetryParticipants}
-                variant="secondary"
-              />
-            </View>
-          ) : (
-            <Text style={styles.infoText}>Inga anmälda ännu.</Text>
-          )
+          <Text style={styles.infoText}>Inga anmälda ännu.</Text>
         ) : (
           <View style={styles.registrationList}>
             {registrations.map((registration, index) => {
@@ -483,49 +226,7 @@ function ActivityDetail({
           </View>
         )}
       </View>
-
-      <DocumentModal document={activeDocument} onClose={() => setActiveDocument(null)} styles={styles} />
     </>
-  );
-}
-
-function DocumentModal({
-  document,
-  onClose,
-  styles,
-}: {
-  document: ActivityDocument | null;
-  onClose: () => void;
-  styles: ReturnType<typeof createStyles>;
-}) {
-  // Android WebView can't render PDFs inline -> proxy them through Google's viewer.
-  const uri = React.useMemo(() => {
-    if (!document) {
-      return '';
-    }
-    const isPdf = /\.pdf(\?|#|$)/i.test(document.url);
-    return Platform.OS === 'android' && isPdf
-      ? `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(document.url)}`
-      : document.url;
-  }, [document]);
-
-  return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible={Boolean(document)}>
-      <View style={styles.modalOverlay}>
-        <Pressable onPress={onClose} style={styles.modalBackdrop} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text numberOfLines={2} style={styles.modalTitle}>
-              {document?.name}
-            </Text>
-            <Pressable onPress={onClose}>
-              <Text style={styles.modalClose}>Stäng</Text>
-            </Pressable>
-          </View>
-          {document ? <WebView source={{ uri }} startInLoadingState style={styles.webView} /> : null}
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -542,9 +243,9 @@ function RegistrationCard({
   registration: ActivityRegistration;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const answeredAttributes = registration.attributes.filter((attribute) => attribute.values.length > 0);
-  const answerCount = answeredAttributes.length;
-  const nameWithClub = registration.clubName ? `${registration.personName} (${registration.clubName})` : registration.personName;
+  const answerCount = registration.attributes.length;
+  const displayName = registration.personName ?? `Deltagare ${registration.personId}`;
+  const nameWithClub = registration.clubName ? `${displayName} (${registration.clubName})` : displayName;
 
   return (
     <View style={styles.registrationCard}>
@@ -558,35 +259,18 @@ function RegistrationCard({
       </Pressable>
 
       {isExpanded ? (
-        <View style={styles.registrationExpanded}>
-          <View style={styles.registrationNameHeader}>
-            <View style={styles.registrationAvatar}>
-              <Text style={styles.registrationAvatarText}>{getInitials(registration.personName)}</Text>
-            </View>
-            <View style={styles.registrationNameCol}>
-              <Text style={styles.registrationFullName}>{registration.personName}</Text>
-              {registration.clubName ? (
-                <View style={styles.registrationClubBadge}>
-                  <Ionicons color={colors.primary} name="people-outline" size={11} />
-                  <Text style={styles.registrationClubBadgeText}>{registration.clubName}</Text>
-                </View>
-              ) : null}
-            </View>
+        answerCount > 0 ? (
+          <View style={styles.attributeList}>
+            {registration.attributes.map((attribute, index) => (
+              <View key={`${attribute.attributeId}-${index}`} style={styles.attributeRow}>
+                {attribute.attributeName ? <Text style={styles.attributeLabel}>{attribute.attributeName}</Text> : null}
+                <Text style={styles.attributeValue}>{attribute.value}</Text>
+              </View>
+            ))}
           </View>
-
-          {answerCount > 0 ? (
-            <View style={styles.attributeList}>
-              {answeredAttributes.map((attribute, index) => (
-                <View key={`${attribute.attributeName}-${index}`} style={styles.attributeRow}>
-                  {attribute.attributeName ? <Text style={styles.attributeLabel}>{attribute.attributeName}</Text> : null}
-                  <Text style={styles.attributeValue}>{attribute.values.join(', ')}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.attributeEmpty}>Inga val angivna.</Text>
-          )}
-        </View>
+        ) : (
+          <Text style={styles.attributeEmpty}>Inga val angivna.</Text>
+        )
       ) : null}
     </View>
   );
@@ -596,12 +280,29 @@ type AttributeSummaryOption = { count: number; label: string };
 type AttributeSummary = { id: string; name: string; options: AttributeSummaryOption[]; totalAnswered: number };
 
 function computeAttributeSummaries(activity: ClubActivity): AttributeSummary[] {
-  return activity.attributeNames
-    .map((attributeName) => {
-      const answered = activity.registrations
-        .map((registration) => registration.attributes.find((attribute) => attribute.attributeName === attributeName)?.values ?? [])
-        .filter((values) => values.length > 0);
+  const attributes = [...activity.attributes].sort((left, right) => left.order - right.order);
+
+  return attributes
+    .map((attribute) => {
+      // Multi-select checkbox answers arrive as several AttributeValue entries with
+      // the same attribute id, so collect all of a registration's values for it.
+      const perRegistrationValues = activity.registrations.map((registration) =>
+        registration.attributes
+          .filter((entry) => entry.attributeId === attribute.id)
+          .map((entry) => entry.value.trim())
+          .filter((value) => value.length > 0),
+      );
+      const answered = perRegistrationValues.filter((values) => values.length > 0);
       const totalAnswered = answered.length;
+
+      if (attribute.values.length > 0) {
+        const options = attribute.values.map((option) => {
+          const key = option.trim().toLowerCase();
+          const count = answered.filter((values) => values.some((value) => value.toLowerCase() === key)).length;
+          return { count, label: option.trim() };
+        });
+        return { id: attribute.id, name: attribute.name, options, totalAnswered };
+      }
 
       const counts = new Map<string, number>();
       for (const values of answered) {
@@ -612,8 +313,7 @@ function computeAttributeSummaries(activity: ClubActivity): AttributeSummary[] {
       const options = [...counts.entries()]
         .map(([label, count]) => ({ count, label }))
         .sort((left, right) => right.count - left.count);
-
-      return { id: attributeName, name: attributeName, options, totalAnswered };
+      return { id: attribute.id, name: attribute.name, options, totalAnswered };
     })
     .filter((summary) => summary.options.length > 0);
 }
@@ -647,7 +347,9 @@ function AttributeSummaryCard({
               <Text style={styles.summaryOptionCount}>{option.count}</Text>
             </View>
             <View style={styles.summaryBarTrack}>
-              <View style={[styles.summaryBarFill, { width: maxCount > 0 ? `${Math.round((option.count / maxCount) * 100)}%` : '0%' }]} />
+              <View
+                style={[styles.summaryBarFill, { width: maxCount > 0 ? `${Math.round((option.count / maxCount) * 100)}%` : '0%' }]}
+              />
             </View>
           </View>
         ))}
@@ -661,64 +363,57 @@ function MetaRow({
   icon,
   label,
   styles,
+  subValue,
+  subValueDanger = false,
   value,
 }: {
   colors: ColorPalette;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   styles: ReturnType<typeof createStyles>;
+  subValue?: string | null;
+  subValueDanger?: boolean;
   value: string;
 }) {
   return (
     <View style={styles.metaRow}>
       <Ionicons color={colors.primary} name={icon} size={16} />
       <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue}>{value}</Text>
+      <View style={styles.metaValueWrap}>
+        <Text style={styles.metaValue}>{value}</Text>
+        {subValue ? (
+          <Text style={[styles.metaSubValue, subValueDanger ? styles.metaSubValueDanger : null]}>{subValue}</Text>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-const MONTH_ABBREVIATIONS: Record<string, string> = {
-  april: 'apr.',
-  augusti: 'aug.',
-  december: 'dec.',
-  februari: 'feb.',
-  januari: 'jan.',
-  november: 'nov.',
-  oktober: 'okt.',
-  september: 'sep.',
-};
+const dateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  month: 'short',
+  timeZone: 'Europe/Stockholm',
+  year: 'numeric',
+});
 
-// Shorten scraped Swedish dates: long month -> "aug." and drop the "klockan" word.
-function shortenSwedishDate(input: string | null): string | null {
-  if (!input) {
-    return null;
+function formatDateTime(iso: string | null): string {
+  if (!iso) {
+    return 'Ingen tid angiven';
   }
-  return input
-    .replace(/\bklockan\s*/gi, '')
-    .replace(/\b(januari|februari|april|augusti|september|oktober|november|december)\b/gi, (month) => MONTH_ABBREVIATIONS[month.toLowerCase()] ?? month)
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+
+  const time = new Date(iso);
+  if (Number.isNaN(time.getTime())) {
+    return 'Ingen tid angiven';
+  }
+
+  return dateTimeFormatter.format(time);
 }
 
-function isImageDocument(url: string): boolean {
-  return /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(url);
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return '?';
-  }
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-// Small note under the deadline: "Stängd" once passed, otherwise "X dagar
-// kvar" — but only when 10 days or fewer remain.
-function deadlineHint(iso: string | null): { closed: boolean; label: string } | null {
+// Small helper under the registration deadline: "Stängd" once it has passed,
+// otherwise a relative hint like "om 3 dagar" / "idag" / "i morgon".
+function deadlineHint(iso: string | null): { danger: boolean; text: string } | null {
   if (!iso) {
     return null;
   }
@@ -729,7 +424,7 @@ function deadlineHint(iso: string | null): { closed: boolean; label: string } | 
   }
 
   if (deadline < Date.now()) {
-    return { closed: true, label: 'Stängd' };
+    return { danger: true, text: 'Stängd' };
   }
 
   const startOfToday = new Date();
@@ -738,19 +433,15 @@ function deadlineHint(iso: string | null): { closed: boolean; label: string } | 
   startOfDeadlineDay.setHours(0, 0, 0, 0);
   const days = Math.round((startOfDeadlineDay.getTime() - startOfToday.getTime()) / 86400000);
 
-  if (days > 10) {
-    return null;
-  }
-
   if (days <= 0) {
-    return { closed: false, label: 'Stänger idag' };
+    return { danger: false, text: 'idag' };
   }
 
   if (days === 1) {
-    return { closed: false, label: '1 dag kvar' };
+    return { danger: false, text: 'i morgon' };
   }
 
-  return { closed: false, label: `${days} dagar kvar` };
+  return { danger: false, text: `om ${days} dagar` };
 }
 
 function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
@@ -803,66 +494,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
     },
-    deadlineBadge: {
-      alignItems: 'center',
-      alignSelf: 'flex-end',
-      backgroundColor: isDark ? 'rgba(224, 96, 96, 0.15)' : 'rgba(183, 59, 59, 0.10)',
-      borderColor: isDark ? 'rgba(224, 96, 96, 0.50)' : 'rgba(183, 59, 59, 0.40)',
-      borderRadius: 999,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: 4,
-      marginTop: 4,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-    },
-    deadlineBadgeText: {
-      ...typography.captionStrong,
-      color: colors.error,
-      fontSize: 11,
-    },
-    closedBadge: {
-      alignItems: 'center',
-      alignSelf: 'flex-end',
-      backgroundColor: colors.error,
-      borderRadius: 999,
-      flexDirection: 'row',
-      gap: 4,
-      marginTop: 4,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-    },
-    closedBadgeText: {
-      ...typography.captionStrong,
-      color: '#fff',
-      fontSize: 11,
-    },
-    deadlineBlock: {
-      justifyContent: 'center',
-    },
-    documentList: {
-      gap: spacing.xs,
-      marginTop: spacing.xs,
-    },
-    documentName: {
-      ...typography.body,
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    documentRow: {
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 12,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-    },
-    documentRowPressed: {
-      opacity: 0.85,
-    },
     eventorButton: {
       alignItems: 'center',
       alignSelf: 'flex-start',
@@ -877,110 +508,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.captionStrong,
       color: '#fff',
     },
-    hero: {
-      borderRadius: 26,
-      gap: spacing.md,
-      overflow: 'hidden',
-      padding: spacing.lg,
-    },
-    heroBack: {
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      flexDirection: 'row',
-      gap: spacing.xs,
-    },
-    heroBackLabel: {
-      ...typography.captionStrong,
-      color: colors.heroText,
-    },
-    heroBadge: {
-      alignItems: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.16)',
-      borderRadius: 999,
-      flexDirection: 'row',
-      gap: 4,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 5,
-    },
-    heroBadgeText: {
-      ...typography.captionStrong,
-      color: colors.heroText,
-      fontSize: 12,
-    },
-    heroBody: {
-      gap: spacing.sm,
-    },
-    heroMeta: {
-      ...typography.body,
-      color: colors.heroTextMuted,
-      fontSize: 14,
-    },
-    heroMetaItem: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexShrink: 1,
-      gap: 6,
-    },
-    heroMetaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: spacing.md,
-      justifyContent: 'space-between',
-    },
-    heroTitle: {
-      color: colors.heroText,
-      fontFamily: typography.heroTitle.fontFamily,
-      fontSize: 20,
-      lineHeight: 25,
-    },
     infoText: {
       ...typography.body,
       color: colors.textSecondary,
       lineHeight: 21,
-    },
-    infoLink: {
-      color: colors.primary,
-      textDecorationLine: 'underline',
-    },
-    manualActions: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-      justifyContent: 'flex-end',
-    },
-    manualBackdrop: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    manualCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 24,
-      gap: spacing.md,
-      padding: spacing.lg,
-      width: '100%',
-    },
-    manualError: {
-      ...typography.caption,
-      color: colors.error,
-    },
-    manualOverlay: {
-      backgroundColor: colors.overlay,
-      flex: 1,
-      justifyContent: 'center',
-      padding: spacing.lg,
-    },
-    manualText: {
-      ...typography.body,
-      color: colors.textSecondary,
-    },
-    manualTitle: {
-      ...typography.sectionTitle,
-      color: colors.textPrimary,
-    },
-    participantsLocked: {
-      gap: spacing.md,
-    },
-    retryError: {
-      ...typography.caption,
-      color: colors.error,
     },
     loadingBox: {
       alignItems: 'center',
@@ -992,11 +523,11 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textSecondary,
     },
     metaCard: {
-      backgroundColor: colors.surfaceOverlay,
+      backgroundColor: colors.surface,
       borderColor: colors.border,
-      borderRadius: 22,
+      borderRadius: 18,
       borderWidth: 1,
-      padding: spacing.lg,
+      padding: spacing.md,
     },
     metaDivider: {
       backgroundColor: colors.border,
@@ -1020,60 +551,12 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
     metaValueWrap: {
       alignItems: 'flex-end',
     },
-    modalBackdrop: {
-      flex: 1,
+    metaSubValue: {
+      ...typography.caption,
+      color: colors.textMuted,
     },
-    modalClose: {
-      ...typography.captionStrong,
-      color: colors.primary,
-    },
-    modalHeader: {
-      alignItems: 'center',
-      borderBottomColor: colors.border,
-      borderBottomWidth: 1,
-      flexDirection: 'row',
-      gap: spacing.md,
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-    },
-    modalOverlay: {
-      backgroundColor: colors.overlay,
-      flex: 1,
-      justifyContent: 'flex-end',
-    },
-    modalSheet: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      height: '86%',
-      overflow: 'hidden',
-    },
-    modalTitle: {
-      ...typography.bodyStrong,
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    panel: {
-      backgroundColor: colors.surfaceOverlay,
-      borderColor: colors.border,
-      borderRadius: 22,
-      borderWidth: 1,
-      gap: spacing.sm,
-      padding: spacing.lg,
-    },
-    registrationAvatar: {
-      alignItems: 'center',
-      backgroundColor: isDark ? (isSoft ? '#0F347C' : '#1E4428') : colors.primaryDeep,
-      borderRadius: 16,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-    registrationAvatarText: {
-      ...typography.captionStrong,
-      color: '#fff',
-      fontSize: 12,
+    metaSubValueDanger: {
+      color: colors.error,
     },
     registrationCard: {
       backgroundColor: colors.surface,
@@ -1084,33 +567,9 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
-    registrationClubBadge: {
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      backgroundColor: colors.surfaceMuted,
-      borderColor: colors.border,
-      borderRadius: 999,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: 4,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-    },
-    registrationClubBadgeText: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      fontSize: 11,
-    },
     registrationCount: {
       ...typography.caption,
       color: colors.textMuted,
-    },
-    registrationExpanded: {
-      gap: spacing.sm,
-    },
-    registrationFullName: {
-      ...typography.captionStrong,
-      color: colors.textPrimary,
     },
     registrationHeader: {
       alignItems: 'center',
@@ -1125,31 +584,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       color: colors.textPrimary,
       flex: 1,
     },
-    registrationNameCol: {
-      alignItems: 'flex-start',
-      flex: 1,
-      gap: 3,
-    },
-    registrationNameHeader: {
-      alignItems: 'center',
-      borderTopColor: colors.border,
-      borderTopWidth: 1,
-      flexDirection: 'row',
-      gap: spacing.sm,
-      paddingTop: spacing.sm,
-    },
     registrationsHeader: {
       alignItems: 'center',
       flexDirection: 'row',
       justifyContent: 'space-between',
-    },
-    safeArea: {
-      backgroundColor: colors.background,
-      flex: 1,
-    },
-    sectionTitle: {
-      ...typography.sectionTitle,
-      color: colors.textPrimary,
     },
     summaryBarFill: {
       backgroundColor: colors.primary,
@@ -1218,8 +656,22 @@ function createStyles(colors: ColorPalette, isDark: boolean, isSoft: boolean) {
       ...typography.captionStrong,
       color: colors.primary,
     },
-    webView: {
+    safeArea: {
+      backgroundColor: colors.background,
       flex: 1,
+    },
+    section: {
+      gap: spacing.sm,
+    },
+    sectionTitle: {
+      ...typography.sectionTitle,
+      color: colors.textPrimary,
+    },
+    title: {
+      ...typography.heroTitle,
+      color: colors.textPrimary,
+      fontSize: 22,
+      lineHeight: 27,
     },
   });
 }

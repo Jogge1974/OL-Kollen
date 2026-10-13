@@ -27,6 +27,7 @@ type FavoritesAndResultsPanelProps = {
   resultsYear: number;
   setResultsFilter: React.Dispatch<React.SetStateAction<PersonResultsFilter>>;
   setResultsYear: React.Dispatch<React.SetStateAction<number>>;
+  showResultsTab?: boolean;
 };
 
 export function FavoritesAndResultsPanel({
@@ -44,11 +45,20 @@ export function FavoritesAndResultsPanel({
   resultsYear,
   setResultsFilter,
   setResultsYear,
+  showResultsTab = true,
 }: FavoritesAndResultsPanelProps) {
   const { colors, isDark, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const pathname = usePathname();
   const [selectedTab, setSelectedTab] = React.useState<'favorites' | 'results'>('favorites');
+  const activeTab = showResultsTab ? selectedTab : 'favorites';
+
+  // If the identity is cleared while viewing results, fall back to favorites.
+  React.useEffect(() => {
+    if (!showResultsTab) {
+      setSelectedTab('favorites');
+    }
+  }, [showResultsTab]);
 
   const confirmClearFavorites = () => {
     Alert.alert('Rensa alla favorittävlingar?', 'Alla favorittävlingar tas bort från appen.', [
@@ -74,15 +84,17 @@ export function FavoritesAndResultsPanel({
       style={styles.panel}
     >
       <View style={styles.tabBar}>
-        <Pressable onPress={() => setSelectedTab('favorites')} style={[styles.tabButton, selectedTab === 'favorites' ? styles.tabButtonActive : null]}>
-          <Text style={[styles.tabButtonText, selectedTab === 'favorites' ? styles.tabButtonTextActive : null]}>Favoriter</Text>
+        <Pressable onPress={() => setSelectedTab('favorites')} style={[styles.tabButton, activeTab === 'favorites' ? styles.tabButtonActive : null]}>
+          <Text style={[styles.tabButtonText, activeTab === 'favorites' ? styles.tabButtonTextActive : null]}>Favoriter</Text>
         </Pressable>
-        <Pressable onPress={() => setSelectedTab('results')} style={[styles.tabButton, selectedTab === 'results' ? styles.tabButtonActive : null]}>
-          <Text style={[styles.tabButtonText, selectedTab === 'results' ? styles.tabButtonTextActive : null]}>Mina resultat</Text>
-        </Pressable>
+        {showResultsTab ? (
+          <Pressable onPress={() => setSelectedTab('results')} style={[styles.tabButton, activeTab === 'results' ? styles.tabButtonActive : null]}>
+            <Text style={[styles.tabButtonText, activeTab === 'results' ? styles.tabButtonTextActive : null]}>Mina resultat</Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      {selectedTab === 'favorites' ? (
+      {activeTab === 'favorites' ? (
         <>
           <View style={styles.panelHeaderRow}>
             <View style={styles.titleRow}>

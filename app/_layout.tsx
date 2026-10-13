@@ -6,9 +6,12 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LoadingState } from '@/src/components/LoadingState';
+import { ExternalLinkAskModal } from '@/src/components/ExternalLinkAskModal';
+import { ExternalLinkWebViewModal } from '@/src/components/ExternalLinkWebViewModal';
 import { PushSyncController } from '@/src/features/notifications/PushSyncController';
 import { addNotificationDataListener, getLastNotificationEventId, NotificationData } from '@/src/services/pushNotifications';
-import { useAuthStore } from '@/src/store/authStore';
+import { ensureAnonymousSession } from '@/src/services/supabase';
+import { touchDeviceIdentity, useAuthStore } from '@/src/store/authStore';
 import { useFriendActivityStore } from '@/src/store/friendActivityStore';
 import { useFriendsStore } from '@/src/store/friendsStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
@@ -25,12 +28,10 @@ export default function RootLayout() {
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const hydrateSession = useAuthStore((state) => state.hydrateSession);
   const user = useAuthStore((state) => state.user);
-  const isRestoringProfile = useAuthStore((state) => state.isRestoringProfile);
   const isPreferencesHydrated = usePreferencesStore((state) => state.isHydrated);
   const hydratePreferences = usePreferencesStore((state) => state.hydratePreferences);
   const isFriendsHydrated = useFriendsStore((state) => state.isHydrated);
   const hydrateFriends = useFriendsStore((state) => state.hydrateFriends);
-  const clearFriends = useFriendsStore((state) => state.clearFriends);
   const themeName = usePreferencesStore((state) => state.themeName);
 
   React.useEffect(() => {
@@ -38,22 +39,30 @@ export default function RootLayout() {
   }, [hydrateSession]);
 
   React.useEffect(() => {
+    // Establish an anonymous Supabase session so eventor-proxy can rate-limit per identity.
+    void ensureAnonymousSession();
+  }, []);
+
+  React.useEffect(() => {
+    // Ensure this device has a device_identities row from first launch, even
+    // before any person is ever selected.
+    void touchDeviceIdentity();
+  }, []);
+
+  React.useEffect(() => {
     void hydratePreferences();
   }, [hydratePreferences]);
 
   React.useEffect(() => {
     if (!isHydrated) return;
-    // Don't hydrate friends from local storage while signIn is restoring from server
-    if (isRestoringProfile) return;
-    if (user?.personId) {
-      void hydrateFriends(user.personId);
-    } else {
-      clearFriends();
-    }
-  }, [isHydrated, isRestoringProfile, user?.personId, hydrateFriends, clearFriends]);
+    // Friends are device-scoped: hydrate ONCE from local storage regardless of
+    // which person is selected (or not selected at all), and never re-run or
+    // clear on identity changes.
+    void hydrateFriends();
+  }, [isHydrated, hydrateFriends]);
 
-  // Friends hydration depends on user; treat as ready when logged out, no personId, or restore in progress (friends will be set by restoreFromServer)
-  const friendsReady = isFriendsHydrated || isRestoringProfile || (isHydrated && !user) || (isHydrated && !!user && !user.personId);
+  const friendsReady = isFriendsHydrated;
+
 
   console.log('[DEBUG] Layout state:', { fontsLoaded, isHydrated, isPreferencesHydrated, friendsReady, isFriendsHydrated, hasUser: !!user });
 
@@ -77,6 +86,8 @@ function RootContent() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <PushNotificationNavigator />
       <PushSyncController />
+      <ExternalLinkAskModal />
+      <ExternalLinkWebViewModal />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="about" options={{ presentation: 'modal' }} />

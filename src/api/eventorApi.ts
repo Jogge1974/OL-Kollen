@@ -1,10 +1,10 @@
 import { XMLParser } from 'fast-xml-parser';
 
-import { buildEventorUrl, getEventorApiKey } from '@/src/services/env';
 import { getStoredJson, setStoredJson } from '@/src/services/secureStorage';
 import { formatApiDateTime } from '@/src/services/dateService';
 import { DistrictOption, EventCompetitorCount, EventDetail, EventDocument, EventFilterValues, EventItem, EventPublishedListKind, EventPublishedListScope } from '@/src/types/eventor';
 import { mapEventDetailXml, mapEventDocumentsXml, mapEventListXml } from '@/src/utils/mapEventorResponse';
+import { fetchViaEventorProxy, EventorProxyEndpoint } from '@/src/services/eventorProxyClient';
 
 const parser = new XMLParser({
   attributeNamePrefix: '',
@@ -30,30 +30,11 @@ let organisationDirectoryCache: OrganisationDirectory | null = null;
 let organisationDirectoryPromise: Promise<OrganisationDirectory> | null = null;
 
 export async function fetchEventorEvents(filters: EventFilterValues): Promise<EventItem[]> {
-  const apiKey = getEventorApiKey();
-  const searchParams = new URLSearchParams({
+  // Fetched via the server-side proxy so the Eventor API key never ships in the app.
+  const xml = await fetchViaEventorProxy('events', {
     fromDate: formatApiDateTime(filters.fromDate, 'start'),
     toDate: formatApiDateTime(filters.toDate, 'end'),
   });
-  const requestUrl = buildEventorUrl(`/events?${searchParams.toString()}`);
-
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: apiKey,
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    console.error('[Eventor] GET /events failed', {
-      status: response.status,
-      url: requestUrl,
-    });
-    throw new Error(mapEventorError(response.status, xml));
-  }
 
   let mappedEvents = mapEventListXml(xml);
   const needsOrganisationDirectory = filters.districtIds.length > 0 || mappedEvents.some(needsOrganiserNameHydration);
@@ -107,57 +88,12 @@ function filterEvents(events: EventItem[], filters: EventFilterValues) {
 }
 
 export async function fetchEventorEventById(eventId: string, selectedEventRaceId?: string | null): Promise<EventDetail> {
-  const normalizedEventId = normalizeEventId(eventId);
-  const requestUrl = buildEventorUrl(`/event/${normalizedEventId}`);
-
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    console.error('[Eventor] GET /event/{id} failed', {
-      eventId: normalizedEventId,
-      status: response.status,
-      url: requestUrl,
-    });
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
+  const xml = await fetchViaEventorProxy('event', { eventId: normalizeEventId(eventId) });
   return mapEventDetailXml(xml, selectedEventRaceId);
 }
 
 export async function fetchEventDocumentsForEvent(eventId: string): Promise<EventDocument[]> {
-  const normalizedEventId = normalizeEventId(eventId);
-  const searchParams = new URLSearchParams({
-    eventIds: normalizedEventId,
-  });
-  const requestUrl = buildEventorUrl(`/events/documents?${searchParams.toString()}`);
-
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    console.error('[Eventor] GET /events/documents failed', {
-      eventId: normalizedEventId,
-      status: response.status,
-      url: requestUrl,
-    });
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
+  const xml = await fetchViaEventorProxy('events_documents', { eventIds: normalizeEventId(eventId) });
   return mapEventDocumentsXml(xml);
 }
 
@@ -172,9 +108,8 @@ export async function fetchEventPublishedListXml(
   const normalizedEventId = normalizeEventId(eventId);
   const request = buildPublishedListRequest(kind, scope, normalizedEventId, organisationId, eventRaceId);
 
-  return fetchEventorXmlWithRetry(request.endpoint, `Published list ${kind}/${scope}`, {
-    onAttempt: options.onAttempt,
-  });
+  options.onAttempt?.(1);
+  return fetchViaEventorProxy(request.endpoint, request.params);
 }
 
 export async function fetchEventSplitTimesXml(
@@ -182,41 +117,25 @@ export async function fetchEventSplitTimesXml(
   eventRaceId?: string | null,
   options: { onAttempt?: (attempt: number) => void } = {},
 ) {
-  const normalizedEventId = normalizeEventId(eventId);
-  const searchParams = new URLSearchParams({
-    eventId: normalizedEventId,
+  const params: Record<string, unknown> = {
+    eventId: normalizeEventId(eventId),
     includeOrganisationElement: 'true',
     includePersonElement: 'true',
     includeSplitTimes: 'true',
-  });
+  };
   // For multi-stage events Eventor only attaches the per-race <Course> (course
   // length) to the stage named by eventRaceId; without it the nested course is
   // only present on race 1, so other stages get no length (and no km-time).
   if (eventRaceId) {
-    searchParams.set('eventRaceId', eventRaceId);
+    params.eventRaceId = eventRaceId;
   }
-  const requestUrl = buildEventorUrl(`/results/event/iofxml?${searchParams.toString()}`);
 
-  return fetchEventorXmlWithRetry(requestUrl, 'Split times', { onAttempt: options.onAttempt });
+  options.onAttempt?.(1);
+  return fetchViaEventorProxy('results_event', params);
 }
 
 export async function fetchEventClassNameMap(eventId: string) {
-  const normalizedEventId = normalizeEventId(eventId);
-  const params = new URLSearchParams({ eventId: normalizedEventId });
-  const requestUrl = buildEventorUrl(`/eventclasses?${params.toString()}`);
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
+  const xml = await fetchViaEventorProxy('eventclasses', { eventId: normalizeEventId(eventId) });
   return mapEventClassNamesXml(xml);
 }
 
@@ -273,44 +192,35 @@ export async function fetchBatchCompetitorCounts(
   if (eventIds.length === 0) return {};
 
   const normalizedIds = eventIds.map(normalizeEventId);
-  const params = new URLSearchParams({ eventIds: normalizedIds.join(',') });
-
-  if (organisationId) {
-    params.set('organisationIds', organisationId);
-  }
-
-  const requestUrl = buildEventorUrl(`/competitorcount?${params.toString()}`);
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
-  const parsed = parser.parse(xml) as {
-    CompetitorCountList?: {
-      CompetitorCount?: unknown;
-    };
-  };
-
   const result: Record<string, CompetitorCountEntry> = {};
 
-  for (const node of toArray<Record<string, unknown>>(parsed.CompetitorCountList?.CompetitorCount)) {
-    const eventId = String(node.eventId ?? '');
-    if (!eventId) continue;
+  // Chunk eventIds so the comma-joined query never produces an over-long URL.
+  for (const chunk of chunkIdsByLength(normalizedIds)) {
+    const params: Record<string, unknown> = { eventIds: chunk.join(',') };
+    if (organisationId) {
+      params.organisationIds = organisationId;
+    }
 
-    const orgNode = toArray<Record<string, unknown>>(node.OrganisationCompetitorCount)[0] ?? null;
+    // Fetched via the server-side proxy (key stays server-side; shared cache).
+    const xml = await fetchViaEventorProxy('competitorcount', params);
 
-    result[eventId] = {
-      totalEntries: toNullableNumber(node.numberOfEntries) ?? 0,
-      organisationEntries: orgNode ? (toNullableNumber(orgNode.numberOfEntries) ?? 0) : null,
+    const parsed = parser.parse(xml) as {
+      CompetitorCountList?: {
+        CompetitorCount?: unknown;
+      };
     };
+
+    for (const node of toArray<Record<string, unknown>>(parsed.CompetitorCountList?.CompetitorCount)) {
+      const eventId = String(node.eventId ?? '');
+      if (!eventId) continue;
+
+      const orgNode = toArray<Record<string, unknown>>(node.OrganisationCompetitorCount)[0] ?? null;
+
+      result[eventId] = {
+        totalEntries: toNullableNumber(node.numberOfEntries) ?? 0,
+        organisationEntries: orgNode ? (toNullableNumber(orgNode.numberOfEntries) ?? 0) : null,
+      };
+    }
   }
 
   return result;
@@ -320,109 +230,93 @@ function normalizeEventId(eventId: string) {
   return eventId.split('::')[0] ?? eventId;
 }
 
-export async function fetchPersonStartsXml(personId: string, fromDate: string, toDate: string) {
-  const searchParams = new URLSearchParams({
-    includeOrganisationElement: 'true',
-    includePersonElement: 'true',
-    fromDate,
-    personId,
-    toDate,
-  });
-  const requestUrl = buildEventorUrl(`/starts/person?${searchParams.toString()}`);
-
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
+/**
+ * Split ids into chunks whose comma-joined length stays within a safe URL budget,
+ * so batching many eventIds never produces an over-long request URL.
+ */
+function chunkIdsByLength(ids: string[], maxJoinedLen = 1500): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let joinedLen = 0;
+  for (const id of ids) {
+    const addLen = current.length > 0 ? id.length + 1 : id.length;
+    if (current.length > 0 && joinedLen + addLen > maxJoinedLen) {
+      chunks.push(current);
+      current = [];
+      joinedLen = 0;
+    }
+    joinedLen += current.length > 0 ? id.length + 1 : id.length;
+    current.push(id);
   }
-
-  return xml;
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }
 
-export async function fetchPersonResultsXml(personId: string, fromDate: string, toDate: string) {
-  const searchParams = new URLSearchParams({
+export async function fetchPersonStartsXml(personId: string, fromDate: string, toDate: string) {
+  return fetchViaEventorProxy('starts_person', {
     includeOrganisationElement: 'true',
     includePersonElement: 'true',
     fromDate,
     personId,
     toDate,
   });
-  const requestUrl = buildEventorUrl(`/results/person?${searchParams.toString()}`);
+}
 
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
+const inFlightPersonResults = new Map<string, Promise<string>>();
 
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
+// Coalesce concurrent identical /results/person requests so the friend detail
+// view (Head-to-Head + results list request the same person+year) only hits
+// Eventor once. Cleared on settle, so pull-to-refresh still refetches.
+export function fetchPersonResultsXml(personId: string, fromDate: string, toDate: string): Promise<string> {
+  const key = `${personId}|${fromDate}|${toDate}`;
+  const existing = inFlightPersonResults.get(key);
+  if (existing) {
+    return existing;
   }
 
-  return xml;
+  const promise = fetchPersonResultsXmlUncached(personId, fromDate, toDate).finally(() => inFlightPersonResults.delete(key));
+  inFlightPersonResults.set(key, promise);
+  return promise;
+}
+
+async function fetchPersonResultsXmlUncached(personId: string, fromDate: string, toDate: string) {
+  return fetchViaEventorProxy('results_person', {
+    includeOrganisationElement: 'true',
+    includePersonElement: 'true',
+    fromDate,
+    personId,
+    toDate,
+  });
 }
 
 export async function fetchPersonEntriesXml(personId: string, organisationId: string | null, fromDate: string, toDate: string) {
-  const searchParams = new URLSearchParams({
+  const params: Record<string, unknown> = {
     includeEventElement: 'true',
     personIds: personId,
     fromEventDate: fromDate,
     toEventDate: toDate,
-  });
+  };
   if (organisationId) {
-    searchParams.set('organisationIds', organisationId);
+    params.organisationIds = organisationId;
   }
-  const requestUrl = buildEventorUrl(`/entries?${searchParams.toString()}`);
+  return fetchViaEventorProxy('entries', params);
+}
 
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
+// Batched variant for checking many people's entries in ONE call (e.g. the
+// friends list) instead of one call per person — each <Entry> in the response
+// carries its own <Competitor><PersonId>, so callers can attribute rows back to
+// the right person. personIds should already be chunked to a safe URL length.
+export async function fetchPersonsEntriesXml(personIds: string[], fromDate: string, toDate: string) {
+  return fetchViaEventorProxy('entries', {
+    includeEventElement: 'true',
+    personIds: personIds.join(','),
+    fromEventDate: fromDate,
+    toEventDate: toDate,
   });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
-  return xml;
 }
 
 export async function fetchEventClassesXml(eventId: string) {
-  const normalizedEventId = normalizeEventId(eventId);
-  const params = new URLSearchParams({ eventId: normalizedEventId });
-  const requestUrl = buildEventorUrl(`/eventclasses?${params.toString()}`);
-
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
-  return xml;
+  return fetchViaEventorProxy('eventclasses', { eventId: normalizeEventId(eventId) });
 }
 
 function buildPublishedListRequest(
@@ -431,49 +325,40 @@ function buildPublishedListRequest(
   eventId: string,
   organisationId?: string,
   eventRaceId?: string | null,
-) {
+): { endpoint: EventorProxyEndpoint; params: Record<string, unknown> } {
   if (kind === 'entries') {
-    const params = new URLSearchParams({
+    const params: Record<string, unknown> = {
       eventIds: eventId,
       includeOrganisationElement: 'true',
       includePersonElement: 'true',
-    });
+    };
 
     if (scope === 'organisation' && organisationId) {
-      params.set('organisationIds', organisationId);
+      params.organisationIds = organisationId;
     }
 
-    return {
-      endpoint: buildEventorUrl(`/entries?${params.toString()}`),
-      params: Object.fromEntries(params.entries()),
-    };
+    return { endpoint: 'entries', params };
   }
 
   if (kind === 'starts') {
-    const params = new URLSearchParams({ eventId });
+    const params: Record<string, unknown> = { eventId };
 
     // For multi-stage events the per-race course length is only included when
     // the specific race is requested, so pass eventRaceId when we have it.
     if (eventRaceId) {
-      params.set('eventRaceId', eventRaceId);
+      params.eventRaceId = eventRaceId;
     }
 
-    return {
-      endpoint: buildEventorUrl(`/starts/event/iofxml?${params.toString()}`),
-      params: Object.fromEntries(params.entries()),
-    };
+    return { endpoint: 'starts_event', params };
   }
 
-  const params = new URLSearchParams({ eventId });
+  const params: Record<string, unknown> = { eventId };
 
   if (eventRaceId) {
-    params.set('eventRaceId', eventRaceId);
+    params.eventRaceId = eventRaceId;
   }
 
-  return {
-    endpoint: buildEventorUrl(`/results/event/iofxml?${params.toString()}`),
-    params: Object.fromEntries(params.entries()),
-  };
+  return { endpoint: 'results_event', params };
 }
 
 function mapEventClassNamesXml(xml: string) {
@@ -500,26 +385,12 @@ function mapEventClassNamesXml(xml: string) {
 }
 
 async function fetchSingleCompetitorCount(eventId: string, organisationId: string | null, eventRaceId?: string | null) {
-  const params = new URLSearchParams({ eventIds: eventId });
-
+  const params: Record<string, unknown> = { eventIds: eventId };
   if (organisationId) {
-    params.set('organisationIds', organisationId);
+    params.organisationIds = organisationId;
   }
 
-  const requestUrl = buildEventorUrl(`/competitorcount?${params.toString()}`);
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
-  }
-
+  const xml = await fetchViaEventorProxy('competitorcount', params);
   return mapCompetitorCountXml(xml, eventRaceId);
 }
 
@@ -531,19 +402,8 @@ async function loadOrganisationDirectory(): Promise<OrganisationDirectory> {
     return storedDirectory;
   }
 
-  const requestUrl = buildEventorUrl('/organisations');
-  const response = await fetch(requestUrl, {
-    headers: {
-      Accept: 'application/xml',
-      ApiKey: getEventorApiKey(),
-    },
-    method: 'GET',
-  });
-  const xml = await response.text();
-
-  if (!response.ok) {
-    throw new Error(mapEventorError(response.status, xml));
-  }
+  // Fetched via the server-side proxy (key stays server-side; cached 24h across users).
+  const xml = await fetchViaEventorProxy('organisations', {});
 
   const parsed = parser.parse(xml) as {
     OrganisationList?: {
@@ -642,93 +502,6 @@ async function fetchRelayTeamCounts(eventId: string, organisationId: string | nu
 
 function isRelayEventForm(eventForm?: string | null) {
   return eventForm === 'RelaySingleDay' || eventForm === 'Relay';
-}
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-/**
- * Fetches XML from Eventor with a request timeout and automatic retries.
- *
- * Large events (e.g. O-ringen, ~36 MB result list / ~90 MB with split times)
- * regularly make Eventor time out or return a 5xx HTML error page under load
- * ("Eventor svarade med ett oväntat HTML-fel"). A couple of retries with
- * exponential backoff clears the vast majority of those transient failures.
- */
-async function fetchEventorXmlWithRetry(
-  url: string,
-  logLabel: string,
-  { maxAttempts = 3, timeoutMs = 120000, onAttempt }: { maxAttempts?: number; timeoutMs?: number; onAttempt?: (attempt: number) => void } = {},
-): Promise<string> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    onAttempt?.(attempt);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    let response: Response;
-    let xml: string;
-    try {
-      response = await fetch(url, {
-        headers: {
-          Accept: 'application/xml',
-          ApiKey: getEventorApiKey(),
-        },
-        method: 'GET',
-        signal: controller.signal,
-      });
-      xml = await response.text();
-    } catch (error) {
-      clearTimeout(timeoutId);
-      const normalized = error instanceof Error ? error : new Error(String(error));
-      const timedOut = normalized.name === 'AbortError';
-      lastError = timedOut ? new Error('Eventor svarade inte i tid. Försök igen om en stund.') : normalized;
-      console.error(`[Eventor] ${logLabel} network error`, { attempt, timedOut, message: normalized.message });
-      if (attempt === maxAttempts) {
-        throw lastError;
-      }
-      await delay(Math.min(1000 * 2 ** (attempt - 1), 5000));
-      continue;
-    }
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
-      return xml;
-    }
-
-    // 5xx and HTML error pages are transient server-side overload; retry them.
-    const retryable = response.status >= 500 || response.status === 429 || xml.includes('<html');
-    lastError = new Error(mapEventorError(response.status, xml));
-    console.error(`[Eventor] ${logLabel} failed`, { attempt, status: response.status, retryable });
-
-    if (!retryable || attempt === maxAttempts) {
-      throw lastError;
-    }
-
-    await delay(Math.min(1000 * 2 ** (attempt - 1), 5000));
-  }
-
-  throw lastError ?? new Error('Eventor-anropet misslyckades.');
-}
-
-function mapEventorError(status: number, body: string) {
-  if (status === 401 || status === 403) {
-    return 'Eventor-anropet nekades. Kontrollera lokal API-konfiguration.';
-  }
-
-  if (status === 404) {
-    return 'Eventor-endpointen kunde inte hittas.';
-  }
-
-  if (body.includes('<html')) {
-    return 'Eventor svarade med ett oväntat HTML-fel.';
-  }
-
-  return `Eventor svarade med felkod ${status}.`;
 }
 
 function getNodeText(value: unknown) {

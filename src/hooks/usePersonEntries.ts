@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { XMLParser } from 'fast-xml-parser';
 
-import { fetchPersonEntriesXml, fetchEventClassesXml, fetchEventCompetitorCount } from '@/src/api/eventorApi';
+import { fetchPersonEntriesXml, fetchEventClassesXml, fetchBatchCompetitorCounts } from '@/src/api/eventorApi';
 
 const parser = new XMLParser({
   attributeNamePrefix: '',
@@ -192,21 +192,19 @@ async function enrichEntries(rawEntries: RawEntry[], viewerOrganisationId: strin
   const classMapByEvent: Record<string, Record<string, { name: string; numberOfEntries: number | null }>> = {};
   const competitorCountByEvent: Record<string, { total: number | null; org: number | null }> = {};
 
+  // One batched /competitorcount call for all events (chunked to keep the URL
+  // safe) instead of one call per event. Class maps have no batch endpoint.
+  const batchCounts = await fetchBatchCompetitorCounts(eventIds, viewerOrganisationId).catch(
+    () => ({} as Record<string, { totalEntries: number; organisationEntries: number | null }>),
+  );
+
   await Promise.all(
     eventIds.map(async (eventId) => {
-      const [classMap, counts] = await Promise.all([
-        fetchEventClassMap(eventId),
-        fetchEventCompetitorCount(eventId, viewerOrganisationId).catch(() => ({
-          organisationEntries: null,
-          organisationStarts: null,
-          totalEntries: null,
-          totalStarts: null,
-        })),
-      ]);
-      classMapByEvent[eventId] = classMap;
+      classMapByEvent[eventId] = await fetchEventClassMap(eventId);
+      const counts = batchCounts[eventId];
       competitorCountByEvent[eventId] = {
-        total: counts.totalEntries,
-        org: counts.organisationEntries,
+        total: counts?.totalEntries ?? null,
+        org: counts?.organisationEntries ?? null,
       };
     }),
   );

@@ -70,8 +70,9 @@ supabase db push
 Det skapar tabellerna:
 
 - `app_users`
-- `notification_preferences`
-- `favorite_event_watches`
+- `device_notification_preferences`
+- `device_favorite_watches`
+- `device_friend_watches`
 - `device_push_tokens`
 
 ## 5. Secrets

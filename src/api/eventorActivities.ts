@@ -1,460 +1,388 @@
-import { ActivityDocument, ActivityInfoSegment, ActivityRegistration, ActivityRegistrationAttribute, ActivitySections, ClubActivity } from '@/src/types/eventorActivities';
-import { getStoredEventorCredentials } from '@/src/services/eventorCredentials';
-import { getStoredEventorWebSessionCookie, refreshStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
+import { XMLParser } from 'fast-xml-parser';
 
-// The Eventor API key is issued to a single org, so activities are scraped from
-// the public web pages instead (works for any org and includes district + SOFT).
-const EVENTOR_BASE = 'https://eventor.orientering.se';
+import { fetchOrganisationDirectory } from '@/src/api/eventorApi';
+import { fetchViaEventorProxy } from '@/src/services/eventorProxyClient';
+import { getStoredJson, setStoredJson } from '@/src/services/secureStorage';
+import { hasSupabaseRuntimeConfig, invokeSupabaseFunction } from '@/src/services/supabase';
+import {
+  ActivityAttributeDefinition,
+  ActivityAttributeType,
+  ActivityRegistration,
+  ActivityRegistrationAttribute,
+  ClubActivity,
+} from '@/src/types/eventorActivities';
 
-const SECTIONS_TTL_MS = 5 * 60 * 1000;
-const DETAIL_TTL_MS = 5 * 60 * 1000;
-const sectionsCache = new Map<string, { data: ActivitySections; fetchedAt: number }>();
-const detailCache = new Map<string, { data: ClubActivity; fetchedAt: number }>();
+// The shared Eventor API key is issued to a single org, so /api/activities only
+// works when the currently selected person belongs to that org.
+export const ACTIVITIES_API_ORG_ID = '416';
 
-// Eventor's web session (ASP.NET_SessionId) times out; re-login with stored
-// credentials to re-authenticate so member-only participant lists show again.
-const SESSION_REFRESH_TTL_MS = 5 * 60 * 1000;
-let lastSessionRefreshAt = 0;
-
-async function refreshSessionWithStoredCredentials(force = false): Promise<boolean> {
-  if (!force && Date.now() - lastSessionRefreshAt < SESSION_REFRESH_TTL_MS) {
-    return false;
+// An activity counts as past once either its own date, or (missing a start
+// date) its registration deadline, or the visibleTo window is behind us.
+export function isActivityExpired(activity: ClubActivity): boolean {
+  const startTime = activity.startTime ? new Date(activity.startTime).getTime() : NaN;
+  if (Number.isFinite(startTime)) {
+    return startTime < Date.now();
   }
-  try {
-    const credentials = await getStoredEventorCredentials();
-    if (!credentials?.username || !credentials?.password) {
-      return false;
-    }
-    await refreshStoredEventorWebSessionCookie(credentials.username, credentials.password);
-    lastSessionRefreshAt = Date.now();
+
+  const deadline = activity.registrationDeadline ? new Date(activity.registrationDeadline).getTime() : NaN;
+  if (Number.isFinite(deadline) && deadline < Date.now()) {
     return true;
-  } catch {
+  }
+
+  if (!activity.visibleTo) {
     return false;
   }
+
+  const visibleTo = new Date(activity.visibleTo).getTime();
+  return Number.isFinite(visibleTo) && visibleTo < Date.now();
 }
 
-const SWEDISH_MONTHS: Record<string, number> = {
-  april: 3,
-  augusti: 7,
-  december: 11,
-  februari: 1,
-  januari: 0,
-  juli: 6,
-  juni: 5,
-  maj: 4,
-  mars: 2,
-  november: 10,
-  oktober: 9,
-  september: 8,
+const parser = new XMLParser({
+  attributeNamePrefix: '',
+  ignoreAttributes: false,
+  parseTagValue: false,
+  // Activity <Information> fields are HTML with many entities (&auml; etc.). The
+  // default entity-expansion guard (1000) trips on large clubs, so raise the
+  // limits well above what a legitimate response needs.
+  processEntities: {
+    enabled: true,
+    maxEntityCount: 5_000_000,
+    maxExpandedLength: 500_000_000,
+    maxTotalExpansions: 5_000_000,
+  },
+  textNodeName: '#text',
+  trimValues: true,
+});
+
+// Parsed activities are cached per organisation + year for the session so the
+// detail screen can reuse the list fetch without hitting the network again.
+const ACTIVITIES_TTL_MS = 5 * 60 * 1000;
+const activitiesCache = new Map<string, { data: ClubActivity[]; fetchedAt: number }>();
+
+// Member directory (personId -> name) is cached in memory and on disk.
+const MEMBERS_TTL_MS = 24 * 60 * 60 * 1000;
+const memberCache = new Map<string, { fetchedAt: number; names: Record<string, string> }>();
+
+type MembersStorage = {
+  fetchedAt: number;
+  names: Record<string, string>;
 };
 
-async function fetchHtml(url: string): Promise<string> {
-  // Send the logged-in Eventor session cookie so member-only registration lists
-  // are included (public requests only see the participant count).
-  const cookie = await getStoredEventorWebSessionCookie().catch(() => null);
-  const headers: Record<string, string> = { Accept: 'text/html' };
-  if (cookie) {
-    headers.Cookie = cookie;
+function toArray<T>(value: T | T[] | undefined | null): T[] {
+  if (value == null) {
+    return [];
   }
 
-  const response = await fetch(url, { credentials: 'include', headers });
-  if (!response.ok) {
-    throw new Error(`Eventor ${response.status}`);
-  }
-  return await response.text();
+  return Array.isArray(value) ? value : [value];
 }
 
-export async function fetchOrganisationActivities(organisationId: string, force = false): Promise<ActivitySections> {
-  const cached = sectionsCache.get(organisationId);
-  if (!force && cached && Date.now() - cached.fetchedAt < SECTIONS_TTL_MS) {
+function asString(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+}
+
+export async function fetchOrganisationActivities(organisationId: string, year: number): Promise<ClubActivity[]> {
+  const cacheKey = `${organisationId}:${year}`;
+  const cached = activitiesCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.fetchedAt < ACTIVITIES_TTL_MS) {
     return cached.data;
   }
 
-  let html: string;
+  const from = `${year}-01-01 00:00:00`;
+  const to = `${year}-12-31 23:59:59`;
+
+  let xml: string;
   try {
-    html = await fetchHtml(`${EVENTOR_BASE}/Activities?organisationId=${organisationId}`);
-  } catch {
-    throw new Error('Det gick inte att hämta klubbaktiviteterna just nu.');
+    xml = await fetchViaEventorProxy('activities', { from, includeRegistrations: true, organisationId, to });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    console.error('[Eventor] activities proxy call failed', message);
+    throw new Error(
+      message.includes('403')
+        ? 'Du har inte behörighet att se klubbens aktiviteter.'
+        : 'Det gick inte att hämta klubbaktiviteterna just nu.',
+    );
   }
 
-  const data = parseSectionsHtml(html);
-  sectionsCache.set(organisationId, { data, fetchedAt: Date.now() });
-  return data;
+  const names = await fetchOrganisationMemberNames(organisationId).catch(() => ({}) as Record<string, string>);
+  const orgNames = await fetchOrganisationDirectory()
+    .then((directory) => directory.organisationNameById)
+    .catch(() => ({}) as Record<string, string>);
+  const activities = parseActivitiesXml(xml, names, orgNames);
+  await resolveMissingPersonNames(activities);
+
+  activitiesCache.set(cacheKey, { data: activities, fetchedAt: Date.now() });
+  return activities;
 }
 
-export async function fetchActivityDetail(activityId: string, force = false): Promise<ClubActivity> {
-  const cached = detailCache.get(activityId);
-  if (!force && cached && Date.now() - cached.fetchedAt < DETAIL_TTL_MS) {
-    return cached.data;
+// Registrants that aren't members of the querying club can't be resolved via the
+// Eventor API key, so fill in their names from the Supabase person registry.
+async function resolveMissingPersonNames(activities: ClubActivity[]): Promise<void> {
+  if (!hasSupabaseRuntimeConfig()) {
+    return;
   }
 
-  const url = `${EVENTOR_BASE}/Activities/Show/${activityId}`;
-  let html: string;
-  try {
-    html = await fetchHtml(url);
-  } catch {
-    throw new Error('Det gick inte att hämta aktiviteten just nu.');
-  }
-
-  let data = parseDetailHtml(html, activityId);
-
-  // Participant list hidden (member-only) but there ARE participants -> the
-  // session likely expired; re-authenticate once and retry.
-  if (data.registrations.length === 0 && data.registrationCount > 0) {
-    const refreshed = await refreshSessionWithStoredCredentials(force);
-    if (refreshed) {
-      try {
-        data = parseDetailHtml(await fetchHtml(url), activityId);
-      } catch {
-        // Keep the first result if the retry fails.
+  const missingIds = new Set<string>();
+  for (const activity of activities) {
+    for (const registration of activity.registrations) {
+      if (!registration.personName && registration.personId) {
+        missingIds.add(registration.personId);
       }
     }
   }
 
-  detailCache.set(activityId, { data, fetchedAt: Date.now() });
-  return data;
-}
-
-export function getCachedActivityDetail(activityId: string): ClubActivity | null {
-  return detailCache.get(activityId)?.data ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// List page parsing
-// ---------------------------------------------------------------------------
-
-function parseSectionsHtml(html: string): ActivitySections {
-  const page = decodeEntities(html);
-
-  const headingRe = /<h3[^>]*>\s*Aktiviteter för ([\s\S]*?)<\/h3>/g;
-  const found: Array<{ name: string; contentStart: number }> = [];
-  let match: RegExpExecArray | null;
-  while ((match = headingRe.exec(page)) !== null) {
-    found.push({ contentStart: match.index + match[0].length, name: stripTags(match[1]).trim() });
+  if (missingIds.size === 0) {
+    return;
   }
 
-  const parsedSections = found.map((section) => {
-    const tableEnd = page.indexOf('</table>', section.contentStart);
-    const tableHtml = tableEnd >= 0 ? page.slice(section.contentStart, tableEnd) : '';
-    return { activities: parseActivityRows(tableHtml), name: section.name };
-  });
-
-  let soft: ClubActivity[] = [];
-  const nonSoft: Array<{ activities: ClubActivity[]; name: string }> = [];
-  for (const section of parsedSections) {
-    if (/Svenska Orienteringsförbundet/i.test(section.name)) {
-      soft = section.activities;
-    } else {
-      nonSoft.push(section);
-    }
-  }
-
-  return {
-    club: nonSoft[0]?.activities ?? [],
-    clubName: nonSoft[0]?.name ?? null,
-    district: nonSoft[1]?.activities ?? [],
-    districtName: nonSoft[1]?.name ?? null,
-    soft,
-  };
-}
-
-function parseActivityRows(tableHtml: string): ClubActivity[] {
-  const rows = tableHtml.split(/<tr[^>]*>/i).slice(1);
-  const activities: ClubActivity[] = [];
-
-  for (const row of rows) {
-    const linkMatch = row.match(/\/Activities\/Show\/(\d+)[^>]*>([\s\S]*?)<\/a>/i);
-    if (!linkMatch) {
-      continue;
-    }
-
-    const id = linkMatch[1];
-    const name = stripTags(linkMatch[2]).trim();
-    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => cell[1]);
-
-    const startTime = cells[1] ? stripTags(cells[1]).trim() || null : null;
-
-    const deadlineCell = cells[2] ?? '';
-    const titleMatch = deadlineCell.match(/title="([^"]*)"/i);
-    // Fall back to the activity's own date when no registration deadline is set,
-    // consistent with the detail view.
-    const registrationDeadline = (titleMatch ? titleMatch[1] : stripTags(deadlineCell)).trim() || startTime || null;
-    const registrationDeadlineIso = parseSwedishDateTime(registrationDeadline);
-
-    const countText = cells[3] ? stripTags(cells[3]).trim() : '';
-    const registrationCount = Number(countText.replace(/\D/g, '')) || 0;
-
-    activities.push({
-      attributeNames: [],
-      documents: [],
-      id,
-      informationSegments: [],
-      name,
-      organiser: null,
-      registrationCount,
-      registrationDeadline,
-      registrationDeadlineIso,
-      registrations: [],
-      startTime,
-      url: `${EVENTOR_BASE}/Activities/Show/${id}`,
-    });
-  }
-
-  return activities;
-}
-
-// ---------------------------------------------------------------------------
-// Detail page parsing
-// ---------------------------------------------------------------------------
-
-function parseDetailHtml(html: string, activityId: string): ClubActivity {
-  const page = decodeEntities(html);
-
-  const nameMatch = page.match(/Aktivitet:\s*([\s\S]*?)<\/(?:h1|h2|title)>/i);
-  const name = nameMatch ? stripTags(nameMatch[1]).trim() : 'Aktivitet';
-
-  const infoField = (label: string): string | null => {
-    const re = new RegExp(`<th>\\s*${label}\\s*</th>\\s*<td[^>]*>([\\s\\S]*?)</td>`, 'i');
-    const found = page.match(re);
-    return found ? found[1] : null;
-  };
-
-  const organiserRaw = infoField('Arrangör');
-  const startRaw = infoField('Starttid');
-  const deadlineRaw = infoField('Anmälningsstopp');
-  const informationRaw = infoField('Information');
-  const countRaw = infoField('Antal anmälda deltagare');
-
-  const registrationDeadlineRaw = deadlineRaw ? stripTags(deadlineRaw).trim() || null : null;
-  const startTime = startRaw ? stripTags(startRaw).trim() || null : null;
-  // Activities without a registration deadline: treat the activity's own date as
-  // the deadline (consistent with the list view).
-  const registrationDeadline = registrationDeadlineRaw ?? startTime;
-  const { attributeNames, registrations } = parseRegistrations(page);
-
-  return {
-    attributeNames,
-    documents: extractEventInfoBoxDocuments(page),
-    id: activityId,
-    informationSegments: informationRaw ? parseInformationSegments(informationRaw) : [],
-    name,
-    organiser: organiserRaw ? stripTags(organiserRaw).trim() || null : null,
-    registrationCount: Number((countRaw ? stripTags(countRaw) : '').replace(/\D/g, '')) || registrations.length,
-    registrationDeadline,
-    registrationDeadlineIso: parseSwedishDateTime(registrationDeadline),
-    registrations,
-    startTime,
-    url: `${EVENTOR_BASE}/Activities/Show/${activityId}`,
-  };
-}
-
-const DOCUMENT_URL_RE = /(eventdocuments|\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|webp))(?:$|[?#/])/i;
-
-function resolveUrl(href: string): string {
-  if (/^https?:\/\//i.test(href)) {
-    return href;
-  }
-  if (href.startsWith('/')) {
-    return `${EVENTOR_BASE}${href}`;
-  }
-  return `${EVENTOR_BASE}/${href.replace(/^(?:\.\.\/)+/, '')}`;
-}
-
-// <a> links inside the Information text stay inline (clickable); bare document
-// URLs are dropped since eventInfoBox lists them separately.
-function parseInformationSegments(html: string): ActivityInfoSegment[] {
-  const segments: ActivityInfoSegment[] = [];
-  const anchorRe = /<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = anchorRe.exec(html)) !== null) {
-    const before = htmlChunkToText(html.slice(lastIndex, match.index));
-    if (before) {
-      segments.push({ text: before });
-    }
-    const url = resolveUrl(match[1].replace(/&amp;/g, '&').trim());
-    const text = stripTags(match[2]).trim() || fileNameFromUrl(url);
-    segments.push({ text, url });
-    lastIndex = match.index + match[0].length;
-  }
-
-  const tail = htmlChunkToText(html.slice(lastIndex));
-  if (tail) {
-    segments.push({ text: tail });
-  }
-
-  if (segments.length > 0 && !segments[0].url) {
-    segments[0].text = segments[0].text.replace(/^\s+/, '');
-    if (!segments[0].text) {
-      segments.shift();
-    }
-  }
-  const last = segments[segments.length - 1];
-  if (last && !last.url) {
-    last.text = last.text.replace(/\s+$/, '');
-    if (!last.text) {
-      segments.pop();
-    }
-  }
-
-  return segments;
-}
-
-function htmlChunkToText(html: string): string {
-  return html
-    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
-    .replace(/<\s*li[^>]*>/gi, '\n• ')
-    .replace(/<\/\s*(p|div|li|ul|ol|h[1-6]|tr)\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/https?:\/\/[^\s<]+/gi, (url) => (DOCUMENT_URL_RE.test(url) ? '' : url))
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ');
-}
-
-// The "Dokument och länkar" box lists documents/links as <ul class="documents">.
-function extractEventInfoBoxDocuments(page: string): ActivityDocument[] {
-  const headingIdx = page.search(/<h3[^>]*>\s*Dokument och länkar\s*<\/h3>/i);
-  if (headingIdx < 0) {
-    return [];
-  }
-  const ulMatch = page.slice(headingIdx).match(/<ul class="documents">([\s\S]*?)<\/ul>/i);
-  if (!ulMatch) {
-    return [];
-  }
-
-  const documents: ActivityDocument[] = [];
-  const seen = new Set<string>();
-  for (const anchor of ulMatch[1].matchAll(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-    const name = stripTags(anchor[2]).trim();
-    if (!name) {
-      continue;
-    }
-    const url = resolveUrl(anchor[1].replace(/&amp;/g, '&').trim());
-    if (seen.has(url)) {
-      continue;
-    }
-    seen.add(url);
-    documents.push({ name, url });
-  }
-  return documents;
-}
-
-function fileNameFromUrl(url: string): string {
   try {
-    const path = url.split(/[?#]/)[0];
-    const last = path.substring(path.lastIndexOf('/') + 1);
-    return decodeURIComponent(last) || 'Dokument';
+    const response = await invokeSupabaseFunction<{ names?: Record<string, { club?: string; name?: string }> }>(
+      'person-names',
+      { ids: [...missingIds] },
+    );
+    const names = response?.names ?? {};
+
+    for (const activity of activities) {
+      for (const registration of activity.registrations) {
+        if (!registration.personName) {
+          const resolved = names[registration.personId];
+          if (resolved?.name) {
+            registration.personName = resolved.name;
+          }
+        }
+      }
+    }
   } catch {
-    return 'Dokument';
+    // Best-effort: fall back to "Deltagare {id}" if the lookup fails.
   }
 }
 
-function parseRegistrations(page: string): { attributeNames: string[]; registrations: ActivityRegistration[] } {
-  const headingIdx = page.indexOf('Anmälningar');
-  if (headingIdx < 0) {
-    return { attributeNames: [], registrations: [] };
+export function getCachedActivity(organisationId: string, year: number, activityId: string): ClubActivity | null {
+  const cached = activitiesCache.get(`${organisationId}:${year}`);
+  return cached?.data.find((activity) => activity.id === activityId) ?? null;
+}
+
+function parseActivitiesXml(xml: string, memberNames: Record<string, string>, orgNames: Record<string, string>): ClubActivity[] {
+  const parsed = parser.parse(xml) as { ActivityList?: { Activity?: unknown } };
+  const rawActivities = toArray(parsed.ActivityList?.Activity) as Record<string, unknown>[];
+
+  const activities = rawActivities.map((raw) => mapActivity(raw, memberNames, orgNames));
+  return sortActivities(activities);
+}
+
+function mapActivity(raw: Record<string, unknown>, memberNames: Record<string, string>, orgNames: Record<string, string>): ClubActivity {
+  const activityOrgId = String(raw.organisationId ?? '');
+  const attributes = toArray(raw.ActivityAttribute as unknown).map((entry) => mapAttributeDefinition(entry as Record<string, unknown>));
+  const attributeById = new Map(attributes.map((attribute) => [attribute.id, attribute]));
+  const registrations = toArray(raw.ActivityRegistration as unknown).map((registration) =>
+    mapRegistration(registration as Record<string, unknown>, attributeById, memberNames, orgNames, activityOrgId),
+  );
+
+  const informationHtml = asString(raw.Information);
+
+  return {
+    attributes,
+    id: String(raw.id ?? ''),
+    informationHtml,
+    informationText: informationHtml ? htmlToPlainText(informationHtml) : null,
+    name: asString(raw.Name) ?? 'Aktivitet',
+    registrationCount: Number(raw.registrationCount ?? registrations.length) || registrations.length,
+    registrationDeadline: asString(raw.registrationDeadline),
+    registrations,
+    startTime: asString(raw.startTime),
+    url: asString(raw.url) ?? `https://eventor.orientering.se/Activities/Show/${String(raw.id ?? '')}`,
+    visibleFrom: asString(raw.visibleFrom),
+    visibleTo: asString(raw.visibleTo),
+  };
+}
+
+function mapAttributeDefinition(raw: Record<string, unknown>): ActivityAttributeDefinition {
+  return {
+    id: String(raw.id ?? ''),
+    name: asString(raw.Name) ?? '',
+    order: Number(raw.order ?? 0) || 0,
+    type: normaliseAttributeType(asString(raw.type)),
+    values: toArray(raw.Value as unknown).map((value) => String(value ?? '').trim()).filter((value) => value.length > 0),
+  };
+}
+
+function normaliseAttributeType(type: string | null): ActivityAttributeType {
+  switch (type) {
+    case 'CheckBoxes':
+    case 'RadioButtons':
+    case 'SingleSelectList':
+      return type;
+    default:
+      return 'Text';
+  }
+}
+
+function mapRegistration(
+  raw: Record<string, unknown>,
+  attributeById: Map<string, ActivityAttributeDefinition>,
+  memberNames: Record<string, string>,
+  orgNames: Record<string, string>,
+  activityOrgId: string,
+): ActivityRegistration {
+  const personId = String(raw.personId ?? '');
+  const registrantOrgId = asString(raw.organisationId);
+  const isExternal = registrantOrgId != null && activityOrgId !== '' && registrantOrgId !== activityOrgId;
+  const clubName = isExternal ? (orgNames[registrantOrgId] ?? null) : null;
+  const attributes: ActivityRegistrationAttribute[] = toArray(raw.AttributeValue as unknown)
+    .map((entry) => {
+      const record = entry as Record<string, unknown>;
+      const attributeId = String(record.activityAttributeId ?? '');
+      const value = asString(record['#text']);
+
+      if (!value) {
+        return null;
+      }
+
+      return {
+        attributeId,
+        attributeName: attributeById.get(attributeId)?.name ?? '',
+        value,
+      };
+    })
+    .filter((entry): entry is ActivityRegistrationAttribute => entry != null);
+
+  return {
+    attributes,
+    clubName,
+    modifyDate: asString(raw.modifyDate),
+    organisationId: asString(raw.organisationId),
+    personId,
+    personName: memberNames[personId] ?? null,
+  };
+}
+
+// Not-yet-expired activities (visibleTo in the future) come first, expired ones
+// after. Within each group activities are ordered by start time (ascending).
+function sortActivities(activities: ClubActivity[]): ClubActivity[] {
+  const now = Date.now();
+
+  const isExpired = (activity: ClubActivity) => {
+    if (!activity.visibleTo) {
+      return false;
+    }
+
+    const visibleTo = new Date(activity.visibleTo).getTime();
+    return Number.isFinite(visibleTo) && visibleTo < now;
+  };
+
+  return [...activities].sort((left, right) => {
+    const leftExpired = isExpired(left);
+    const rightExpired = isExpired(right);
+
+    if (leftExpired !== rightExpired) {
+      return leftExpired ? 1 : -1;
+    }
+
+    const leftStart = left.startTime ? new Date(left.startTime).getTime() : 0;
+    const rightStart = right.startTime ? new Date(right.startTime).getTime() : 0;
+    return leftStart - rightStart;
+  });
+}
+
+async function fetchOrganisationMemberNames(organisationId: string): Promise<Record<string, string>> {
+  const memory = memberCache.get(organisationId);
+  if (memory && Date.now() - memory.fetchedAt < MEMBERS_TTL_MS) {
+    return memory.names;
   }
 
-  const tableMatch = page.slice(headingIdx).match(/<table[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) {
-    return { attributeNames: [], registrations: [] };
+  const storageKey = `eventor-members-${organisationId}`;
+  const stored = await getStoredJson<MembersStorage>(storageKey).catch(() => null);
+  if (stored && Date.now() - stored.fetchedAt < MEMBERS_TTL_MS) {
+    memberCache.set(organisationId, { fetchedAt: stored.fetchedAt, names: stored.names });
+    return stored.names;
   }
 
-  const table = tableMatch[1];
+  let xml: string;
+  try {
+    xml = await fetchViaEventorProxy('persons_organisations', { organisationId });
+  } catch {
+    return stored?.names ?? {};
+  }
 
-  const theadMatch = table.match(/<thead>([\s\S]*?)<\/thead>/i);
-  const headerCells = theadMatch
-    ? [...theadMatch[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => stripTags(cell[1]).trim())
-    : [];
-  // First two columns are the person name and their organisation.
-  const attributeNames = headerCells.slice(2);
+  const names = parseMemberNamesXml(xml);
+  const fetchedAt = Date.now();
 
-  const tbodyMatch = table.match(/<tbody>([\s\S]*?)<\/tbody>/i);
-  const body = tbodyMatch ? tbodyMatch[1] : table;
-  const rows = body.split(/<tr[^>]*>/i).slice(1);
+  memberCache.set(organisationId, { fetchedAt, names });
+  await setStoredJson(storageKey, { fetchedAt, names } satisfies MembersStorage).catch(() => undefined);
 
-  const registrations: ActivityRegistration[] = [];
-  for (const row of rows) {
-    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => cell[1]);
-    if (cells.length < 2) {
+  return names;
+}
+
+function parseMemberNamesXml(xml: string): Record<string, string> {
+  const parsed = parser.parse(xml) as { PersonList?: { Person?: unknown } };
+  const persons = toArray(parsed.PersonList?.Person) as Record<string, unknown>[];
+  const names: Record<string, string> = {};
+
+  for (const person of persons) {
+    const personId = asString(person.PersonId);
+    if (!personId) {
       continue;
     }
 
-    const personName = stripTags(cells[0]).trim();
-    if (!personName) {
-      continue;
+    const nameNode = person.PersonName as Record<string, unknown> | undefined;
+    const given = asString((nameNode?.Given as Record<string, unknown>)?.['#text'] ?? nameNode?.Given);
+    const family = asString(nameNode?.Family);
+    const fullName = [given, family].filter(Boolean).join(' ').trim();
+
+    if (fullName) {
+      names[personId] = fullName;
     }
-
-    const clubName = stripTags(cells[1]).trim() || null;
-    const attributes: ActivityRegistrationAttribute[] = [];
-    for (let index = 2; index < cells.length; index += 1) {
-      const values = cells[index]
-        .split(/<br\s*\/?>/i)
-        .map((value) => stripTags(value).trim())
-        .filter((value) => value.length > 0);
-      attributes.push({ attributeName: attributeNames[index - 2] ?? '', values });
-    }
-
-    registrations.push({ attributes, clubName, personName });
   }
 
-  return { attributeNames, registrations };
+  return names;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function parseSwedishDateTime(input: string | null): string | null {
-  if (!input) {
-    return null;
-  }
-
-  const iso = input.match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
-  if (iso) {
-    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4] ?? 0), Number(iso[5] ?? 0)).toISOString();
-  }
-
-  const sv = input.match(/(\d{1,2}) (januari|februari|mars|april|maj|juni|juli|augusti|september|oktober|november|december) (\d{4})(?:\s*klockan\s*(\d{1,2})[:.](\d{2}))?/i);
-  if (sv) {
-    const month = SWEDISH_MONTHS[sv[2].toLowerCase()];
-    return new Date(Number(sv[3]), month, Number(sv[1]), Number(sv[4] ?? 0), Number(sv[5] ?? 0)).toISOString();
-  }
-
-  return null;
-}
-
-function stripTags(html: string): string {
-  return html.replace(/<[^>]+>/g, '').trim();
-}
-
-const NAMED_ENTITIES: Record<string, string> = {
-  Aacute: 'Á',
-  aacute: 'á',
-  amp: '&',
-  apos: "'",
-  Aring: 'Å',
+const HTML_ENTITIES: Record<string, string> = {
   aring: 'å',
-  Auml: 'Ä',
+  Aring: 'Å',
   auml: 'ä',
-  Eacute: 'É',
-  eacute: 'é',
-  gt: '>',
-  hellip: '…',
-  lt: '<',
-  mdash: '—',
-  nbsp: ' ',
-  ndash: '–',
-  Ouml: 'Ö',
+  Auml: 'Ä',
   ouml: 'ö',
+  Ouml: 'Ö',
+  eacute: 'é',
+  Eacute: 'É',
+  aacute: 'á',
+  ndash: '–',
+  mdash: '—',
+  hellip: '…',
+  nbsp: ' ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
   quot: '"',
+  apos: "'",
 };
 
-function decodeEntities(text: string): string {
+function decodeHtmlEntities(text: string): string {
   return text
     .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
-    .replace(/&([a-zA-Z]+);/g, (matched, name: string) => NAMED_ENTITIES[name] ?? matched);
+    .replace(/&([a-zA-Z]+);/g, (match, name: string) => HTML_ENTITIES[name] ?? match);
 }
+
+// Convert the Eventor rich-text HTML into readable plain text with line breaks
+// and bullet points, decoding the HTML entities Eventor uses (&auml; etc.).
+function htmlToPlainText(html: string): string {
+  const withBreaks = html
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*li[^>]*>/gi, '\n• ')
+    .replace(/<\/\s*(p|div|li|ul|ol|h[1-6]|tr)\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+
+  return decodeHtmlEntities(withBreaks)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+

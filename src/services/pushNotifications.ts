@@ -43,7 +43,6 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
   ensureNotificationHandler();
 
   const deviceId = await getDeviceIdentifier();
-
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       importance: Notifications.AndroidImportance.DEFAULT,
@@ -80,8 +79,7 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
   }
 
   const projectId =
-    Constants.easConfig?.projectId ??
-    ((Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ?? null) ??
+    (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ??
     process.env.EXPO_PUBLIC_EXPO_PROJECT_ID ??
     null;
 
@@ -138,7 +136,9 @@ function extractNotificationEventId(response: Notifications.NotificationResponse
   return null;
 }
 
-async function getDeviceIdentifier() {
+// Exported so callers that only need the stable device id (not a push token
+// or notification permission prompt) don't have to go through full registration.
+export async function getDeviceIdentifier() {
   if (Platform.OS === 'android') {
     return Application.getAndroidId() ?? 'android-unknown';
   }

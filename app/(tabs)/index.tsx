@@ -19,6 +19,7 @@ import { PublishedListModal, PublishedListModalState, openPublishedListModal } f
 import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from '@/src/components/SplitTimesModal';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { fetchEventorEvents } from '@/src/api/eventorApi';
+import { ACTIVITIES_API_ORG_ID, isActivityExpired } from '@/src/api/eventorActivities';
 import { useAnnouncements } from '@/src/hooks/useAnnouncements';
 import { useOrganisationActivities } from '@/src/hooks/useOrganisationActivities';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
@@ -34,7 +35,10 @@ export default function HomeScreen() {
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const user = useAuthStore((state) => state.user);
   const { allAnnouncements, announcements, dismiss: dismissAnnouncement, refetch: refetchAnnouncements } = useAnnouncements();
-  const { sections: activitySections, reload: reloadActivities } = useOrganisationActivities(user?.organisationIds[0] ?? null);
+  const homeOrganisationId = user?.organisationIds[0] ?? null;
+  const { activities: clubActivities, reload: reloadActivities } = useOrganisationActivities(
+    homeOrganisationId === ACTIVITIES_API_ORG_ID ? homeOrganisationId : null,
+  );
   const [showAnnouncements, setShowAnnouncements] = React.useState(false);
   const [todayEvents, setTodayEvents] = React.useState<EventItem[]>([]);
   const [todayEventsError, setTodayEventsError] = React.useState<string | null>(null);
@@ -64,18 +68,15 @@ export default function HomeScreen() {
   const latestPastEvents = React.useMemo(() => resultsSections.slice(0, 2), [resultsSections]);
 
   const closingSoon = React.useMemo(() => {
-    if (!activitySections) {
-      return { count: 0, total: 0 };
-    }
-    const all = [...activitySections.club, ...activitySections.district, ...activitySections.soft];
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
+    const activeActivities = clubActivities.filter((activity) => !isActivityExpired(activity));
     let count = 0;
-    for (const activity of all) {
-      if (!activity.registrationDeadlineIso) {
+    for (const activity of activeActivities) {
+      if (!activity.registrationDeadline) {
         continue;
       }
-      const deadline = new Date(activity.registrationDeadlineIso).getTime();
+      const deadline = new Date(activity.registrationDeadline).getTime();
       if (!Number.isFinite(deadline) || deadline < Date.now()) {
         continue;
       }
@@ -86,8 +87,8 @@ export default function HomeScreen() {
         count += 1;
       }
     }
-    return { count, total: all.length };
-  }, [activitySections]);
+    return { count, total: activeActivities.length };
+  }, [clubActivities]);
   const laterCount = closingSoon.total - closingSoon.count;
 
   const handleOpenAnalysis = React.useCallback((eventId: string, classLabel: string, personId?: string | null) => {
@@ -142,7 +143,7 @@ export default function HomeScreen() {
     setTodayIso(currentToday);
     setIsLoadingTodayEvents(true);
     setTodayEventsError(null);
-    reloadActivities(true);
+    reloadActivities();
     refetchAnnouncements();
 
     try {
@@ -243,12 +244,7 @@ export default function HomeScreen() {
         {user ? (
           <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} />
         ) : (
-          <SectionCard icon="time-outline" title="Mina kommande starter" subtitle="Logga in för att se dina starter.">
-            <View style={styles.loginPrompt}>
-              <Text style={styles.loginPromptText}>När du loggar in visas nästa start, dina resultat och analys direkt här.</Text>
-              <AppButton label="Logga in" onPress={() => router.push('/profile')} />
-            </View>
-          </SectionCard>
+          <AppButton icon="person-add-outline" label="Välj användare i Inställningar" onPress={() => router.push('/settings')} />
         )}
 
         <View style={styles.sectionSpacer}>
@@ -282,8 +278,8 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.sectionSpacer}>
+        {user ? (
         <SectionCard icon="ribbon-outline" title="Mina senaste tävlingar">
-          {user ? (
             <PersonActivitySectionList
               emptyLabel="Inga senaste tävlingar att visa just nu."
               error={resultsError}
@@ -297,13 +293,8 @@ export default function HomeScreen() {
               onPressEvent={(eventId: string) => router.push({ params: { id: eventId, returnTo: pathname }, pathname: '/event/[id]' })}
               sections={latestPastEvents}
             />
-          ) : (
-            <View style={styles.loginPrompt}>
-              <Text style={styles.loginPromptText}>Logga in för att se dina senaste tävlingar här.</Text>
-              <AppButton label="Logga in" onPress={() => router.push('/profile')} />
-            </View>
-          )}
         </SectionCard>
+        ) : null}
         </View>
 
       </ScrollView>
@@ -648,13 +639,6 @@ function createStyles(colors: ColorPalette) {
     right: -40,
     top: 10,
     width: 260,
-  },
-  loginPrompt: {
-    gap: spacing.sm,
-  },
-  loginPromptText: {
-    ...typography.body,
-    color: colors.heroTextMuted,
   },
 });
 }

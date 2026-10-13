@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/src/components/AppButton';
 import { AppTextField } from '@/src/components/AppTextField';
 import { CalendarFilterTemplateEditor } from '@/src/components/CalendarFilterTemplateEditor';
+import { PersonSearchPicker, PersonSearchResult } from '@/src/components/PersonSearchPicker';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { createDefaultCalendarFilterTemplate, describeCalendarFilterTemplate } from '@/src/features/calendar/calendarFilters';
 import { useEventorDistricts } from '@/src/hooks/useEventorDistricts';
@@ -33,7 +34,12 @@ export default function SettingsScreen() {
   const [showFavoriteClassesInfoModal, setShowFavoriteClassesInfoModal] = React.useState(false);
   const [isFavoriteClassesExpanded, setIsFavoriteClassesExpanded] = React.useState(false);
   const [isThemeExpanded, setIsThemeExpanded] = React.useState(false);
+  const [isExternalLinksExpanded, setIsExternalLinksExpanded] = React.useState(false);
+  const [isChoosingPerson, setIsChoosingPerson] = React.useState(false);
   const user = useAuthStore((state) => state.user);
+  const identityError = useAuthStore((state) => state.error);
+  const isSelectingPerson = useAuthStore((state) => state.isSubmitting);
+  const selectPerson = useAuthStore((state) => state.selectPerson);
   const signOut = useAuthStore((state) => state.signOut);
   const clearLogoutSensitivePreferences = usePreferencesStore((state) => state.clearLogoutSensitivePreferences);
   const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
@@ -50,6 +56,8 @@ export default function SettingsScreen() {
   const setNotificationSetting = usePreferencesStore((state) => state.setNotificationSetting);
   const themeName = usePreferencesStore((state) => state.themeName);
   const setThemeName = usePreferencesStore((state) => state.setThemeName);
+  const externalLinkMode = usePreferencesStore((state) => state.externalLinkMode);
+  const setExternalLinkMode = usePreferencesStore((state) => state.setExternalLinkMode);
   const friends = useFriendsStore((state) => state.friends);
   const updateFriendPush = useFriendsStore((state) => state.updateFriendPush);
   const setAllFriendsPush = useFriendsStore((state) => state.setAllFriendsPush);
@@ -143,10 +151,19 @@ export default function SettingsScreen() {
 
   const canSaveDefaultFilter = calendarDefaultDraft.fromOffsetDays <= calendarDefaultDraft.toOffsetDays;
 
-  const confirmLogout = () => {
+  const handleSelectPerson = async (result: PersonSearchResult) => {
+    try {
+      await selectPerson(result);
+      setIsChoosingPerson(false);
+    } catch {
+      // Store state already exposes a clean error message.
+    }
+  };
+
+  const confirmClearUser = () => {
     Alert.alert(
-      'Logga ut?',
-      'Dina inställningar sparas och kan hämtas tillbaka när du loggar in igen.',
+      'Rensa vald användare?',
+      '',
       [
         {
           style: 'cancel',
@@ -154,19 +171,18 @@ export default function SettingsScreen() {
         },
         {
           style: 'destructive',
-          text: 'Logga ut',
+          text: 'Rensa',
           onPress: () => {
-            void handleLogout();
+            void handleClearUser();
           },
         },
       ],
     );
   };
 
-  const handleLogout = async () => {
+  const handleClearUser = async () => {
     await signOut();
     await clearLogoutSensitivePreferences();
-    Alert.alert('Utloggad', 'Du är nu utloggad.');
   };
 
   return (
@@ -179,10 +195,69 @@ export default function SettingsScreen() {
             { icon: 'bookmark-outline', label: 'Favoritklasser', value: `${favoriteClasses.length}` },
           ]}
           eyebrow="Konton"
-          subtitle="Kalenderfilter, notiser, tema och favoritklasser."
+          subtitle="Kalenderfilter, notiser, tema, favoritklasser och externa länkar."
           title="Inställningar"
-          topRightText="4 sektioner"
+          topRightText="5 sektioner"
         />
+
+        <View style={styles.identityPanel}>
+          {!(user && !isChoosingPerson) ? (
+            <View style={styles.identityPanelHeader}>
+              <View style={styles.identityPanelHeaderCopy}>
+                <View style={styles.identityPanelIconWrap}>
+                  <Ionicons color={colors.buttonText} name="person-circle" size={20} />
+                </View>
+                <Text style={styles.identityPanelTitle}>Välj användare</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {user && !isChoosingPerson ? (
+            <View style={styles.identityCard}>
+              <View style={styles.identityCardTopRow}>
+                <View style={styles.identityAvatar}>
+                  <Text style={styles.identityAvatarText}>{getInitials(user.fullName)}</Text>
+                </View>
+                <View style={styles.identityInfo}>
+                  <Text numberOfLines={1} style={styles.identityName}>
+                    {user.fullName}
+                  </Text>
+                  <View style={styles.identityClubPill}>
+                    <Ionicons color={colors.primaryDeep} name="shield-outline" size={12} />
+                    <Text numberOfLines={1} style={styles.identityClubText}>
+                      {user.organisationName ?? 'Okänd klubb'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <View style={styles.identityCardActions}>
+                <Pressable onPress={() => setIsChoosingPerson(true)} style={styles.identitySwitchButton}>
+                  <Ionicons color={colors.primaryDeep} name="swap-horizontal" size={16} />
+                  <Text style={styles.identitySwitchButtonText}>Byt</Text>
+                </Pressable>
+                <Pressable onPress={confirmClearUser} style={styles.identityClearButton}>
+                  <Ionicons color={colors.primaryDeep} name="trash-outline" size={16} />
+                  <Text style={styles.identityClearButtonText}>Rensa</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.helperText}>
+                Sök på namn och/eller klubb och välj vem du vill ha som användare i appen.
+              </Text>
+              <PersonSearchPicker onSelect={(result) => void handleSelectPerson(result)} />
+              {user ? (
+                <Pressable onPress={() => setIsChoosingPerson(false)}>
+                  <Text style={styles.identityLink}>Avbryt</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
+
+          {isSelectingPerson ? <Text style={styles.helperText}>Sparar val…</Text> : null}
+          {identityError ? <Text style={styles.errorText}>{identityError}</Text> : null}
+        </View>
 
         <ExpandableCard
           contentStyle={styles.calendarFilterContent}
@@ -558,24 +633,40 @@ export default function SettingsScreen() {
           </View>
         </ExpandableCard>
 
-        {user ? (
-          <View style={styles.logoutFooter}>
-            <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
-              <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
-              <Text style={styles.aboutButtonText}>Om Kontrollen</Text>
-              <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
-            </Pressable>
-            <AppButton label="Logga ut" onPress={confirmLogout} variant="secondary" />
+        <ExpandableCard
+          expanded={isExternalLinksExpanded}
+          icon="link-outline"
+          onPress={() => setIsExternalLinksExpanded((current) => !current)}
+          title="Externa länkar"
+        >
+          <View style={styles.sectionContent}>
+            <Text style={styles.helperText}>Bestäm hur länkar till Liveresultat och Livelox ska öppnas. Eventor öppnas alltid i webläsaren.</Text>
+            <View style={styles.externalLinkOptions}>
+              {(
+                [
+                  { label: 'Fråga alltid', value: 'ask' as const },
+                  { label: 'Öppna i appen', value: 'app' as const },
+                  { label: 'Öppna i webläsare', value: 'browser' as const },
+                ]
+              ).map((option) => (
+                <Pressable key={option.value} onPress={() => void setExternalLinkMode(option.value)} style={styles.externalLinkOption}>
+                  <View style={[styles.externalLinkRadio, externalLinkMode === option.value ? styles.externalLinkRadioSelected : null]}>
+                    {externalLinkMode === option.value ? <View style={styles.externalLinkRadioDot} /> : null}
+                  </View>
+                  <Text style={styles.externalLinkOptionText}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        ) : (
-          <View style={styles.logoutFooter}>
-            <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
-              <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
-              <Text style={styles.aboutButtonText}>Om Kontrollen</Text>
-              <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
-            </Pressable>
-          </View>
-        )}
+        </ExpandableCard>
+
+        <View style={styles.logoutFooter}>
+          <Pressable onPress={() => router.push('/about')} style={styles.aboutButton}>
+            <Ionicons color={colors.primary} name="information-circle-outline" size={20} />
+            <Text style={styles.aboutButtonText}>Om Kontrollen</Text>
+            <Ionicons color={colors.textSecondary} name="chevron-forward" size={16} />
+          </Pressable>
+        </View>
       </ScrollView>
 
       <Modal animationType="fade" onRequestClose={() => setShowCalendarInfoModal(false)} transparent visible={showCalendarInfoModal}>
@@ -746,6 +837,12 @@ export default function SettingsScreen() {
   );
 }
 
+function getInitials(fullName: string | null | undefined) {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  const initials = [parts[0], parts[parts.length - 1]].filter(Boolean).map((part) => part[0]?.toUpperCase() ?? '');
+  return initials.join('') || '?';
+}
+
 function NotifInfoItem({
   body,
   icon,
@@ -888,6 +985,121 @@ function createStyles(colors: ColorPalette) {
     ...typography.bodyStrong,
     color: colors.textPrimary,
   },
+  identityPanel: {
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderRadius: 24,
+    borderWidth: 2,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  identityPanelHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  identityPanelHeaderCopy: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  identityPanelIconWrap: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  identityPanelTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+  },
+  identityClearButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+  },
+  identityClearButtonText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+  },
+  identityCard: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: 20,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  identityCardTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  identityCardActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  identityAvatar: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
+  },
+  identityAvatarText: {
+    ...typography.sectionTitle,
+    color: colors.buttonText,
+    fontSize: 18,
+  },
+  identityInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  identityName: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    fontSize: 17,
+  },
+  identityClubPill: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  identityClubText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+  },
+  identitySwitchButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+  },
+  identitySwitchButtonText: {
+    ...typography.captionStrong,
+    color: colors.primaryDeep,
+  },
+  identityLink: {
+    ...typography.captionStrong,
+    color: colors.primary,
+  },
   sectionContent: {
     gap: spacing.md,
   },
@@ -913,7 +1125,7 @@ function createStyles(colors: ColorPalette) {
     justifyContent: 'center',
   },
   presetModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlay,
   },
   presetModalSheet: {
@@ -1174,6 +1386,36 @@ function createStyles(colors: ColorPalette) {
     borderRadius: 4,
     height: 20,
     width: 20,
+  },
+  externalLinkOptions: {
+    gap: spacing.sm,
+  },
+  externalLinkOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  externalLinkRadio: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
+  externalLinkRadioSelected: {
+    borderColor: colors.primaryDeep,
+  },
+  externalLinkRadioDot: {
+    backgroundColor: colors.primaryDeep,
+    borderRadius: 999,
+    height: 12,
+    width: 12,
+  },
+  externalLinkOptionText: {
+    ...typography.body,
+    color: colors.textPrimary,
   },
   errorText: {
     ...typography.captionStrong,

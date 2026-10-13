@@ -1,13 +1,17 @@
+import { recordEventorApiCall } from './eventorCallCounter.ts';
+
 const EVENTOR_BASE_URL = 'https://eventor.orientering.se/api';
 
-export async function fetchEventDetailXml(eventId: string) {
+export async function fetchEventDetailXml(eventId: string, source = 'fetchEventDetailXml') {
+  const normalizedEventId = normalizeEventId(eventId);
+
+  await recordEventorApiCall(source, `/event/${normalizedEventId}`);
+
   const apiKey = Deno.env.get('EVENTOR_API_KEY');
 
   if (!apiKey) {
     throw new Error('Missing EVENTOR_API_KEY secret for Eventor polling.');
   }
-
-  const normalizedEventId = normalizeEventId(eventId);
 
   const response = await fetch(`${EVENTOR_BASE_URL}/event/${normalizedEventId}`, {
     headers: {

@@ -6,13 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon1024.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "scheme": "olkollen",
-    "splash": {
-      "image": "./assets/icon1024.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F4F8EE"
-    },
     "ios": {
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +30,6 @@
           "apiKey": "PLACEHOLDER_GOOGLE_MAPS_KEY"
         }
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -48,6 +41,14 @@
       "expo-font",
       "@react-native-community/datetimepicker",
       "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon1024.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F4F8EE"
+        }
+      ],
       [
         "expo-location",
         {

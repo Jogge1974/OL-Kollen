@@ -7,7 +7,6 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/AppButton';
-import { AppTextField } from '@/src/components/AppTextField';
 import { FavoritesAndResultsPanel } from '@/src/components/FavoritesAndResultsPanel';
 import { AnalysisModal, AnalysisModalState, openEventAnalysisModal } from '@/src/components/AnalysisModal';
 import { RankingTrendChart } from '@/src/components/RankingTrendChart';
@@ -17,7 +16,6 @@ import { SplitTimesModal, SplitTimesModalState, openEventSplitTimesModal } from 
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
 import { UpcomingStartsPanel } from '@/src/components/UpcomingStartsPanel';
 import { usePersonEventorLists } from '@/src/hooks/usePersonEventorLists';
-import { useRememberMe } from '@/src/hooks/useRememberMe';
 import { useSverigelistan } from '@/src/hooks/useSverigelistan';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
@@ -29,19 +27,11 @@ import { SverigelistanTrendDirection, SverigelistanTrendPoint } from '@/src/type
 export default function ProfileScreen() {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
-  const [username, setUsername] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [saveEncryptedLogin, setSaveEncryptedLogin] = React.useState(false);
   const [showSverigelistanTrend, setShowSverigelistanTrend] = React.useState(false);
-  const { rememberMe, setRememberMe } = useRememberMe(true);
   const [activeAnalysisModal, setActiveAnalysisModal] = React.useState<AnalysisModalState | null>(null);
   const [activeResultListModal, setActiveResultListModal] = React.useState<PublishedListModalState | null>(null);
   const [activeSplitTimesModal, setActiveSplitTimesModal] = React.useState<SplitTimesModalState | null>(null);
 
-  const error = useAuthStore((state) => state.error);
-  const isSubmitting = useAuthStore((state) => state.isSubmitting);
-  const rememberedUsername = useAuthStore((state) => state.rememberedUsername);
-  const signInWithEventor = useAuthStore((state) => state.signInWithEventor);
   const user = useAuthStore((state) => state.user);
   const hydrateSession = useAuthStore((state) => state.hydrateSession);
 
@@ -85,24 +75,6 @@ export default function ProfileScreen() {
   } = usePersonEventorLists({
     personId: user?.personId ?? null,
   });
-
-  const handleLogin = async () => {
-    try {
-      await signInWithEventor({ password, rememberMe, saveEncryptedLogin, username });
-      setPassword('');
-    } catch {
-      // Store state already exposes a clean error message.
-    }
-  };
-
-  const hasInitializedUsername = React.useRef(false);
-
-  React.useEffect(() => {
-    if (!user && rememberedUsername && !hasInitializedUsername.current) {
-      hasInitializedUsername.current = true;
-      setUsername(rememberedUsername);
-    }
-  }, [rememberedUsername, user]);
 
   const handleRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
@@ -148,76 +120,20 @@ export default function ProfileScreen() {
               : [
                   { icon: 'lock-closed-outline', label: 'Sverigelista', value: 'Auto' },
                   { icon: 'heart-outline', label: 'Favoriter', value: 'Synk' },
-                  { icon: 'sync-outline', label: 'Login', value: 'Krypterat' },
                 ]
           }
           eyebrow="Min sida"
           subtitle={
             user
               ? user.organisationName ?? (user.organisationIds[0] ?? 'Ingen klubb')
-              : 'Logga in med Eventor för att se Sverigelistan, starter och favoriter.'
+              : ''
           }
-          title={user ? user.fullName ?? 'Inloggad användare' : 'Logga in'}
+          title={user ? user.fullName ?? 'Vald person' : 'Ingen person vald'}
           topRightText={user ? 'Profil' : 'Eventor'}
         />
 
         {!user ? (
-          <View style={styles.panel}>
-            <View style={styles.titleRow}>
-              <Ionicons color={colors.textMuted} name="log-in-outline" size={16} />
-              <Text style={styles.panelTitle}>Logga in med Eventor</Text>
-            </View>
-
-            <AppTextField
-              autoCapitalize="none"
-              autoCorrect={false}
-              label="Användarnamn"
-              onChangeText={setUsername}
-              placeholder="Ange ditt Eventor-användarnamn"
-              value={username}
-            />
-
-            <AppTextField
-              autoCapitalize="none"
-              autoCorrect={false}
-              label="Lösenord"
-              onChangeText={setPassword}
-              placeholder="Ange ditt lösenord"
-              secureTextEntry
-              value={password}
-            />
-
-            <View style={styles.checkboxRow}>
-              <Pressable onPress={() => setRememberMe(!rememberMe)} style={styles.rememberMeRow}>
-                <View style={[styles.rememberMeBox, rememberMe ? styles.rememberMeBoxChecked : null]}>
-                  {rememberMe ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
-                </View>
-                <Text style={styles.checkboxLabel}>Kom ihåg mig</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.checkboxRow}>
-              <Pressable onPress={() => setSaveEncryptedLogin(!saveEncryptedLogin)} style={styles.rememberMeRow}>
-                <View style={[styles.rememberMeBox, saveEncryptedLogin ? styles.rememberMeBoxChecked : null]}>
-                  {saveEncryptedLogin ? <Ionicons color={colors.heroText} name="checkmark" size={14} /> : null}
-                </View>
-                <Text style={styles.checkboxLabel}>Spara användaruppgifterna krypterat</Text>
-              </Pressable>
-            </View>
-
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-            <AppButton
-              disabled={!username.trim() || !password.trim()}
-              label="Logga in"
-              loading={isSubmitting}
-              onPress={() => void handleLogin()}
-            />
-
-            <Text style={styles.helperText}>
-              Inloggningen använder Eventors dokumenterade authenticatePerson-endpoint. Om du sparar användaruppgifterna krypterat kan appen logga in mot Sverigelistan automatiskt när webbsessionen går ut. Det kräver dock att din organisation har giltig licens till Sverigelistan
-            </Text>
-          </View>
+            <AppButton icon="person-add-outline" label="Välj användare i Inställningar" onPress={() => router.push('/settings')} />
         ) : null}
 
         {user ? (
@@ -304,24 +220,23 @@ export default function ProfileScreen() {
 
         {user ? <UpcomingStartsPanel error={startsError} isLoading={isLoadingStarts} sections={startsSections} /> : null}
 
-        {user ? (
-          <FavoritesAndResultsPanel
-            availableYears={availableYears}
-            favoriteEvents={favoriteEvents}
-            onClearFavorites={clearAllFavorites}
-            onOpenAnalysis={handleOpenAnalysis}
-            onOpenResultList={handleOpenResultList}
-            onOpenSplitTimes={handleOpenSplitTimes}
-            onRemoveFavorite={removeFavorite}
-            resultsError={resultsError}
-            resultsFilter={resultsFilter}
-            resultsLoading={isLoadingResults}
-            resultsSections={resultsSections}
-            resultsYear={resultsYear}
-            setResultsFilter={setResultsFilter}
-            setResultsYear={setResultsYear}
-          />
-        ) : null}
+        <FavoritesAndResultsPanel
+          availableYears={availableYears}
+          favoriteEvents={favoriteEvents}
+          onClearFavorites={clearAllFavorites}
+          onOpenAnalysis={handleOpenAnalysis}
+          onOpenResultList={handleOpenResultList}
+          onOpenSplitTimes={handleOpenSplitTimes}
+          onRemoveFavorite={removeFavorite}
+          resultsError={resultsError}
+          resultsFilter={resultsFilter}
+          resultsLoading={isLoadingResults}
+          resultsSections={resultsSections}
+          resultsYear={resultsYear}
+          setResultsFilter={setResultsFilter}
+          setResultsYear={setResultsYear}
+          showResultsTab={Boolean(user)}
+        />
 
         <PublishedListModal onClose={() => setActiveResultListModal(null)} onOpenAnalysis={handleOpenAnalysis} state={activeResultListModal} />
         <AnalysisModal onClose={() => setActiveAnalysisModal(null)} state={activeAnalysisModal} />

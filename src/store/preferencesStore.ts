@@ -6,6 +6,7 @@ import { normalizeEventId } from '@/src/utils/eventId';
 import {
   CalendarFilterPreset,
   CalendarFilterTemplate,
+  ExternalLinkMode,
   FavoriteEventSummary,
   NotificationSettings,
   PersistedPreferences,
@@ -15,21 +16,12 @@ import { ThemeName } from '@/src/theme/ThemeContext';
 const PREFERENCES_STORAGE_KEY = 'olkollen.preferences';
 const DISMISSED_ANNOUNCEMENTS_STORAGE_KEY = 'olkollen.dismissedAnnouncements';
 const ANNOUNCEMENTS_BASELINE_STORAGE_KEY = 'olkollen.announcementsBaseline';
-
-export type ServerProfile = {
-  favorites: FavoriteEventSummary[];
-  notificationSettings: Partial<NotificationSettings> | null;
-  preferences: {
-    calendarDefaultFilterTemplate?: unknown;
-    calendarFilterPresets?: unknown;
-    favoriteClasses?: string[];
-  } | null;
-};
+const EXTERNAL_LINK_MODE_STORAGE_KEY = 'olkollen.externalLinkMode';
 
 const defaultNotificationSettings: NotificationSettings = {
   pushOnResultList: false,
   pushOnStartList: false,
-  pushOnEntryDeadline: true,
+  pushOnEntryDeadline: false,
 };
 
 type PreferencesData = {
@@ -53,11 +45,11 @@ type PreferencesState = PreferencesData & {
   dismissedAnnouncementIds: string[];
   announcementsBaselineInitialized: boolean;
   syncAnnouncements: (activeAnnouncementIds: string[]) => Promise<void>;
+  externalLinkMode: ExternalLinkMode;
+  setExternalLinkMode: (mode: ExternalLinkMode) => Promise<void>;
   hydratePreferences: () => Promise<void>;
   isFavorite: (eventId: string) => boolean;
   isHydrated: boolean;
-  mergeServerFavorites: (serverFavorites: FavoriteEventSummary[]) => Promise<void>;
-  restoreFromServer: (profile: ServerProfile) => Promise<void>;
   moveCalendarFilterPreset: (presetId: string, direction: 'down' | 'up') => Promise<void>;
   moveFavoriteClass: (className: string, direction: 'down' | 'up') => Promise<void>;
   notificationSettings: NotificationSettings;
@@ -270,6 +262,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   themeName: 'light',
   dismissedAnnouncementIds: [],
   announcementsBaselineInitialized: false,
+  externalLinkMode: 'ask',
+  setExternalLinkMode: async (mode) => {
+    set({ externalLinkMode: mode });
+    await setStoredJson(EXTERNAL_LINK_MODE_STORAGE_KEY, mode);
+  },
   dismissAnnouncement: async (announcementId) => {
     const current = get().dismissedAnnouncementIds;
     if (current.includes(announcementId)) {
@@ -355,12 +352,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       const favoriteEvents = normalizeFavoriteEvents(storedPreferences?.favoriteEvents ?? defaultPreferences.favoriteEvents);
       const dismissedAnnouncementIds = await getStoredJson<string[]>(DISMISSED_ANNOUNCEMENTS_STORAGE_KEY);
       const announcementsBaselineInitialized = await getStoredJson<boolean>(ANNOUNCEMENTS_BASELINE_STORAGE_KEY);
+      const externalLinkMode = await getStoredJson<ExternalLinkMode>(EXTERNAL_LINK_MODE_STORAGE_KEY);
 
       set({
         calendarDefaultFilterTemplate,
         calendarFilterPresets,
         dismissedAnnouncementIds: Array.isArray(dismissedAnnouncementIds) ? dismissedAnnouncementIds : [],
         announcementsBaselineInitialized: announcementsBaselineInitialized === true,
+        externalLinkMode: externalLinkMode === 'app' || externalLinkMode === 'browser' ? externalLinkMode : 'ask',
         favoriteClasses: storedPreferences?.favoriteClasses ?? defaultPreferences.favoriteClasses,
         favoriteEvents,
         isHydrated: true,
@@ -372,65 +371,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
 
       set({
         ...fallback,
+        externalLinkMode: 'ask',
         isHydrated: true,
       });
     }
-  },
-  mergeServerFavorites: async (serverFavorites: FavoriteEventSummary[]) => {
-    const current = get();
-    const merged = normalizeFavoriteEvents([...current.favoriteEvents, ...serverFavorites]);
-
-    set({ favoriteEvents: merged });
-    await persistCurrentPreferences({
-      calendarDefaultFilterTemplate: current.calendarDefaultFilterTemplate,
-      calendarFilterPresets: current.calendarFilterPresets,
-      favoriteClasses: current.favoriteClasses,
-      favoriteEvents: merged,
-      notificationSettings: current.notificationSettings,
-      themeName: current.themeName,
-    });
-  },
-  restoreFromServer: async (profile: ServerProfile) => {
-    const current = get();
-    const serverPrefs = profile.preferences;
-
-    const favoriteEvents = normalizeFavoriteEvents([
-      ...current.favoriteEvents,
-      ...profile.favorites,
-    ]);
-
-    const notificationSettings = profile.notificationSettings
-      ? { ...defaultNotificationSettings, ...profile.notificationSettings }
-      : current.notificationSettings;
-
-    const calendarDefaultFilterTemplate = serverPrefs?.calendarDefaultFilterTemplate
-      ? normalizeCalendarFilterTemplate(serverPrefs.calendarDefaultFilterTemplate as Partial<CalendarFilterTemplate>)
-      : current.calendarDefaultFilterTemplate;
-
-    const calendarFilterPresets = serverPrefs?.calendarFilterPresets
-      ? normalizeCalendarFilterPresets(serverPrefs.calendarFilterPresets)
-      : current.calendarFilterPresets;
-
-    const favoriteClasses = Array.isArray(serverPrefs?.favoriteClasses) && serverPrefs.favoriteClasses.length > 0
-      ? serverPrefs.favoriteClasses
-      : current.favoriteClasses;
-
-    set({
-      calendarDefaultFilterTemplate,
-      calendarFilterPresets,
-      favoriteClasses,
-      favoriteEvents,
-      notificationSettings,
-    });
-
-    await persistCurrentPreferences({
-      calendarDefaultFilterTemplate,
-      calendarFilterPresets,
-      favoriteClasses,
-      favoriteEvents,
-      notificationSettings,
-      themeName: current.themeName,
-    });
   },
   isFavorite: (eventId: string) => {
     return get().favoriteEvents.some((event) => event.id === eventId);

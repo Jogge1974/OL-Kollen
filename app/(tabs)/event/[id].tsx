@@ -21,6 +21,7 @@ import { useEventorEventDetail } from '@/src/hooks/useEventorEventDetail';
 import { useAuthStore } from '@/src/store/authStore';
 import { canRenderNativeMap } from '@/src/services/nativeMaps';
 import { findLiveCompetition, LiveresultatMatch } from '@/src/services/liveresultat';
+import { openExternalLink } from '@/src/store/externalLinkStore';
 import { usePreferencesStore } from '@/src/store/preferencesStore';
 import { getClassificationTone } from '@/src/theme/colors';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
@@ -236,7 +237,7 @@ export default function EventDetailScreen() {
 
 
               {event.comment ? <InfoTextBlock label="Kommentar" value={event.comment} /> : null}
-              {event.webUrl ? <AppButton label="Öppna arrangörens länk" onPress={() => void Linking.openURL(event.webUrl ?? '')} variant="secondary" /> : null}
+              {event.webUrl ? <AppButton label="Öppna arrangörens länk" onPress={() => openExternalLink(event.webUrl ?? '')} variant="secondary" /> : null}
             </View>
           ) : null}
         </View>
@@ -302,7 +303,7 @@ export default function EventDetailScreen() {
 
         {liveMatch && event.liveloxEventId ? (
           <View style={styles.liveRow}>
-            <Pressable onPress={async () => { try { await Linking.openURL(liveMatch.url); } catch {} }}
+            <Pressable onPress={() => openExternalLink(liveMatch.url)}
               style={({ pressed }) => [styles.liveresultatButton, styles.liveRowHalf, pressed ? styles.liveresultatButtonPressed : null]}
             >
               <Ionicons color="#fff" name="pulse-outline" size={16} />
@@ -310,7 +311,7 @@ export default function EventDetailScreen() {
               <Ionicons color="#fff" name="open-outline" size={14} />
             </Pressable>
             <Pressable
-              onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
+              onPress={() => openExternalLink(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
               style={({ pressed }) => [styles.liveloxButton, styles.liveRowHalf, pressed ? styles.liveloxButtonPressed : null]}
             >
               <Image source={isDark ? require('@/assets/livelox-logo-dark.png') : require('@/assets/livelox-logo.png')} style={styles.liveloxLogo} resizeMode="contain" />
@@ -318,7 +319,7 @@ export default function EventDetailScreen() {
             </Pressable>
           </View>
         ) : liveMatch ? (
-          <Pressable onPress={async () => { try { await Linking.openURL(liveMatch.url); } catch {} }}
+          <Pressable onPress={() => openExternalLink(liveMatch.url)}
             style={({ pressed }) => [styles.liveresultatButton, pressed ? styles.liveresultatButtonPressed : null]}
           >
             <Ionicons color="#fff" name="pulse-outline" size={16} />
@@ -327,7 +328,7 @@ export default function EventDetailScreen() {
           </Pressable>
         ) : event.liveloxEventId ? (
           <Pressable
-            onPress={() => void Linking.openURL(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
+            onPress={() => openExternalLink(`https://www.livelox.com/Events/Show/${event.liveloxEventId}/`)}
             style={({ pressed }) => [styles.liveloxButton, pressed ? styles.liveloxButtonPressed : null]}
           >
             <Image source={isDark ? require('@/assets/livelox-logo-dark.png') : require('@/assets/livelox-logo.png')} style={styles.liveloxLogo} resizeMode="contain" />
@@ -430,11 +431,11 @@ export default function EventDetailScreen() {
         </View>
 
         <View style={styles.bottomLinksRow}>
-          <Pressable onPress={() => void Linking.openURL(`https://eventor.orientering.se/Events/Show/${normalizeEventId(id)}`)} style={styles.eventorLink}>
+          <Pressable onPress={() => openExternalLink(`https://eventor.orientering.se/Events/Show/${normalizeEventId(id)}`)} style={styles.eventorLink}>
             <Ionicons color="#fff" name="open-outline" size={16} />
             <Text style={styles.eventorLinkText}>Visa i Eventor</Text>
           </Pressable>
-          <Pressable onPress={async () => { try { await Linking.openURL('https://orientering.liveidrott.se/competitions'); } catch {} }} style={styles.liveresultatLink}>
+          <Pressable onPress={() => openExternalLink('https://orientering.liveidrott.se/competitions')} style={styles.liveresultatLink}>
             <Ionicons color="#fff" name="pulse-outline" size={16} />
             <Text style={styles.liveresultatLinkText}>Nya Liveresultat</Text>
           </Pressable>

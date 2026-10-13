@@ -16,6 +16,8 @@ export type NotificationSettings = {
   pushOnEntryDeadline: boolean;
 };
 
+export type ExternalLinkMode = 'ask' | 'app' | 'browser';
+
 export type CalendarFilterTemplate = {
   classificationIds: number[];
   disciplineIds?: number[];

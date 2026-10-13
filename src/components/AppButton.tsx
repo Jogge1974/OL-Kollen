@@ -1,12 +1,15 @@
 import * as React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextStyle, ViewStyle } from 'react-native';
 
+import { Ionicons } from '@expo/vector-icons';
+
 import { ColorPalette, useColors } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
 
 type AppButtonProps = {
   disabled?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
   label: string;
   loading?: boolean;
   onPress: () => void;
@@ -15,10 +18,11 @@ type AppButtonProps = {
   variant?: 'primary' | 'secondary' | 'ghost';
 };
 
-export function AppButton({ disabled = false, label, loading = false, onPress, style, textStyle, variant = 'primary' }: AppButtonProps) {
+export function AppButton({ disabled = false, icon, label, loading = false, onPress, style, textStyle, variant = 'primary' }: AppButtonProps) {
   const colors = useColors();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
+  const contentColor = variant === 'secondary' || variant === 'ghost' ? colors.primaryDeep : colors.buttonText;
 
   return (
     <Pressable
@@ -34,7 +38,7 @@ export function AppButton({ disabled = false, label, loading = false, onPress, s
         style,
       ]}
     >
-      {loading ? <ActivityIndicator color={variant === 'secondary' ? colors.primaryDeep : colors.buttonText} size="small" /> : null}
+      {loading ? <ActivityIndicator color={contentColor} size="small" /> : icon ? <Ionicons color={contentColor} name={icon} size={18} /> : null}
       <Text style={[styles.label, variant === 'secondary' || variant === 'ghost' ? styles.secondaryLabel : null, textStyle]}>{label}</Text>
     </Pressable>
   );

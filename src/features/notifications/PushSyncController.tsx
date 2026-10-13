@@ -15,12 +15,8 @@ type PushSyncResponse = {
 
 export function PushSyncController() {
   const user = useAuthStore((state) => state.user);
-  const isRestoringProfile = useAuthStore((state) => state.isRestoringProfile);
   const favoriteEvents = usePreferencesStore((state) => state.favoriteEvents);
   const notificationSettings = usePreferencesStore((state) => state.notificationSettings);
-  const favoriteClasses = usePreferencesStore((state) => state.favoriteClasses);
-  const calendarFilterPresets = usePreferencesStore((state) => state.calendarFilterPresets);
-  const calendarDefaultFilterTemplate = usePreferencesStore((state) => state.calendarDefaultFilterTemplate);
   const friends = useFriendsStore((state) => state.friends);
   const lastFingerprintRef = React.useRef<string | null>(null);
 
@@ -36,17 +32,9 @@ export function PushSyncController() {
       return;
     }
 
-    // Don't sync while the login flow is still restoring server data
-    if (isRestoringProfile) {
-      return;
-    }
-
     const fingerprint = JSON.stringify({
-      calendarDefaultFilterTemplate,
-      calendarFilterPresets,
       clubId: user.organisationIds[0] ?? null,
       clubName: user.organisationName,
-      favoriteClasses,
       favoriteEvents: favoriteEvents.map((event) => event.id),
       friends: friends.map((f) => ({ id: f.personId, e: f.pushOnEntry, l: f.pushOnLive, r: f.pushOnResult, s: f.pushOnStart })),
       notificationSettings,
@@ -91,11 +79,6 @@ export function PushSyncController() {
           fullName: user.fullName,
           notificationSettings,
           personId,
-          preferences: {
-            calendarDefaultFilterTemplate,
-            calendarFilterPresets,
-            favoriteClasses,
-          },
           username: user.username,
         });
 
@@ -118,7 +101,7 @@ export function PushSyncController() {
     return () => {
       isCancelled = true;
     };
-  }, [calendarDefaultFilterTemplate, calendarFilterPresets, favoriteClasses, favoriteEvents, friends, isRestoringProfile, notificationSettings, user]);
+  }, [favoriteEvents, friends, notificationSettings, user]);
 
   return null;
 }

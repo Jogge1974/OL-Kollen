@@ -215,7 +215,7 @@ export function FilterModal({ onApply, onClose, value, visible }: FilterModalPro
                 </Pressable>
                 <Pressable onPress={handleApplyAndClose} style={styles.closeChip}>
                   <Text style={styles.closeIcon}>×</Text>
-                  <Text style={styles.closeText}>Stäng</Text>
+                  <Text style={styles.closeText}>Uppd.</Text>
                 </Pressable>
               </View>
             </View>

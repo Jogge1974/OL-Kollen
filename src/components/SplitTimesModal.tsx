@@ -1439,7 +1439,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     lineHeight: 18,
   },
   choiceBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   choiceButtons: {
     flexDirection: 'column',
@@ -1528,7 +1528,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     padding: spacing.lg,
   },
   choiceOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(15, 23, 42, 0.12)',
     justifyContent: 'center',
   },

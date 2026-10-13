@@ -1,64 +1,90 @@
 import { create } from 'zustand';
 
-import { authenticateEventorPerson } from '@/src/api/authApi';
+import { fetchOrganisationList } from '@/src/api/organisationTree';
+import { PersonSearchResult } from '@/src/components/PersonSearchPicker';
 import { resolveAccessLevel } from '@/src/features/auth/access';
-import { createFetchProfilePayload, createLogoutSyncPayload } from '@/src/features/notifications/pushSync';
-import { clearStoredEventorCredentials, getStoredEventorCredentials, saveStoredEventorCredentials } from '@/src/services/eventorCredentials';
-import { clearStoredEventorWebSessionCookie } from '@/src/services/eventorWebSession';
-import { registerForPushNotificationsAsync } from '@/src/services/pushNotifications';
+import { createLogoutSyncPayload } from '@/src/features/notifications/pushSync';
+import { getDeviceIdentifier, registerForPushNotificationsAsync } from '@/src/services/pushNotifications';
 import { getStoredJson, removeStoredValue, setStoredJson } from '@/src/services/secureStorage';
 import { hasSupabaseRuntimeConfig, invokeSupabaseFunction } from '@/src/services/supabase';
-import { useFriendsStore } from '@/src/store/friendsStore';
-import { usePreferencesStore } from '@/src/store/preferencesStore';
-import { AuthenticatedUser, EventorLoginInput, PersistedAuthSession } from '@/src/types/user';
+import { AuthenticatedUser, PersistedIdentitySession } from '@/src/types/user';
 
-const AUTH_SESSION_KEY = 'olkollen.auth.session';
-const REMEMBERED_USERNAME_KEY = 'olkollen.auth.rememberedUsername';
+const IDENTITY_SESSION_KEY = 'olkollen.identity.session';
 
-// If a signed-in user was stored without a club (e.g. they weren't in the club
-// registry at login and have since been added), silently re-authenticate in the
-// background using saved credentials to refresh the club — no logout/login needed.
-// The updated club then propagates to app_users via PushSyncController.
-async function refreshMissingClub(
-  storedUser: AuthenticatedUser,
-  credentials: { password: string; username: string },
-): Promise<void> {
+// The person's club is only a text name (PersonregisterEventor has no org id),
+// so match it against the local OrganisationRegister mirror to get a numeric
+// organisationId. Foreign clubs (not imported into the register) just keep the
+// club text as the display name with no id.
+async function resolveOrganisation(club: string): Promise<{ organisationId: string | null; organisationName: string | null }> {
+  if (!club) {
+    return { organisationId: null, organisationName: null };
+  }
+
   try {
-    const refreshed = await authenticateEventorPerson({
-      password: credentials.password,
-      username: credentials.username,
-    });
-
-    // Only apply if Eventor now returns a club for the same person.
-    if (!refreshed.organisationName || refreshed.personId !== storedUser.personId) {
-      return;
-    }
-
-    const currentUser = useAuthStore.getState().user;
-
-    // Bail if the session changed (logout/relogin) or a club already got set meanwhile.
-    if (!currentUser || currentUser.personId !== storedUser.personId || currentUser.organisationName) {
-      return;
-    }
-
-    const updatedUser: AuthenticatedUser = {
-      ...currentUser,
-      organisationIds: refreshed.organisationIds,
-      organisationName: refreshed.organisationName,
+    const organisations = await fetchOrganisationList();
+    const match = organisations.find((organisation) => organisation.name === club || organisation.shortName === club);
+    return {
+      organisationId: match ? `${match.id}` : null,
+      organisationName: match?.shortName ?? match?.name ?? club,
     };
-
-    useAuthStore.setState({ user: updatedUser });
-
-    // Persist the refreshed club so future starts already have it.
-    const storedSession = await getStoredJson<PersistedAuthSession>(AUTH_SESSION_KEY).catch(() => null);
-    if (storedSession?.user) {
-      await setStoredJson(AUTH_SESSION_KEY, {
-        ...storedSession,
-        user: updatedUser,
-      } satisfies PersistedAuthSession);
-    }
   } catch {
-    // Best-effort: never block startup on a failed refresh.
+    return { organisationId: null, organisationName: club };
+  }
+}
+
+async function deactivateDevicePushToken() {
+  if (!hasSupabaseRuntimeConfig()) {
+    return;
+  }
+
+  try {
+    const registration = await registerForPushNotificationsAsync();
+    const payload = createLogoutSyncPayload(registration.deviceId, {
+      deviceId: registration.deviceId,
+      platform: registration.platform,
+      pushToken: null,
+    });
+    await invokeSupabaseFunction('push-sync', payload);
+  } catch {
+    // Best-effort: don't block clearing the identity if deactivation fails.
+  }
+}
+
+// Records which person this device picked (device_identities), separate from
+// the per-person app_users row that PushSyncController keeps in sync.
+async function recordDeviceIdentity(user: AuthenticatedUser) {
+  if (!hasSupabaseRuntimeConfig() || !user.personId) {
+    return;
+  }
+
+  try {
+    const registration = await registerForPushNotificationsAsync();
+    await invokeSupabaseFunction('select-identity', {
+      clubName: user.organisationName,
+      deviceId: registration.deviceId,
+      organisationId: user.organisationIds[0] ?? null,
+      personId: user.personId,
+      username: user.username,
+    });
+  } catch {
+    // Best-effort: never block selection on this.
+  }
+}
+
+// Ensures every device has a device_identities row from first launch, even
+// before any person is ever selected (so device counts and 'last seen' are
+// accurate) — never touches an existing row's person_id/username, just
+// updated_at. Uses the bare device id, no push-permission prompt.
+export async function touchDeviceIdentity() {
+  if (!hasSupabaseRuntimeConfig()) {
+    return;
+  }
+
+  try {
+    const deviceId = await getDeviceIdentifier();
+    await invokeSupabaseFunction('touch-device-identity', { deviceId });
+  } catch {
+    // Best-effort: never block app startup on this.
   }
 }
 
@@ -66,187 +92,71 @@ type AuthState = {
   error: string | null;
   hydrateSession: () => Promise<void>;
   isHydrated: boolean;
-  isRestoringProfile: boolean;
   isSubmitting: boolean;
-  rememberedUsername: string;
-  signInWithEventor: (input: EventorLoginInput & { rememberMe: boolean; saveEncryptedLogin: boolean }) => Promise<void>;
+  selectPerson: (result: PersonSearchResult) => Promise<void>;
   signOut: () => Promise<void>;
   user: AuthenticatedUser | null;
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   hydrateSession: async () => {
     try {
-      const storedSession = await getStoredJson<PersistedAuthSession>(AUTH_SESSION_KEY);
-      const storedRememberedUsername = await getStoredJson<string>(REMEMBERED_USERNAME_KEY).catch(() => null);
-      const storedCredentials = await getStoredEventorCredentials().catch(() => null);
-
-      set({
-        error: null,
-        isHydrated: true,
-        rememberedUsername:
-          storedRememberedUsername ?? storedSession?.rememberedUsername ?? storedSession?.user?.username ?? storedCredentials?.username ?? '',
-        user: storedSession?.user ?? null,
-      });
-
-      // If the stored user has no club but we have saved credentials, refresh it
-      // silently in the background (without forcing a re-login).
-      const storedUser = storedSession?.user ?? null;
-      if (
-        storedUser?.personId &&
-        !storedUser.organisationName &&
-        storedCredentials?.username &&
-        storedCredentials?.password
-      ) {
-        void refreshMissingClub(storedUser, storedCredentials);
-      }
+      const storedSession = await getStoredJson<PersistedIdentitySession>(IDENTITY_SESSION_KEY);
+      set({ error: null, isHydrated: true, user: storedSession?.user ?? null });
     } catch {
-      set({
-        error: 'Det gick inte att läsa sparad session.',
-        isHydrated: true,
-        rememberedUsername: '',
-        user: null,
-      });
+      set({ error: 'Det gick inte att läsa sparat val.', isHydrated: true, user: null });
     }
   },
   isHydrated: false,
-  isRestoringProfile: false,
   isSubmitting: false,
-  rememberedUsername: '',
-  signInWithEventor: async ({ password, rememberMe, saveEncryptedLogin, username }) => {
+  selectPerson: async (result) => {
     set({ error: null, isSubmitting: true });
 
     try {
-      const user = await authenticateEventorPerson({ password, username });
-      const enrichedUser: AuthenticatedUser = {
-        ...user,
+      const { organisationId, organisationName } = await resolveOrganisation(result.club);
+      const nameParts = result.name.trim().split(/\s+/).filter(Boolean);
+      const gender = result.gender === 'D' || result.gender === 'H' ? result.gender : null;
+
+      const user: AuthenticatedUser = {
         accessLevel: resolveAccessLevel(),
+        birthDate: result.birthYear ? `${result.birthYear}` : null,
+        email: null,
+        firstName: nameParts[0] ?? null,
+        fullName: result.name,
+        gender,
+        lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+        organisationIds: organisationId ? [organisationId] : [],
+        organisationName,
+        personId: `${result.personId}`,
+        username: result.name,
       };
 
-      if (saveEncryptedLogin) {
-        await saveStoredEventorCredentials(username, password);
-      } else {
-        await clearStoredEventorCredentials();
-      }
-
-      if (rememberMe) {
-        await setStoredJson(REMEMBERED_USERNAME_KEY, username);
-      }
-
-      const willRestore = hasSupabaseRuntimeConfig() && Boolean(enrichedUser.personId);
-
-      set((state) => ({
+      set({
         error: null,
-        isRestoringProfile: willRestore,
         isSubmitting: false,
-        rememberedUsername: rememberMe ? username : state.rememberedUsername,
-        user: enrichedUser,
-      }));
+        user,
+      });
 
-      if (rememberMe || saveEncryptedLogin) {
-        await setStoredJson(AUTH_SESSION_KEY, {
-          rememberedUsername: username,
-          user: enrichedUser,
-        } satisfies PersistedAuthSession);
-      } else {
-        await removeStoredValue(AUTH_SESSION_KEY);
-      }
-
-      // Fetch server-side profile (favorites, preferences, notification settings) and restore
-      if (willRestore) {
-        try {
-          const response = await invokeSupabaseFunction<{
-            ok: boolean;
-            favorites?: Array<{
-              classificationId: number;
-              classificationLabel: string;
-              hasPublishedResults: boolean;
-              hasPublishedStarts: boolean;
-              id: string;
-              name: string;
-              startDate: string;
-            }>;
-            friends?: Array<{
-              birthYear: number | null;
-              club: string;
-              gender: string;
-              name: string;
-              personId: number;
-              pushOnEntry: boolean;
-              pushOnResult: boolean;
-              pushOnStart: boolean;
-            }>;
-            preferences?: {
-              calendarDefaultFilterTemplate?: unknown;
-              calendarFilterPresets?: unknown;
-              favoriteClasses?: string[];
-            } | null;
-            notificationSettings?: {
-              pushOnResultList: boolean;
-              pushOnStartList: boolean;
-              pushOnEntryDeadline?: boolean;
-            } | null;
-          }>('push-sync', createFetchProfilePayload(enrichedUser.personId));
-
-          if (response?.ok) {
-            const serverFavorites = (response.favorites ?? []).map((f) => ({
-              classificationId: f.classificationId,
-              classificationLabel: f.classificationLabel,
-              dateLabel: '',
-              hasPublishedResults: f.hasPublishedResults,
-              hasPublishedStarts: f.hasPublishedStarts,
-              id: f.id,
-              name: f.name,
-              organiserLabel: '',
-              startDate: f.startDate,
-            }));
-
-            await usePreferencesStore.getState().restoreFromServer({
-              favorites: serverFavorites,
-              notificationSettings: response.notificationSettings ?? null,
-              preferences: response.preferences ?? null,
-            });
-
-            await useFriendsStore.getState().restoreFromServer(enrichedUser.personId, response.friends ?? []);
-          }
-        } catch {
-          // Best-effort: don't block login if fetch fails
-        } finally {
-          set({ isRestoringProfile: false });
-        }
-      }
+      await setStoredJson(IDENTITY_SESSION_KEY, { user } satisfies PersistedIdentitySession);
+      void recordDeviceIdentity(user);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Okänt fel vid inloggning.';
+      const message = error instanceof Error ? error.message : 'Okänt fel vid val av person.';
       set({
         error: message,
         isSubmitting: false,
-        user: null,
       });
       throw error;
     }
   },
   signOut: async () => {
-    const currentUser = useAuthStore.getState().user;
+    const currentUser = get().user;
 
-    // Deactivate push token for this device before clearing local state
-    if (currentUser?.personId && hasSupabaseRuntimeConfig()) {
-      try {
-        const registration = await registerForPushNotificationsAsync();
-        const payload = createLogoutSyncPayload(currentUser.personId, {
-          deviceId: registration.deviceId,
-          platform: registration.platform,
-          pushToken: null,
-        });
-        await invokeSupabaseFunction('push-sync', payload);
-      } catch {
-        // Best-effort: don't block logout if deactivation fails
-      }
+    if (currentUser?.personId) {
+      await deactivateDevicePushToken();
     }
 
-    await removeStoredValue(AUTH_SESSION_KEY);
-    await clearStoredEventorWebSessionCookie();
-    await clearStoredEventorCredentials();
+    await removeStoredValue(IDENTITY_SESSION_KEY);
     set({
       error: null,
       user: null,

@@ -1,20 +1,18 @@
 import * as React from 'react';
 
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppTextField } from '@/src/components/AppTextField';
 import { AppButton } from '@/src/components/AppButton';
-import { EmptyState } from '@/src/components/EmptyState';
 import { LoadingState } from '@/src/components/LoadingState';
 import { ScreenHeroHeader } from '@/src/components/ScreenHeroHeader';
-import { RunnerRankingModal, RunnerRankingSelection } from '@/src/components/RunnerRankingModal';
 import { ClubRankingTrend, useClubRanking } from '@/src/hooks/useClubRanking';
 import { getSverigelistanClassLabel, useSverigelistanDirectory } from '@/src/hooks/useSverigelistanDirectory';
 import { useAuthStore } from '@/src/store/authStore';
+import { openExternalLink } from '@/src/store/externalLinkStore';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
@@ -24,7 +22,6 @@ export default function SverigelistaScreen() {
   const { colors, isDark, themeName } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, isDark, themeName), [colors, isDark, themeName]);
   const user = useAuthStore((state) => state.user);
-  const canViewSverigelistan = Boolean(user);
   const [selectedGender, setSelectedGender] = React.useState<'D' | 'H'>(user?.gender ?? 'H');
   const [selectedClassLabel, setSelectedClassLabel] = React.useState<string | null>(null);
   const [selectedClubName, setSelectedClubName] = React.useState<string | null>(null);
@@ -33,15 +30,15 @@ export default function SverigelistaScreen() {
   const [clubSearchText, setClubSearchText] = React.useState('');
   const [classSearchVisible, setClassSearchVisible] = React.useState(false);
   const [classSearchText, setClassSearchText] = React.useState('');
-  const [activeRunnerRanking, setActiveRunnerRanking] = React.useState<RunnerRankingSelection | null>(null);
+  const [rankingInfoRunner, setRankingInfoRunner] = React.useState<{ name: string; personId: number } | null>(null);
   const clubSearchListRef = React.useRef<FlatList<string> | null>(null);
   const classSearchListRef = React.useRef<FlatList<string> | null>(null);
   const listRef = React.useRef<FlatList<SverigelistanRow> | null>(null);
   const [headerCollapsed, setHeaderCollapsed] = React.useState(false);
   const collapseAnim = React.useRef(new Animated.Value(1)).current;
   const lastScrollY = React.useRef(0);
-  const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory({ enabled: canViewSverigelistan });
-  const { rankings: clubRankings } = useClubRanking({ enabled: canViewSverigelistan });
+  const { error, hasSupabase, isLoading, isRefreshing, latestUpdated, refetch, rows } = useSverigelistanDirectory({ enabled: true });
+  const { rankings: clubRankings } = useClubRanking({ enabled: true });
   const [clubRankingListGender, setClubRankingListGender] = React.useState<'H' | 'D' | null>(null);
   const [clubRankingListSearch, setClubRankingListSearch] = React.useState('');
   const [clubDetailClub, setClubDetailClub] = React.useState<string | null>(null);
@@ -55,7 +52,7 @@ export default function SverigelistaScreen() {
 
   React.useEffect(() => {
     if (!user) {
-      setActiveRunnerRanking(null);
+      setRankingInfoRunner(null);
     }
   }, [user]);
 
@@ -115,19 +112,11 @@ export default function SverigelistaScreen() {
     }
 
     const myRow = rows.find((row) => row.RunnerId === currentUserRunnerId);
-    if (!myRow) {
+    if (!myRow?.RunnerId) {
       return;
     }
 
-    setActiveRunnerRanking({
-      birthYear: myRow.BirthYear,
-      clubName: myRow.Club,
-      currentPoints: myRow.Points,
-      currentRank: myRow.Rank,
-      gender: myRow.Gender === 'D' ? 'D' : 'H',
-      name: myRow.Name,
-      personId: myRow.RunnerId,
-    });
+    setRankingInfoRunner({ name: myRow.Name, personId: myRow.RunnerId });
   }, [currentUserRunnerId, rows]);
 
   const handleOpenClubSearch = React.useCallback(() => {
@@ -253,30 +242,8 @@ export default function SverigelistaScreen() {
       return;
     }
 
-    setActiveRunnerRanking({
-      birthYear: row.BirthYear,
-      clubName: row.Club,
-      currentPoints: row.Points,
-      currentRank: row.Rank,
-      gender: row.Gender === 'D' ? 'D' : 'H',
-      name: row.Name,
-      personId: row.RunnerId,
-    });
+    setRankingInfoRunner({ name: row.Name, personId: row.RunnerId });
   }, []);
-
-  if (!canViewSverigelistan) {
-    return (
-      <SafeAreaView edges={['top']} style={styles.screen}>
-        <View style={styles.blockedContainer}>
-          <EmptyState
-            action={<AppButton label="Logga in" onPress={() => router.push('/profile')} />}
-            description="Logga in med Eventor för att se Sverigelistan."
-            title="Sverigelistan kräver inloggning"
-          />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -533,7 +500,33 @@ export default function SverigelistaScreen() {
           </View>
         </View>
       </Modal>
-      <RunnerRankingModal comparisonRows={genderRows} onClose={() => setActiveRunnerRanking(null)} selection={activeRunnerRanking} />
+      <Modal animationType="fade" onRequestClose={() => setRankingInfoRunner(null)} transparent visible={Boolean(rankingInfoRunner)}>
+        <View style={styles.searchOverlay}>
+          <Pressable style={styles.searchBackdrop} onPress={() => setRankingInfoRunner(null)} />
+          <View style={styles.searchSheet}>
+            <View style={styles.searchHeader}>
+              <Text style={styles.searchTitle}>Kan inte visa 6 bästa just nu</Text>
+              <Pressable onPress={() => setRankingInfoRunner(null)} style={styles.searchCloseButton}>
+                <Ionicons color={colors.primary} name="close-circle-outline" size={18} />
+                <Text style={styles.searchCloseText}>Stäng</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.rankingInfoText}>
+              Vi kan just nu inte visa {rankingInfoRunner?.name ?? 'den här löparens'} 6 bästa tävlingar, eftersom SOFT inte ger oss den möjligheten. Vi hoppas kunna visa den här vyn igen längre fram.
+            </Text>
+
+            <AppButton
+              label="Gå till listan i Eventor"
+              onPress={() => {
+                if (rankingInfoRunner) {
+                  openExternalLink(`https://eventor.orientering.se/Ranking/ol/Runner/Index/${rankingInfoRunner.personId}`);
+                }
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Club Ranking Overview Modal — Top 10 Herr + Top 10 Dam */}
       <Modal animationType="fade" transparent visible={clubRankingOverviewVisible}>
@@ -1274,7 +1267,7 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
     zIndex: 2,
   },
   searchBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   searchCloseButton: {
     alignItems: 'center',
@@ -1347,6 +1340,10 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   searchTitle: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
+  },
+  rankingInfoText: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
   searchClubChip: {
     alignItems: 'center',
@@ -1468,11 +1465,6 @@ function createStyles(colors: ColorPalette, isDark: boolean, themeName?: string)
   screen: {
     backgroundColor: colors.background,
     flex: 1,
-  },
-  blockedContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
   },
   list: {
     flex: 1,

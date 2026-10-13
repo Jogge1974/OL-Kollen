@@ -9,15 +9,15 @@ import { formatCentis, getCompetitionClasses, getLiveFavoriteResults, LiveFavori
 // ---------------------------------------------------------------------------
 
 type FriendWatchRow = {
+  device_id: string;
   friend_club: string | null;
   friend_name: string;
   friend_person_id: string;
-  person_id: string;
   push_on_live: boolean;
 };
 
 type TokenRow = {
-  person_id: string;
+  device_id: string;
   push_token: string;
 };
 
@@ -107,12 +107,12 @@ Deno.serve(async (request) => {
       { data: tokens, error: tokensErr },
     ] = await Promise.all([
       supabase
-        .from('friend_watches')
-        .select('friend_club, friend_name, friend_person_id, person_id, push_on_live')
+        .from('device_friend_watches')
+        .select('friend_club, friend_name, friend_person_id, device_id, push_on_live')
         .eq('push_on_live', true),
       supabase
         .from('device_push_tokens')
-        .select('person_id, push_token')
+        .select('device_id, push_token')
         .eq('is_active', true)
         .not('push_token', 'is', null)
         .order('updated_at', { ascending: false }),
@@ -126,23 +126,23 @@ Deno.serve(async (request) => {
       return jsonOk({ ok: true, activeFriends: 0, pushCount: 0, reason: 'no-live-watches' });
     }
 
-    // Token map: one token per device, most recent person wins.
-    const tokensByPerson = new Map<string, string[]>();
+    // Token map: one token per device, most recent wins.
+    const tokensByDevice = new Map<string, string[]>();
     const seenTokens = new Set<string>();
     for (const row of (tokens ?? []) as TokenRow[]) {
       if (seenTokens.has(row.push_token)) continue;
       seenTokens.add(row.push_token);
-      const arr = tokensByPerson.get(row.person_id) ?? [];
+      const arr = tokensByDevice.get(row.device_id) ?? [];
       arr.push(row.push_token);
-      tokensByPerson.set(row.person_id, arr);
+      tokensByDevice.set(row.device_id, arr);
     }
 
-    // Per friend: who watches them (person ids) + display name/club.
+    // Per friend: who watches them (device ids) + display name/club.
     const watchersByFriend = new Map<string, Set<string>>();
     const friendMeta = new Map<string, { name: string; club: string }>();
     for (const w of liveWatches) {
       const set = watchersByFriend.get(w.friend_person_id) ?? new Set<string>();
-      set.add(w.person_id);
+      set.add(w.device_id);
       watchersByFriend.set(w.friend_person_id, set);
       if (!friendMeta.has(w.friend_person_id)) {
         friendMeta.set(w.friend_person_id, { name: w.friend_name, club: w.friend_club ?? '' });
@@ -240,8 +240,8 @@ Deno.serve(async (request) => {
     const queueForFriend = (friendId: string, body: string, type: string) => {
       const watchers = watchersByFriend.get(friendId);
       if (!watchers) return;
-      for (const personId of watchers) {
-        for (const token of tokensByPerson.get(personId) ?? []) {
+      for (const deviceId of watchers) {
+        for (const token of tokensByDevice.get(deviceId) ?? []) {
           messages.push({ body, data: { type }, sound: 'default', title: LIVE_TITLE, to: token });
         }
       }

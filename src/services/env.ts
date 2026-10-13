@@ -1,18 +1,6 @@
-const EVENTOR_BASE_URL = 'https://eventor.orientering.se/api';
-
-export function buildEventorUrl(path: string) {
-  return `${EVENTOR_BASE_URL}${path}`;
-}
-
-export function getEventorApiKey() {
-  const apiKey = process.env.EXPO_PUBLIC_EVENTOR_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('Saknar Eventor API-nyckel. Lägg in EXPO_PUBLIC_EVENTOR_API_KEY i lokal .env.');
-  }
-
-  return apiKey;
-}
+// The Eventor API key no longer lives in the app — all Eventor requests go
+// through the server-side eventor-proxy edge function, which holds the key as a
+// Supabase secret. See src/services/eventorProxyClient.ts.
 
 export function getSupabaseConfig() {
   return {

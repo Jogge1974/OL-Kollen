@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { fetchEventDetailXml } from '../_shared/eventor.ts';
+import { recordEventorApiCall } from '../_shared/eventorCallCounter.ts';
 import { deactivateInvalidTokens, sendExpoPushMessages } from '../_shared/expoPush.ts';
 import { findLiveCompetitionIdsBatch } from '../_shared/liveresultat.ts';
 
@@ -10,23 +11,24 @@ import { findLiveCompetitionIdsBatch } from '../_shared/liveresultat.ts';
 // ---------------------------------------------------------------------------
 
 type FriendWatchRow = {
+  device_id: string;
   friend_club: string | null;
   friend_person_id: string;
   friend_name: string;
-  person_id: string;
   push_on_result: boolean;
   push_on_start: boolean;
   push_on_live: boolean;
 };
 
 type TokenRow = {
-  person_id: string;
+  device_id: string;
   push_token: string;
 };
 
 type ActivityStateRow = {
   event_id: string;
   event_race_id: string;
+  event_name: string | null;
   friend_person_id: string;
   result_notified_at: string | null;
   start_notified_at: string | null;
@@ -66,6 +68,8 @@ type ParsedResult = {
 const EVENTOR_BASE_URL = 'https://eventor.orientering.se/api';
 
 async function fetchEventorXml(path: string): Promise<string> {
+  await recordEventorApiCall('poll-friend-activity', path);
+
   const apiKey = Deno.env.get('EVENTOR_API_KEY');
   if (!apiKey) throw new Error('Missing EVENTOR_API_KEY.');
 
@@ -78,12 +82,6 @@ async function fetchEventorXml(path: string): Promise<string> {
   }
 
   return await response.text();
-}
-
-function todayRange(): { from: string; to: string } {
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  return { from: `${dateStr} 00:00:00`, to: `${dateStr} 23:59:59` };
 }
 
 // ---------------------------------------------------------------------------
@@ -175,21 +173,40 @@ function extractOrganiserName(eventBlock: string): string | null {
 }
 
 /**
- * Parse the person's ENTRIES into unique events (eventId + name + start date).
- *
- * Free-start events give competitors no allotted start time, so such runners
- * never appear in /starts/person and only land in /results/person once Eventor
- * receives the official results — which can be long after they finish. They DO
- * appear in /entries the whole time, so we use this as a third live-matching
- * source to create the live_competition_id state row up front. Entries carry NO
- * <Organiser> (the caller resolves it via /event/{id}) and no class info.
+ * Split friend ids into chunks whose comma-joined length stays within a safe URL
+ * budget, so batching many personIds never produces an over-long request URL.
  */
-function parseEntryEventsXml(xml: string): Array<{ eventId: string; eventName: string; eventDateStr: string | null }> {
-  const seen = new Map<string, { eventId: string; eventName: string; eventDateStr: string | null }>();
+function chunkIdsByLength(ids: string[], maxJoinedLen = 1500): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let joinedLen = 0;
+  for (const id of ids) {
+    const addLen = current.length > 0 ? id.length + 1 : id.length;
+    if (current.length > 0 && joinedLen + addLen > maxJoinedLen) {
+      chunks.push(current);
+      current = [];
+      joinedLen = 0;
+    }
+    joinedLen += current.length > 0 ? id.length + 1 : id.length;
+    current.push(id);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+function parseEntryEventsXml(xml: string): Array<{ personId: string; eventId: string; eventName: string; eventDateStr: string | null }> {
+  const seen = new Map<string, { personId: string; eventId: string; eventName: string; eventDateStr: string | null }>();
   const entryBlocks = xml.split(/<Entry\b/);
 
   for (let i = 1; i < entryBlocks.length; i++) {
-    const eventBlock = entryBlocks[i].match(/<Event\b[\s\S]*?<\/Event>/)?.[0];
+    const block = entryBlocks[i];
+
+    // PersonId identifies which friend the entry belongs to (a batched response
+    // carries several people), taken from the <Competitor> element.
+    const personId = block.match(/<Competitor\b[\s\S]*?<PersonId>(\d+)<\/PersonId>/)?.[1] ?? block.match(/<PersonId>(\d+)<\/PersonId>/)?.[1];
+    if (!personId) continue;
+
+    const eventBlock = block.match(/<Event\b[\s\S]*?<\/Event>/)?.[0];
     if (!eventBlock) continue;
 
     const eventId = eventBlock.match(/<EventId>(\d+)<\/EventId>/)?.[1];
@@ -198,110 +215,66 @@ function parseEntryEventsXml(xml: string): Array<{ eventId: string; eventName: s
     const eventName = eventBlock.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? 'Okänd tävling';
     const eventDateStr = eventBlock.match(/<StartDate>[\s\S]*?<Date>([^<]+)<\/Date>/)?.[1]?.trim() ?? null;
 
-    if (!seen.has(eventId)) seen.set(eventId, { eventId, eventName, eventDateStr });
+    const key = `${personId}::${eventId}`;
+    if (!seen.has(key)) seen.set(key, { personId, eventId, eventName, eventDateStr });
   }
 
   return [...seen.values()];
 }
 
 /**
- * Parse the person's start list into one entry PER stage (Eventor EventRaceId).
+ * Parse a full event start list (/starts/event/iofxml) into each competitor's
+ * start(s) — one entry per (personId, stage). The caller keeps only the friends
+ * it cares about. This lets us fetch ONE start list per event instead of one
+ * per friend.
  *
- * Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
- * Single-day events use <PersonStart>…<Start><StartTime> directly (no RaceStart);
- * for those we use event_id as the race id so state stays keyed exactly as
- * before. The caller filters to today's stage by raceDateStr.
+ * NOTE: grounded in the app's formatStartsXml structure (StartList > ClassStart >
+ * PersonStart > Person > Id, Start > StartTime as flat ISO). No individual start
+ * list sample was available here, so validate against a real response before
+ * trusting it once real Eventor calls are re-enabled. Relay start lists use
+ * TeamStart (no PersonStart) and are intentionally not covered.
  */
-function parsePersonStartsXml(xml: string): ParsedStart[] {
-  const results: ParsedStart[] = [];
-  const seen = new Set<string>();
+function parseEventStartListXml(xml: string, eventId: string, fallbackEventName: string): Array<{ personId: string; start: ParsedStart }> {
+  const out: Array<{ personId: string; start: ParsedStart }> = [];
 
-  // /starts/person returns StartListList > StartList > ClassStart > PersonStart
-  // Split on StartList to get per-event context
-  const eventBlocks = xml.split(/<StartList\b/);
+  const eventBlock = xml.match(/<Event\b[\s\S]*?<\/Event>/)?.[0] ?? '';
+  const eventName = eventBlock.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim() || fallbackEventName;
+  const organiserName = extractOrganiserName(eventBlock);
+  const raceDateMap = buildRaceDateMap(eventBlock);
+  const raceNameMap = buildRaceNameMap(eventBlock);
 
-  for (let i = 1; i < eventBlocks.length; i++) {
-    const eventBlock = eventBlocks[i];
+  const classBlocks = xml.match(/<ClassStart\b[\s\S]*?<\/ClassStart>/g) ?? [];
+  for (const classBlock of classBlocks) {
+    const className = classBlock.match(/<(?:Class|EventClass)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/)?.[1]?.trim() ?? null;
 
-    const eventIdMatch = eventBlock.match(/<EventId[^>]*>(\d+)<\/EventId>/);
-    if (!eventIdMatch) continue;
-    const eventId = eventIdMatch[1];
-    if (seen.has(eventId)) continue;
-    seen.add(eventId);
+    const personBlocks = classBlock.match(/<PersonStart\b[\s\S]*?<\/PersonStart>/g) ?? [];
+    for (const pBlock of personBlocks) {
+      const personId =
+        pBlock.match(/<Person\b[\s\S]*?<Id[^>]*>(\d+)<\/Id>/)?.[1] ?? pBlock.match(/<PersonId>(\d+)<\/PersonId>/)?.[1];
+      if (!personId) continue;
 
-    // Event name
-    const eventNameMatch = eventBlock.match(/<Name>([^<]+)<\/Name>/);
-    const eventName = eventNameMatch?.[1] ?? 'Okänd tävling';
-
-    // Class name from <EventClass><Name> or <Class><Name> (used for live matching)
-    const classNameMatch =
-      eventBlock.match(/<(?:EventClass|Class)\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/);
-    const className = classNameMatch?.[1]?.trim() ?? null;
-
-    const organiserName = extractOrganiserName(eventBlock);
-
-    const raceDateMap = buildRaceDateMap(eventBlock);
-    const raceNameMap = buildRaceNameMap(eventBlock);
-
-    // Multi-day events wrap each stage in <RaceStart><EventRaceId>…<Start><StartTime>.
-    const raceStartBlocks = eventBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
-
-    if (raceStartBlocks && raceStartBlocks.length > 0) {
-      const coveredRaceIds = new Set<string>();
-      for (const block of raceStartBlocks) {
-        const raceIdMatch = block.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/);
-        if (!raceIdMatch) continue;
-        const eventRaceId = raceIdMatch[1];
-        coveredRaceIds.add(eventRaceId);
-        const stMatch = block.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
-        const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
-        const raceDateStr = raceDateMap.get(eventRaceId) ?? startTime?.slice(0, 10) ?? null;
-        const stageName = composeStageName(eventName, raceNameMap.get(eventRaceId));
-        results.push({ eventId, eventRaceId, eventName: stageName, organiserName, startTime, raceDateStr, className });
+      // Multi-day: one <RaceStart><EventRaceId>…<StartTime>. Single-day: <Start><StartTime>.
+      const raceStartBlocks = pBlock.match(/<RaceStart\b[\s\S]*?<\/RaceStart>/g);
+      if (raceStartBlocks && raceStartBlocks.length > 0) {
+        for (const rBlock of raceStartBlocks) {
+          const eventRaceId = rBlock.match(/<EventRaceId[^>]*>(\d+)<\/EventRaceId>/)?.[1];
+          if (!eventRaceId) continue;
+          const stMatch = rBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
+          const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
+          const raceDateStr = raceDateMap.get(eventRaceId) ?? startTime?.slice(0, 10) ?? null;
+          out.push({ personId, start: { eventId, eventRaceId, eventName: composeStageName(eventName, raceNameMap.get(eventRaceId)), organiserName, startTime, raceDateStr, className } });
+        }
+        continue;
       }
-      // Emit free-start stages that have no <RaceStart> block. These stages are
-      // listed in the EventRace metadata (raceDateMap) but have no allocated
-      // start time, so Eventor omits the <RaceStart>. Without this they'd be
-      // invisible to the live matching in section 5b.
-      for (const [raceId, dateStr] of raceDateMap) {
-        if (coveredRaceIds.has(raceId)) continue;
-        const stageName = composeStageName(eventName, raceNameMap.get(raceId));
-        results.push({ eventId, eventRaceId: raceId, eventName: stageName, organiserName, startTime: null, raceDateStr: dateStr, className });
-      }
-      continue;
+
+      const stMatch = pBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
+      const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
+      const raceDateStr = startTime?.slice(0, 10) ?? null;
+      out.push({ personId, start: { eventId, eventRaceId: eventId, eventName, organiserName, startTime, raceDateStr, className } });
     }
-
-    // Genuine MULTI-STAGE event with NO RaceStart blocks at all (every stage is
-    // free-start): emit one entry per stage from the EventRace metadata.
-    //
-    // Guard on size > 1: Eventor lists an <EventRace> (with the real EventRaceId)
-    // even for SINGLE-day events, so raceDateMap has exactly one entry there. If
-    // we keyed those by that EventRaceId, the starts source would use e.g. 55490
-    // while the results source (PersonResult>Result, no RaceResult) and the
-    // entries source both key single-day rows by event_id (53675). That mismatch
-    // creates TWO friend_activity_state rows for the same race, and once one is
-    // marked finished the shadow row replays the split + finish live pushes.
-    // Single-day (size <= 1) must fall through to the event_id fallback below so
-    // all three sources agree on the key.
-    if (raceDateMap.size > 1) {
-      for (const [raceId, dateStr] of raceDateMap) {
-        const stageName = composeStageName(eventName, raceNameMap.get(raceId));
-        results.push({ eventId, eventRaceId: raceId, eventName: stageName, organiserName, startTime: null, raceDateStr: dateStr, className });
-      }
-      continue;
-    }
-
-    // Single-day fallback: one <Start><StartTime> directly under <PersonStart>.
-    // Use event_id as the race id so single-day state is keyed exactly as before.
-    const personStartBlock =
-      eventBlock.match(/<PersonStart\b[\s\S]*?<\/PersonStart>/)?.[0] ?? eventBlock;
-    const stMatch = personStartBlock.match(/<StartTime>([\s\S]*?)<\/StartTime>/);
-    const startTime = stMatch ? extractStartTimeFromBlock(stMatch[1]) : null;
-    const raceDateStr = startTime?.slice(0, 10) ?? null;
-    results.push({ eventId, eventRaceId: eventId, eventName, organiserName, startTime, raceDateStr, className });
   }
 
-  return results;
+  return out;
 }
 
 /**
@@ -470,15 +443,15 @@ Deno.serve(async (request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 1. Load all friend watches and device tokens
+    // 1. Load all friend watches (device-scoped) and device tokens
     const [
       { data: watches, error: watchesErr },
       { data: tokens, error: tokensErr },
     ] = await Promise.all([
-      supabase.from('friend_watches').select('friend_club, friend_person_id, friend_name, person_id, push_on_result, push_on_start, push_on_live'),
+      supabase.from('device_friend_watches').select('friend_club, friend_person_id, friend_name, device_id, push_on_result, push_on_start, push_on_live'),
       supabase
         .from('device_push_tokens')
-        .select('person_id, push_token')
+        .select('device_id, push_token')
         .eq('is_active', true)
         .not('push_token', 'is', null)
         .order('updated_at', { ascending: false }),
@@ -489,15 +462,14 @@ Deno.serve(async (request) => {
 
     const allWatches = (watches ?? []) as FriendWatchRow[];
     // Build token map: only keep the most recently seen token per device.
-    // If multiple persons share a device, only the last active one gets push.
-    const tokensByPerson = new Map<string, string[]>();
+    const tokensByDevice = new Map<string, string[]>();
     const seenTokens = new Set<string>();
     for (const row of (tokens ?? []) as TokenRow[]) {
       if (seenTokens.has(row.push_token)) continue;
       seenTokens.add(row.push_token);
-      const arr = tokensByPerson.get(row.person_id) ?? [];
+      const arr = tokensByDevice.get(row.device_id) ?? [];
       arr.push(row.push_token);
-      tokensByPerson.set(row.person_id, arr);
+      tokensByDevice.set(row.device_id, arr);
     }
 
     // 2. Collect unique friend person IDs across all users
@@ -511,7 +483,7 @@ Deno.serve(async (request) => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const { data: existingStates } = await supabase
       .from('friend_activity_state')
-      .select('event_id, event_race_id, friend_person_id, result_notified_at, start_notified_at, start_time, live_competition_id, live_class_name')
+      .select('event_id, event_race_id, event_name, friend_person_id, result_notified_at, start_notified_at, start_time, live_competition_id, live_class_name')
       .eq('event_date', todayStr);
 
     const stateMap = new Map<string, ActivityStateRow>();
@@ -519,31 +491,82 @@ Deno.serve(async (request) => {
       stateMap.set(`${row.friend_person_id}::${row.event_id}::${row.event_race_id}`, row);
     }
 
-    // 4. Fetch starts and results for each unique friend from Eventor
-    const { from, to } = todayRange();
+    // 4. Discover today's activity at a coarse cadence. Cron runs every 3 min;
+    // start reminders still fire every run from cached start_time (section 5c),
+    // so we only hit Eventor ~every 15 min. To avoid polling friends who aren't
+    // racing today, first find who is entered TODAY with a few batched /entries
+    // calls, then fetch start lists only for those friends. Results are no longer
+    // polled here — poll-friend-result-publication reports "results available"
+    // from a single /events call instead.
+    const DISCOVERY_INTERVAL_MIN = 15;
+    const nowMinute = new Date().getUTCMinutes();
+    const shouldDiscover = nowMinute % DISCOVERY_INTERVAL_MIN < 3;
     const friendStartsMap = new Map<string, ParsedStart[]>();
-    const friendResultsMap = new Map<string, ParsedResult[]>();
+    const friendResultsMap = new Map<string, ParsedResult[]>(); // kept empty; results handled by poll-friend-result-publication
+    const entriesByFriend = new Map<string, Array<{ eventId: string; eventName: string }>>();
 
-    // Process friends in small batches to avoid overwhelming Eventor
     const BATCH_SIZE = 5;
-    for (let i = 0; i < uniqueFriendIds.length; i += BATCH_SIZE) {
-      const batch = uniqueFriendIds.slice(i, i + BATCH_SIZE);
-
-      await Promise.all(
-        batch.map(async (friendId) => {
-          try {
-            const [startsXml, resultsXml] = await Promise.all([
-              fetchEventorXml(`/starts/person?personId=${friendId}&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`),
-              fetchEventorXml(`/results/person?personId=${friendId}&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(to)}`),
-            ]);
-            friendStartsMap.set(friendId, parsePersonStartsXml(startsXml));
-            friendResultsMap.set(friendId, parsePersonResultsXml(resultsXml));
-          } catch (err) {
-            console.warn(`[poll-friend] Eventor fetch failed for friend ${friendId}:`, err);
-            // Non-fatal: skip this friend this cycle
+    if (shouldDiscover) {
+      // 4a. One (chunked) /entries call for ALL friends → who is entered today.
+      for (const chunk of chunkIdsByLength(uniqueFriendIds)) {
+        try {
+          const xml = await fetchEventorXml(
+            `/entries?personIds=${chunk.join(',')}&includeEventElement=true&fromEventDate=${todayStr}&toEventDate=${todayStr}`,
+          );
+          for (const e of parseEntryEventsXml(xml)) {
+            if (e.eventDateStr && e.eventDateStr !== todayStr) continue;
+            const arr = entriesByFriend.get(e.personId) ?? [];
+            arr.push({ eventId: e.eventId, eventName: e.eventName });
+            entriesByFriend.set(e.personId, arr);
           }
-        }),
+        } catch (err) {
+          console.warn('[poll-friend] Eventor entries fetch failed for chunk:', err);
+        }
+      }
+
+      // 4b. Start lists per EVENT (not per friend): one /starts/event/iofxml call
+      // returns every competitor's start time, from which we pick our friends'.
+      // This scales with the number of events today, not the number of racing
+      // friends — one big event with 200 friends costs one call. Front-loading:
+      // mid-hour we skip an event whose friends all already have a cached start
+      // time; the top-of-hour run re-fetches to catch re-draws / late changes.
+      const racingFriendSet = new Set(entriesByFriend.keys());
+      const eventsToday = new Map<string, { name: string; friendIds: Set<string> }>();
+      for (const [friendId, events] of entriesByFriend) {
+        for (const ev of events) {
+          const rec = eventsToday.get(ev.eventId) ?? { name: ev.eventName, friendIds: new Set<string>() };
+          rec.friendIds.add(friendId);
+          eventsToday.set(ev.eventId, rec);
+        }
+      }
+
+      const refreshAllStarts = nowMinute < DISCOVERY_INTERVAL_MIN;
+      const friendsWithCachedStart = new Set(
+        [...stateMap.values()].filter((s) => s.start_time).map((s) => s.friend_person_id),
       );
+
+      const eventIds = [...eventsToday.keys()];
+      for (let i = 0; i < eventIds.length; i += BATCH_SIZE) {
+        const batch = eventIds.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (eventId) => {
+            const rec = eventsToday.get(eventId)!;
+            const needsFetch = refreshAllStarts || [...rec.friendIds].some((id) => !friendsWithCachedStart.has(id));
+            if (!needsFetch) return;
+            try {
+              const xml = await fetchEventorXml(`/starts/event/iofxml?eventId=${eventId}`);
+              for (const { personId, start } of parseEventStartListXml(xml, eventId, rec.name)) {
+                if (!racingFriendSet.has(personId)) continue; // only keep our friends
+                const arr = friendStartsMap.get(personId) ?? [];
+                arr.push(start);
+                friendStartsMap.set(personId, arr);
+              }
+            } catch (err) {
+              console.warn(`[poll-friend] Eventor event start list fetch failed for event ${eventId}:`, err);
+            }
+          }),
+        );
+      }
     }
 
     // Debug: log parsed starts
@@ -574,7 +597,7 @@ Deno.serve(async (request) => {
     const resultStateTracked = new Set<string>();
 
     for (const watch of allWatches) {
-      const userTokens = tokensByPerson.get(watch.person_id);
+      const userTokens = tokensByDevice.get(watch.device_id);
       if (!userTokens || userTokens.length === 0) continue;
 
       const friendId = watch.friend_person_id;
@@ -633,10 +656,10 @@ Deno.serve(async (request) => {
               });
             }
 
-            const arr = startNotifs.get(watch.person_id) ?? [];
+            const arr = startNotifs.get(watch.device_id) ?? [];
             const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
             arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: start.eventName, startTime: timeStr });
-            startNotifs.set(watch.person_id, arr);
+            startNotifs.set(watch.device_id, arr);
           }
         }
       }
@@ -666,7 +689,7 @@ Deno.serve(async (request) => {
 
         // Only send push if enabled
         if (watch.push_on_result) {
-          const arr = resultNotifs.get(watch.person_id) ?? [];
+          const arr = resultNotifs.get(watch.device_id) ?? [];
           arr.push({
             classLabel: result.classLabel,
             eventName: result.eventName,
@@ -675,8 +698,29 @@ Deno.serve(async (request) => {
             position: result.position,
             timeBehind: result.timeBehind,
           });
-          resultNotifs.set(watch.person_id, arr);
+          resultNotifs.set(watch.device_id, arr);
         }
+      }
+    }
+
+    // Ensure a state row exists for every event a friend is entered in today so
+    // poll-friend-result-publication can check its result-list publication (this
+    // also covers free-start events that have no allocated start time).
+    const watchedFriendIdSet = new Set(allWatches.map((w) => w.friend_person_id));
+    for (const [friendId, events] of entriesByFriend) {
+      if (!watchedFriendIdSet.has(friendId)) continue;
+      for (const ev of events) {
+        const key = `${friendId}::${ev.eventId}::${ev.eventId}`;
+        if (stateMap.has(key)) continue;
+        if (stateUpserts.some((u) => u.friend_person_id === friendId && u.event_id === ev.eventId && u.event_race_id === ev.eventId)) continue;
+        stateUpserts.push({
+          event_date: todayStr,
+          event_id: ev.eventId,
+          event_race_id: ev.eventId,
+          event_name: ev.eventName,
+          friend_person_id: friendId,
+          updated_at: nowIso,
+        });
       }
     }
 
@@ -688,34 +732,12 @@ Deno.serve(async (request) => {
     const liveWatchedFriendIds = new Set(
       allWatches.filter((w) => w.push_on_live).map((w) => w.friend_person_id),
     );
-    if (liveWatchedFriendIds.size > 0) {
-      // Free-start runners have no allotted start time, so they never show up in
-      // /starts/person and only reach /results/person once Eventor gets the
-      // official results (often well after they finish). To still push when they
-      // cross the line, fetch today's ENTRIES for live-watched friends and use
-      // them as a third matching source — this creates the live_competition_id
-      // row up front so poll-live-friends can poll liveresultat and catch the
-      // finish. Entries carry no organiser, so it is resolved via /event/{id}.
-      const liveFriendIds = [...liveWatchedFriendIds];
-      const entryEventsByFriend = new Map<string, Array<{ eventId: string; eventName: string }>>();
-      for (let i = 0; i < liveFriendIds.length; i += BATCH_SIZE) {
-        const batch = liveFriendIds.slice(i, i + BATCH_SIZE);
-        await Promise.all(
-          batch.map(async (friendId) => {
-            try {
-              const xml = await fetchEventorXml(
-                `/entries?personIds=${friendId}&includeEventElement=true&fromEventDate=${todayStr}&toEventDate=${todayStr}`,
-              );
-              const events = parseEntryEventsXml(xml)
-                .filter((e) => !e.eventDateStr || e.eventDateStr === todayStr)
-                .map((e) => ({ eventId: e.eventId, eventName: e.eventName }));
-              if (events.length > 0) entryEventsByFriend.set(friendId, events);
-            } catch (err) {
-              console.warn(`[poll-friend] Eventor entries fetch failed for friend ${friendId}:`, err);
-            }
-          }),
-        );
-      }
+    if (shouldDiscover && liveWatchedFriendIds.size > 0) {
+      // Entries were already fetched in section 4 (batched for all friends), so
+      // reuse them here as the free-start matching source instead of fetching per
+      // live-watched friend. Entries carry no organiser, so it is resolved via
+      // /event/{id} further down.
+      const entryEventsByFriend = entriesByFriend;
 
       // Collect one candidate per friend + stage (EventRaceId) for TODAY,
       // preferring the start list (has class during the race) but falling back
@@ -770,7 +792,7 @@ Deno.serve(async (request) => {
         for (const ev of uniqueEvents.values()) {
           if (ev.organizer) continue;
           try {
-            ev.organizer = extractOrganiserName(await fetchEventDetailXml(ev.eventId));
+            ev.organizer = extractOrganiserName(await fetchEventDetailXml(ev.eventId, 'poll-friend-activity:event-organiser'));
           } catch (err) {
             console.warn(`[poll-friend] Eventor event detail fetch failed for ${ev.eventId}:`, err);
           }
@@ -814,12 +836,56 @@ Deno.serve(async (request) => {
       }
     }
 
+    // 5c. Cache-driven start reminders. Runs on the frequent ticks BETWEEN the
+    // coarse discovery cycles, firing "startar snart" from the start_time already
+    // stored on friend_activity_state — no Eventor call needed to remind.
+    if (!shouldDiscover) {
+      for (const watch of allWatches) {
+        if (!watch.push_on_start) continue;
+        const userTokens = tokensByDevice.get(watch.device_id);
+        if (!userTokens || userTokens.length === 0) continue;
+
+        for (const state of stateMap.values()) {
+          if (state.friend_person_id !== watch.friend_person_id) continue;
+          if (state.start_notified_at || !state.start_time) continue;
+
+          const startDate = parseStartTimeIso(state.start_time);
+          if (!startDate) continue;
+          const diffMs = startDate.getTime() - now.getTime();
+          if (diffMs <= 0 || diffMs > START_WINDOW_MS) continue;
+
+          const idx = stateUpserts.findIndex(
+            (u) => u.friend_person_id === state.friend_person_id && u.event_id === state.event_id && u.event_race_id === state.event_race_id,
+          );
+          if (idx !== -1) {
+            stateUpserts[idx].start_notified_at = nowIso;
+          } else {
+            stateUpserts.push({
+              event_date: todayStr,
+              event_id: state.event_id,
+              event_race_id: state.event_race_id,
+              event_name: state.event_name ?? '',
+              friend_person_id: state.friend_person_id,
+              start_notified_at: nowIso,
+              start_time: state.start_time,
+              updated_at: nowIso,
+            });
+          }
+
+          const arr = startNotifs.get(watch.device_id) ?? [];
+          const timeStr = startDate.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' });
+          arr.push({ friendClub: watch.friend_club ?? '', friendName: watch.friend_name, eventName: state.event_name ?? 'en tävling', startTime: timeStr });
+          startNotifs.set(watch.device_id, arr);
+        }
+      }
+    }
+
     // 6. Build and send push messages
     const allMessages: Array<{ body: string; data: Record<string, unknown>; sound: 'default'; title: string; to: string }> = [];
 
-    // Start notifications — one per friend per user
-    for (const [personId, items] of startNotifs) {
-      const pushTokens = tokensByPerson.get(personId) ?? [];
+    // Start notifications — one per friend per device
+    for (const [deviceId, items] of startNotifs) {
+      const pushTokens = tokensByDevice.get(deviceId) ?? [];
       for (const item of items) {
         const clubSuffix = item.friendClub ? `, ${item.friendClub}` : '';
         for (const token of pushTokens) {
@@ -835,8 +901,8 @@ Deno.serve(async (request) => {
     }
 
     // Result notifications
-    for (const [personId, items] of resultNotifs) {
-      const pushTokens = tokensByPerson.get(personId) ?? [];
+    for (const [deviceId, items] of resultNotifs) {
+      const pushTokens = tokensByDevice.get(deviceId) ?? [];
       if (pushTokens.length === 0) continue;
 
       // Group by event

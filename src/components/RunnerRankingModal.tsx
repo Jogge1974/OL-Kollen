@@ -17,7 +17,6 @@ import { EventItem } from '@/src/types/eventor';
 import { ColorPalette, useColors, useTheme } from '@/src/theme/ThemeContext';
 import { spacing } from '@/src/theme/spacing';
 import { typography } from '@/src/theme/typography';
-import { useAuthStore } from '@/src/store/authStore';
 import { SverigelistanRow } from '@/src/types/sverigelistan';
 
 export type RunnerRankingSelection = {
@@ -71,8 +70,6 @@ export function RunnerRankingModal({
   React.useEffect(() => {
     setTrendExpanded(false);
   }, [selection]);
-  const authUser = useAuthStore((store) => store.user);
-  const rememberedUsername = useAuthStore((store) => store.rememberedUsername);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -151,15 +148,6 @@ export function RunnerRankingModal({
       projectedPoints,
     };
   }, [comparisonRows, state?.overview, state?.runnerCurrentPoints, state?.runnerGender]);
-
-  React.useEffect(() => {
-    if (!manualLoginVisible) {
-      return;
-    }
-
-    const initialUsername = authUser?.username ?? rememberedUsername ?? '';
-    setManualUsername((current) => current || initialUsername);
-  }, [authUser?.username, manualLoginVisible, rememberedUsername]);
 
   const handleManualLogin = React.useCallback(async () => {
     if (!manualPassword.trim()) {
@@ -430,21 +418,14 @@ export function RunnerRankingModal({
             <Text style={styles.manualTitle}>Logga in mot Eventor</Text>
             <Text style={styles.manualText}>Ange lösenordet så försöker vi förnya webbsessionen för Sverigelistan.</Text>
 
-            {!authUser?.username && !rememberedUsername ? (
-              <AppTextField
-                autoCapitalize="none"
-                autoCorrect={false}
-                label="Användarnamn"
-                onChangeText={setManualUsername}
-                placeholder="Ange ditt Eventor-användarnamn"
-                value={manualUsername}
-              />
-            ) : (
-              <View style={styles.manualUsernameBox}>
-                <Text style={styles.manualUsernameLabel}>Användarnamn</Text>
-                <Text style={styles.manualUsernameValue}>{manualUsername}</Text>
-              </View>
-            )}
+            <AppTextField
+              autoCapitalize="none"
+              autoCorrect={false}
+              label="Användarnamn"
+              onChangeText={setManualUsername}
+              placeholder="Ange ditt Eventor-användarnamn"
+              value={manualUsername}
+            />
 
             <AppTextField
               autoCapitalize="none"
